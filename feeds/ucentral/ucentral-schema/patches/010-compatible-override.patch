@@ -1,0 +1,12 @@
+--- a/system/capabilities.uc
++++ b/system/capabilities.uc
+@@ -73,7 +73,8 @@ if (board.wifi?.country) {
+ 
+ let wifi = require("wifi.phy");
+ 
+-capa.compatible = replace(board.model.id, ',', '_');
++let compatible = trim(fs.readfile('/etc/ucentral/compatible') || '');
++capa.compatible = compatible || replace(board.model.id, ',', '_');
+ capa.model = board.model.name;
+ 
+ capa.version = {
