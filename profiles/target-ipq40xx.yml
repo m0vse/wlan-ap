@@ -1,8 +1,9 @@
 ---
 description: Add the wifi ath10k support
+external_target: true
 feeds:
   - name: target_ipq40xx
-    uri: https://github.com/Telecominfraproject/wlan-ap-legacy-targets.git
+    uri: https://github.com/m0vse/wlan-ap-legacy-targets.git
     branch: main
 packages:
   - ath10k-firmware-qca4019-ct-htt

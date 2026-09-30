@@ -1,0 +1,11 @@
+---
+profile: cambium-sage
+target: ipq40xx
+subtarget: generic
+description: Build the OpenWiFi image for qualified Cambium Sage access points
+image: bin/targets/ipq40xx/generic/openwrt-ipq40xx-generic-cambium-sage-squashfs-sysupgrade.bin
+packages:
+  - ipq40xx
+include:
+  - ucentral-ap
+  - target-ipq40xx
