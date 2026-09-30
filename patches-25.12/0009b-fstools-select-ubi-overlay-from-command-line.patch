@@ -1,0 +1,79 @@
+From: Phil Taylor <phil@localhost>
+Date: Wed, 30 Sep 2026 17:00:00 +0100
+Subject: [PATCH] fstools: select a named UBI overlay from the command line
+
+An A/B layout can keep one writable overlay per root filesystem, so neither
+volume can use the single conventional rootfs_data name.  Add a package patch
+that lets the boot command select the active UBI volume with the existing
+fstools_overlay_name parameter.  The default remains rootfs_data when the
+parameter is absent.
+
+---
+ .../patches/010-cmdline-overlay-name.patch    | 57 +++++++++++++++++++
+ 1 file changed, 57 insertions(+)
+ create mode 100644 package/system/fstools/patches/010-cmdline-overlay-name.patch
+
+diff --git a/package/system/fstools/patches/010-cmdline-overlay-name.patch b/package/system/fstools/patches/010-cmdline-overlay-name.patch
+new file mode 100644
+--- /dev/null
++++ b/package/system/fstools/patches/010-cmdline-overlay-name.patch
+@@ -0,0 +1,57 @@
++From: Phil Taylor <phil@localhost>
++Subject: [PATCH] fstools: select a named UBI overlay from the command line
++
++A/B layouts can provide a separate writable UBI volume for each rootfs.
++When looking up the conventional rootfs_data volume, honor an optional
++fstools_overlay_name kernel parameter so the boot command can select the
++matching overlay.  Other volume lookups and systems without the parameter
++retain their existing behavior.
++
++--- a/libfstools/ubi.c
+++++ b/libfstools/ubi.c
++@@ -15,7 +15,34 @@
++ 
++ /* fit for UBI_MAX_VOLUME_NAME and sysfs path lengths */
++ #define BUFLEN		128
+++#define OVERLAY_PARAM	"fstools_overlay_name="
+++
+++static char *ubi_overlay_name(char *name, char *buf, size_t len)
+++{
+++	char param[BUFLEN];
+++	FILE *f;
+++
+++	if (strcmp(name, "rootfs_data"))
+++		return name;
+++
+++	f = fopen("/proc/cmdline", "r");
+++	if (!f)
+++		return name;
+++
+++	while (fscanf(f, "%127s", param) == 1) {
+++		if (strncmp(param, OVERLAY_PARAM, sizeof(OVERLAY_PARAM) - 1))
+++			continue;
+++		if (!param[sizeof(OVERLAY_PARAM) - 1])
+++			break;
+++		snprintf(buf, len, "%s", param + sizeof(OVERLAY_PARAM) - 1);
+++		name = buf;
+++		break;
+++	}
+++
+++	fclose(f);
+++	return name;
+++}
++ 
++ /* could use libubi-tiny instead, but already had the code directly reading
++  * from sysfs */
++ const char *const ubi_dir_name = "/sys/class/ubi";
++@@ -140,7 +167,10 @@ static struct volume *ubi_volume_find(ch
++ 	DIR *ubi_dir;
++ 	struct dirent *ubi_dirent;
++ 	unsigned int ubi_num;
+++	char overlay_name[BUFLEN];
+++
+++	name = ubi_overlay_name(name, overlay_name, sizeof(overlay_name));
++ 
++ 	if (find_filesystem("ubifs"))
++ 		return ret;
++ 
+-- 
+2.34.1
