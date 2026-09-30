@@ -49,7 +49,8 @@ def reset_tree():
 		# A failed patch application leaves rebase-apply behind.  The OpenWrt
 		# checkout is generated state, so clear it before restoring the pinned
 		# base; otherwise every later --rebase fails before applying any patch.
-		run(["git", "am", "--abort"])
+		if os.path.isdir(os.path.join(".git", "rebase-apply")):
+			run(["git", "am", "--abort"], check=True)
 		run(
 			["git", "checkout", config["branch"]], check=True,
 		)
