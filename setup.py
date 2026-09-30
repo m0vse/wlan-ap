@@ -46,6 +46,10 @@ def reset_tree():
 	try:
 		print("### Resetting tree")
 		os.chdir(openwrt)
+		# A failed patch application leaves rebase-apply behind.  The OpenWrt
+		# checkout is generated state, so clear it before restoring the pinned
+		# base; otherwise every later --rebase fails before applying any patch.
+		run(["git", "am", "--abort"])
 		run(
 			["git", "checkout", config["branch"]], check=True,
 		)
