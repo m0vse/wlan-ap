@@ -29,7 +29,7 @@ start_rtty() {
 		return 1
 	}
 
-	[ "$enable" -eq 0 -a "$interval" -eq 0 ] && return 1
+	[ "$enable" -eq 0 ] && return 0
 
 	[ -n "$interface" ] && network_get_device ifname "$interface"
 
@@ -51,7 +51,14 @@ start_rtty() {
 	procd_set_param command $BIN -h $host -I "$id" -a
 	[ -n "$port" ] && procd_append_param command -p "$port"
 	[ -n "$description" ] && procd_append_param command -d "$description"
-	[ "$ssl" = "1" ] && procd_append_param command -s -c /etc/ucentral/operational.pem -k /etc/ucentral/key.pem
+	if [ "$ssl" = "1" ]; then
+		local cert=/etc/ucentral/operational.pem
+
+		# Stock deployments use the enrolled operational certificate. Some
+		# deployments provision the controller certificate as cert.pem instead.
+		[ -f "$cert" ] || cert=/etc/ucentral/cert.pem
+		procd_append_param command -s -c "$cert" -k /etc/ucentral/key.pem
+	fi
 	[ -n "$token" ] && procd_append_param command -t "$token"
 	[ "$verbose" = "1" ] && procd_append_param command -v
 	[ "$timeout" -eq "0" ] || procd_append_param command -e $timeout
