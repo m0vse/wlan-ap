@@ -499,6 +499,10 @@ void dhcpsnoop_dev_done(void)
 		close(ufd.fd);
 	}
 
-	dhcpsnoop_run_cmd("ip link del "DHCPSNOOP_IFB_NAME, true);
+	/* Remove every mirred action while its target still exists. Deleting the
+	 * IFB first leaves live filters pointing at a dead ifindex and can race
+	 * with traffic, producing "tc mirred: target device is gone".
+	 */
 	vlist_flush_all(&devices);
+	dhcpsnoop_run_cmd("ip link del "DHCPSNOOP_IFB_NAME, true);
 }
