@@ -1,0 +1,22 @@
+--- a/system/state/network.uc
++++ b/system/state/network.uc
+@@ -45,8 +45,18 @@ export function lookup_port(netdev, sele
+ };
+ 
+ export function iface_add_counters(iface, vlan, port, previous) {
+-	if (!global.devstats || !global.devstats[port])
++	if (!global.devstats || !global.devstats[port]) {
++		/* udevstats may not expose a VLAN table for a plain Ethernet uplink.
++		 * In that case use the physical netdev counters already collected by
++		 * topology-port.  Do not apply this fallback to tagged interfaces,
++		 * where whole-port counters would account unrelated VLAN traffic. */
++		let counters = global.ports?.[port]?.counters;
++		if (+vlan != 0 || !counters)
++			return;
++		for (let field in [ 'tx_bytes', 'tx_packets', 'rx_bytes', 'rx_packets' ])
++			iface.counters[field] += (+counters[field] || 0);
+ 		return;
++	}
+ 	for (let k, vid in global.devstats[port]) {
+ 		if (vid.vid != vlan)
+ 			continue;
