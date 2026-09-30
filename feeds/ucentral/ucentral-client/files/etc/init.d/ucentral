@@ -23,6 +23,18 @@ start_service() {
 		if [ "$(cat /etc/ucentral/platform 2>/dev/null)" = "ap" ]; then
 			local retries=60
 			while [ "$retries" -gt 0 ]; do
+				local phy_count=0
+				local configured_count
+				local phy
+
+				for phy in /sys/class/ieee80211/*; do
+					[ -e "$phy" ] && phy_count=$((phy_count + 1))
+				done
+
+				configured_count=$(uci -q show wireless 2>/dev/null |
+					grep -c '=wifi-device$')
+				[ "$configured_count" -ge "$phy_count" ] || /sbin/wifi config
+
 				/usr/share/ucentral/capabilities.uc
 				grep -q '"wifi"' /etc/ucentral/capabilities.json 2>/dev/null && break
 				rm -f /etc/ucentral/capabilities.json
