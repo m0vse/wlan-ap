@@ -18,8 +18,21 @@ stop_service() {
 }
 
 start_service() {
-	[ -s /etc/ucentral/capabilities.json ] || rm /etc/ucentral/capabilities.json
-	[ -f /etc/ucentral/capabilities.json ] || /usr/share/ucentral/capabilities.uc
+	[ -s /etc/ucentral/capabilities.json ] || rm -f /etc/ucentral/capabilities.json
+	if [ ! -f /etc/ucentral/capabilities.json ]; then
+		if [ "$(cat /etc/ucentral/platform 2>/dev/null)" = "ap" ]; then
+			local retries=60
+			while [ "$retries" -gt 0 ]; do
+				/usr/share/ucentral/capabilities.uc
+				grep -q '"wifi"' /etc/ucentral/capabilities.json 2>/dev/null && break
+				rm -f /etc/ucentral/capabilities.json
+				retries=$((retries - 1))
+				[ "$retries" -eq 0 ] || sleep 1
+			done
+		else
+			/usr/share/ucentral/capabilities.uc
+		fi
+	fi
 
 	[ -f /etc/ucentral/ucentral.cfg.0000000002 ] && {
 		/usr/share/ucentral/ucentral.uc /etc/ucentral/ucentral.cfg.0000000002 > /dev/null
