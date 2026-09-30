@@ -1,0 +1,40 @@
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -112,6 +112,19 @@ let archive_cmdline = [
+ 	'/etc/config/ucentral'
+ ];
+ 
++/* The client runs from config-shadow.  Refresh the canonical UCI file before
++ * archiving it so the serial and controller settings seed the new overlay. */
++if ((args.keep_redirector || args.keep_config) &&
++    fs.stat('/etc/config-shadow/ucentral')) {
++	let rc = system([
++		'cp', '/etc/config-shadow/ucentral', '/etc/config/ucentral'
++	]);
++	if (rc != 0) {
++		result(2, "Unable to preserve uCentral device identity");
++		return;
++	}
++}
++
+ if (args.keep_redirector) {
+ 	let files = [
+ 		"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+@@ -120,5 +133,17 @@ if (args.keep_redirector) {
+ 		"/etc/ucentral/restrictions.json",
+ 	];
++	let gateway = json(fs.readfile('/etc/ucentral/gateway.json') || '{}');
++
++	/* Preserve non-default certificate names selected by gateway.json, but do
++	 * not allow a controller-supplied path to add arbitrary files. */
++	for (let key in [ 'cert', 'ca' ]) {
++		let path = gateway[key];
++		if (type(path) == 'string' &&
++		    substr(path, 0, length('/etc/ucentral/')) == '/etc/ucentral/' &&
++		    fs.stat(path) && index(files, path) < 0)
++			push(files, path);
++	}
++
+ 	for (let f in files)
+ 		if (fs.stat(f))
+ 			push(archive_cmdline, f);
