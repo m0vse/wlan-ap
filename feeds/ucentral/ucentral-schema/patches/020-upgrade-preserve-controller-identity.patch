@@ -1,20 +1,92 @@
 --- a/command/cmd_upgrade.uc
 +++ b/command/cmd_upgrade.uc
-@@ -120,5 +120,17 @@ if (args.keep_redirector) {
- 		"/etc/ucentral/restrictions.json",
- 	];
-+	let gateway = json(fs.readfile('/etc/ucentral/gateway.json') || '{}');
+@@ -108,22 +108,48 @@
+ }
+ 
+ let archive_cmdline = [
+-	'tar', 'czf', '/upgrade.tgz',
+-	'/etc/config/ucentral'
++	'tar', 'czf', '/upgrade.tgz'
+ ];
+ 
+-if (args.keep_redirector) {
+-	let files = [
+-		"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+-		"/etc/ucentral/gateway.json", "/etc/ucentral/profile.json",
+-		"/etc/ucentral/operational.pem", "/etc/ucentral/operational.ca",
+-		"/etc/ucentral/restrictions.json",
+-	];
+-	for (let f in files)
+-		if (fs.stat(f))
+-			push(archive_cmdline, f);
++/* A managed firmware upgrade must not silently deprovision the AP.  Preserve
++ * only its controller identity and onboarding state; keep_config below still
++ * controls whether the active network and wireless configuration survives.
++ * Explicit factory reset is the supported way to remove controller identity.
++ *
++ * config-shadow is important: the ucentral init script copies it over the
++ * live UCI configuration on boot. */
++let files = [
++	"/etc/config/ucentral", "/etc/config-shadow/ucentral",
++	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
++	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
++	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
++	"/etc/ucentral/operational.ca", "/etc/ucentral/server-ca.pem",
++	"/etc/ucentral/insta.pem", "/etc/ucentral/openlan.pem",
++	"/etc/ucentral/restrictions.json", "/etc/ucentral/sign_pubkey.pem",
++];
++let gateway = {};
 +
-+	/* Preserve non-default certificate names selected by gateway.json, but do
-+	 * not allow a controller-supplied path to add arbitrary files. */
-+	for (let key in [ 'cert', 'ca' ]) {
-+		let path = gateway[key];
-+		if (type(path) == 'string' &&
-+		    substr(path, 0, length('/etc/ucentral/')) == '/etc/ucentral/' &&
-+		    fs.stat(path) && index(files, path) < 0)
-+			push(files, path);
-+	}
++try {
++	gateway = json(fs.readfile('/etc/ucentral/gateway.json') || '{}');
++}
++catch (e) {
++	warn(sprintf("Unable to parse gateway.json while preparing upgrade: %s\n", e));
++}
 +
- 	for (let f in files)
- 		if (fs.stat(f))
- 			push(archive_cmdline, f);
++/* Preserve non-default certificate names selected by gateway.json, but do
++ * not allow a controller-supplied path to add files outside /etc/ucentral. */
++for (let key in [ 'cert', 'ca' ]) {
++	let path = gateway[key];
++	if (type(path) == 'string' &&
++	    substr(path, 0, length('/etc/ucentral/')) == '/etc/ucentral/' &&
++	    index(path, '..') < 0 && fs.stat(path) && index(files, path) < 0)
++		push(files, path);
+ }
+ 
++for (let f in files)
++	if (fs.stat(f))
++		push(archive_cmdline, f);
++
+ if (args.keep_config) {
+ 	let active_config = fs.readlink("/etc/ucentral/ucentral.active");
+ 
+@@ -133,23 +159,19 @@
+ 		result(2, "Unable to determine active configuration: %s", fs.error());
+ }
+ 
+-if (args.keep_redirector || args.keep_config) {
+-	let rc = system(archive_cmdline);
++let rc = system(archive_cmdline);
+ 
+-	if (rc != 0) {
+-		result(2, "Archive command %s exited with non-zero code %d", archive_cmdline, rc);
++if (rc != 0) {
++	result(2, "Archive command %s exited with non-zero code %d", archive_cmdline, rc);
+ 
+-		return;
+-	}
++	return;
+ }
+ 
+ include('reboot_cause.uc', { reason: 'upgrade' });
+ result(0, "Triggering FW upgrade");
+ sleep(2000);
+ 
+-let sysupgrade_cmdline = sprintf("sysupgrade %s %s",
+-				 (args.keep_redirector || args.keep_config) ? "-f /upgrade.tgz" : "-n",
+-				 image_path);
++let sysupgrade_cmdline = sprintf("sysupgrade -f /upgrade.tgz %s", image_path);
+ 
+ warn("Upgrading firmware\n");
+ 
