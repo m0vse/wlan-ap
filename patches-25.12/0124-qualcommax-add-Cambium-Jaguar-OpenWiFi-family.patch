@@ -1,0 +1,2414 @@
+From 232339cef8ad3888d16aec98ebed9e910c081299 Mon Sep 17 00:00:00 2001
+From: Phil Taylor <phil@Phils-Mac-mini.local>
+Date: Thu, 1 Oct 2026 01:19:11 +0100
+Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
+
+---
+ include/image-commands.mk                     |  34 ++
+ include/image.mk                              |   3 +-
+ .../uboot-envtools/files/qualcommax_ipq60xx   |   6 +-
+ package/cambium/cambium-ab/Makefile           |  42 ++
+ .../cambium-ab/files/18_cambium_ab_guard      |   9 +
+ .../cambium-ab/files/cambium-ab-convert       | 124 ++++++
+ .../cambium/cambium-ab/files/cambium-ab-guard | 203 ++++++++++
+ .../cambium-ab/files/cambium-ab-guard.init    |  10 +
+ .../cambium-ab/files/cambium-ab-status        |  22 ++
+ .../cambium-ab/files/cambium-ab-upgrade.sh    | 222 +++++++++++
+ .../cambium/cambium-ab/files/cambium-ab.sh    | 317 +++++++++++++++
+ package/cambium/cambium-board-data/Makefile   |  35 ++
+ .../files/cambium-board-data                  | 373 ++++++++++++++++++
+ .../files/cambium-board-data.init             |  12 +
+ .../cambium/cambium-jaguar-support/Makefile   |  32 ++
+ .../files/cambium-ab-jaguar.sh                |  67 ++++
+ scripts/cambium-family-its.sh                 | 104 +++++
+ .../dts/qcom/ipq6010-jaguar-controls.dtsi     |  71 ++++
+ .../qcom/ipq6010-jaguar-persistent-96m.dtsi   |   6 +
+ .../dts/qcom/ipq6010-jaguar-persistent.dtsi   |  17 +
+ .../qcom/ipq6010-jaguar-storage-recovery.dtsi |  57 +++
+ .../dts/qcom/ipq6010-xe3-4-persistent.dts     |   4 +
+ .../boot/dts/qcom/ipq6010-xe3-4-recovery.dts  |  31 ++
+ .../dts/qcom/ipq6010-xe3-4tn-persistent.dts   |   4 +
+ .../dts/qcom/ipq6010-xe3-4tn-recovery.dts     |  25 ++
+ .../dts/qcom/ipq6010-xv2-2-persistent.dts     |   8 +
+ .../boot/dts/qcom/ipq6010-xv2-2-recovery.dts  |  64 +++
+ .../dts/qcom/ipq6010-xv2-2t0-persistent.dts   |   4 +
+ .../dts/qcom/ipq6010-xv2-2t0-recovery.dts     |  20 +
+ .../dts/qcom/ipq6010-xv2-2t1-persistent.dts   |   4 +
+ .../dts/qcom/ipq6010-xv2-2t1-recovery.dts     |  69 ++++
+ target/linux/qualcommax/image/ipq60xx.mk      |  51 +++
+ .../ipq60xx/base-files/etc/board.d/02_network |   8 +-
+ .../etc/hotplug.d/firmware/11-ath11k-caldata  |   5 +-
+ .../base-files/lib/upgrade/platform.sh        |  11 +-
+ 35 files changed, 2069 insertions(+), 5 deletions(-)
+ create mode 100644 package/cambium/cambium-ab/Makefile
+ create mode 100755 package/cambium/cambium-ab/files/18_cambium_ab_guard
+ create mode 100755 package/cambium/cambium-ab/files/cambium-ab-convert
+ create mode 100755 package/cambium/cambium-ab/files/cambium-ab-guard
+ create mode 100755 package/cambium/cambium-ab/files/cambium-ab-guard.init
+ create mode 100755 package/cambium/cambium-ab/files/cambium-ab-status
+ create mode 100644 package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+ create mode 100644 package/cambium/cambium-ab/files/cambium-ab.sh
+ create mode 100644 package/cambium/cambium-board-data/Makefile
+ create mode 100644 package/cambium/cambium-board-data/files/cambium-board-data
+ create mode 100644 package/cambium/cambium-board-data/files/cambium-board-data.init
+ create mode 100644 package/cambium/cambium-jaguar-support/Makefile
+ create mode 100644 package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
+ create mode 100755 scripts/cambium-family-its.sh
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-controls.dtsi
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent-96m.dtsi
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent.dtsi
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-storage-recovery.dtsi
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-persistent.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-recovery.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-persistent.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-recovery.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-persistent.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-persistent.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-recovery.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-persistent.dts
+ create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-recovery.dts
+
+diff --git a/include/image-commands.mk b/include/image-commands.mk
+index 443c870a8e..92b43cdb0c 100644
+--- a/include/image-commands.mk
++++ b/include/image-commands.mk
+@@ -466,6 +466,40 @@ define Build/fit
+ 	$(call Build/fit-image,$(1))
+ endef
+ 
++# Cambium A/B bank: kernel, rootfs, an autoresizing rootfs_data and a fixed
++# 8-LEB cambium_device_data vault, with IDs fixed so the A/B writer and the
++# factory image agree.
++define Build/cambium-ab-ubi
++	printf '%s\n' \
++		'[kernel]' 'mode=ubi' 'vol_id=0' 'vol_type=dynamic' 'vol_name=kernel' \
++		'image=$(IMAGE_KERNEL)' \
++		'[rootfs]' 'mode=ubi' 'vol_id=1' 'vol_type=dynamic' 'vol_name=rootfs' \
++		'image=$(IMAGE_ROOTFS)' \
++		'[rootfs_data]' 'mode=ubi' 'vol_id=2' 'vol_type=dynamic' \
++		'vol_name=rootfs_data' 'vol_size=1MiB' 'vol_flags=autoresize' \
++		'[cambium_device_data]' 'mode=ubi' 'vol_id=3' 'vol_type=dynamic' \
++		'vol_name=cambium_device_data' 'vol_size=1015808' \
++		> $@.ini
++	$(STAGING_DIR_HOST)/bin/ubinize \
++		$(if $(SOURCE_DATE_EPOCH),-Q $(SOURCE_DATE_EPOCH)) \
++		-o $@ -p $(BLOCKSIZE:%k=%KiB) -m $(PAGESIZE) $@.ini
++	rm -f $@.ini
++endef
++
++# Build a FIT holding one kernel and the device trees of several boards.
++# CAMBIUM_FIT_BOARDS lists config:fdt-node:dts triples; DEVICE_DTS_CONFIG
++# selects the default configuration.
++define Build/cambium-family-fit
++	$(TOPDIR)/scripts/cambium-family-its.sh \
++		-k $@ -A $(LINUX_KARCH) -C $(word 1,$(1)) \
++		-a $(KERNEL_LOADADDR) -e $(if $(KERNEL_ENTRY),$(KERNEL_ENTRY),$(KERNEL_LOADADDR)) \
++		-d "$(DEVICE_VENDOR) $(DEVICE_MODEL) $(DEVICE_VARIANT)" \
++		$(if $(DEVICE_DTS_CONFIG),-D $(DEVICE_DTS_CONFIG)) \
++		$(foreach board,$(CAMBIUM_FIT_BOARDS),$(word 1,$(subst :, ,$(board))):$(word 2,$(subst :, ,$(board))):$(KDIR)/image-$(word 3,$(subst :, ,$(board))).dtb) \
++		> $@.its
++	$(call Build/fit-image,$(1))
++endef
++
+ define Build/libdeflate-gzip
+ 	$(STAGING_DIR_HOST)/bin/libdeflate-gzip -f -12 -c $@ $(1) > $@.new
+ 	@mv $@.new $@
+diff --git a/include/image.mk b/include/image.mk
+index e62468c598..821367f558 100644
+--- a/include/image.mk
++++ b/include/image.mk
+@@ -529,6 +529,7 @@ define Device/Init
+   DEVICE_DTS_DIR :=
+   DEVICE_DTS_LOADADDR :=
+   DEVICE_DTS_OVERLAY :=
++  CAMBIUM_FIT_BOARDS :=
+   DEVICE_FDT_NUM :=
+   DEVICE_DTC_FLAGS :=
+   DEVICE_DTCO_FLAGS :=
+@@ -557,7 +558,7 @@ DEFAULT_DEVICE_VARS := \
+   VID_HDR_OFFSET UBINIZE_OPTS UBINIZE_PARTS MKUBIFS_OPTS DEVICE_DTC_FLAGS \
+   DEVICE_DTCO_FLAGS DEVICE_DTS DEVICE_DTS_CONFIG DEVICE_DTS_DELIMITER \
+   DEVICE_DTS_DIR DEVICE_DTS_OVERLAY DEVICE_DTS_LOADADDR \
+-  DEVICE_FDT_NUM DEVICE_IMG_PREFIX SOC BOARD_NAME UIMAGE_MAGIC UIMAGE_NAME \
++  CAMBIUM_FIT_BOARDS DEVICE_FDT_NUM DEVICE_IMG_PREFIX SOC BOARD_NAME UIMAGE_MAGIC UIMAGE_NAME \
+   UIMAGE_TIME SUPPORTED_DEVICES IMAGE_METADATA KERNEL_ENTRY KERNEL_LOADADDR \
+   UBOOT_PATH IMAGE_SIZE NAND_SIZE \
+   FACTORY_IMG_NAME FACTORY_SIZE \
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+index a06ffc1f36..248cbd967c 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq60xx
+@@ -10,7 +10,11 @@ board=$(board_name)
+ case "$board" in
+ 8devices,mango-dvk|\
+ 8devices,mango-dvk-sfp|\
+-cambiumnetworks,xe3-4)
++cambiumnetworks,xe3-4|\
++cambiumnetworks,xe3-4tn|\
++cambiumnetworks,xv2-2|\
++cambiumnetworks,xv2-2t0|\
++cambiumnetworks,xv2-2t1)
+ 	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
+ 	;;
+ glinet,gl-ax1800|\
+diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
+new file mode 100644
+index 0000000000..85bcbfa12c
+--- /dev/null
++++ b/package/cambium/cambium-ab/Makefile
+@@ -0,0 +1,42 @@
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=cambium-ab
++PKG_RELEASE:=4
++PKG_LICENSE:=GPL-2.0-only
++PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/cambium-ab
++  SECTION:=utils
++  CATEGORY:=Utilities
++  TITLE:=Cambium access point A/B firmware banks
++  DEPENDS:=+uboot-envtools +ubi-utils
++  PKGARCH:=all
++endef
++
++define Package/cambium-ab/description
++  Two OpenWrt firmware banks with automatic rollback for Cambium access
++  points: sysupgrade writes the inactive bank and trial-boots it, a boot
++  guard commits it only after health checks, cambium-ab-convert replaces the
++  stock firmware bank once, and cambium-ab-status reports the state. Each
++  family's board table and U-Boot commands come from its own module
++  (/lib/functions/cambium-ab-<family>.sh).
++endef
++
++define Build/Compile
++endef
++
++define Package/cambium-ab/install
++	$(INSTALL_DIR) $(1)/lib/functions $(1)/lib/upgrade $(1)/usr/sbin \
++		$(1)/etc/init.d $(1)/etc/uci-defaults
++	$(INSTALL_DATA) ./files/cambium-ab.sh $(1)/lib/functions/cambium-ab.sh
++	$(INSTALL_DATA) ./files/cambium-ab-upgrade.sh $(1)/lib/upgrade/cambium-ab.sh
++	$(INSTALL_BIN) ./files/cambium-ab-guard $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/cambium-ab-convert $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/cambium-ab-status $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/cambium-ab-guard.init $(1)/etc/init.d/cambium-ab-guard
++	$(INSTALL_BIN) ./files/18_cambium_ab_guard $(1)/etc/uci-defaults/
++endef
++
++$(eval $(call BuildPackage,cambium-ab))
+diff --git a/package/cambium/cambium-ab/files/18_cambium_ab_guard b/package/cambium/cambium-ab/files/18_cambium_ab_guard
+new file mode 100755
+index 0000000000..b264da2915
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/18_cambium_ab_guard
+@@ -0,0 +1,9 @@
++#!/bin/sh
++# Run the A/B boot guard on Cambium images whose family has an A/B module.
++
++. /lib/functions/system.sh
++. /lib/functions/cambium-ab.sh
++
++ab_family || exit 0
++/etc/init.d/cambium-ab-guard enable
++exit 0
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-convert b/package/cambium/cambium-ab/files/cambium-ab-convert
+new file mode 100755
+index 0000000000..e5109f8cd9
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab-convert
+@@ -0,0 +1,124 @@
++#!/bin/sh
++# One-time Cambium A/B conversion: replace the OEM firmware in the inactive bank
++# with a copy of the running OpenWrt bank, so both banks run OpenWrt and
++# normal sysupgrade can write whichever is inactive.
++#
++# Usage: cambium-ab-convert --oem-sha256 HASH [--allow-untested] --yes
++#        cambium-ab-convert --resume --yes
++#
++#   --oem-sha256 HASH  SHA-256 of your verified off-device copy of the OEM
++#                      bank (e.g. dd if=/dev/mtdNro). The live bank must match
++#                      it exactly, proving the backup before it is erased.
++#   --allow-untested   permit a model whose A/B layout is not yet validated
++#   --resume           finish a conversion that was interrupted after the
++#                      OEM bank was erased (the backup was already proven)
++#   --yes              required; erasing the OEM bank cannot be undone here
++#
++# Before anything is erased: the board, SKU and bank layout must match, the
++# running bank must hold a valid device-data vault (filled from the OEM slot
++# at first boot), and the boot environment must already boot the running
++# bank first. The OEM image value is kept as ${AB_ENV}_ab_oem_image.
++
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++. "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"
++. "${CAMBIUM_AB_UPGRADE_LIB:-/lib/upgrade/cambium-ab.sh}"
++
++die() {
++	echo "cambium-ab-convert: $*" >&2
++	logger -t cambium-ab-convert "refused: $*" 2>/dev/null
++	exit 1
++}
++
++oem_sha= allow_untested= resume= yes=
++while [ $# -gt 0 ]; do
++	case "$1" in
++	--oem-sha256) oem_sha=$2; shift ;;
++	--allow-untested) allow_untested=1 ;;
++	--resume) resume=1 ;;
++	--yes) yes=1 ;;
++	*) die "unknown argument $1" ;;
++	esac
++	shift
++done
++[ -n "$yes" ] || die 'pass --yes to confirm erasing the OEM bank'
++
++ab_family || die 'not a Cambium image with A/B support'
++ab_identity || die 'identity or layout check failed'
++[ "$AB_LAYOUT" != pair ] ||
++	die "$AB_NAME needs no conversion: its first sysupgrade writes the other slot"
++ab_converted && die 'already converted; use sysupgrade'
++[ "$AB_QUALIFIED" = 1 ] || [ -n "$allow_untested" ] ||
++	die "$AB_MODEL has no validated A/B conversion yet (--allow-untested overrides)"
++ab_mtd_writable "$AB_TARGET_MTD" ||
++	die "bank $AB_TARGET_PART is read-only: install the A/B persistent image first"
++[ "$AB_VAULT" != 1 ] || ${AB_BOARD_DATA:-/usr/sbin/cambium-board-data} --check-vault ||
++	die 'the running bank has no valid device-data vault; check cambium-board-data first'
++
++state=$(ab_getenv ${AB_ENV}_ab_state)
++dev=${AB_DEV:-/dev}
++if [ -n "$resume" ]; then
++	case "$state" in
++	converting|convert-failed) ;;
++	*) die 'nothing to resume' ;;
++	esac
++else
++	case "$oem_sha" in
++	[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
++	*) die 'give the SHA-256 of your off-device OEM backup with --oem-sha256' ;;
++	esac
++	ab_ubi_for_mtd "$AB_TARGET_MTD" >/dev/null &&
++		die "bank $AB_TARGET_PART is attached; reboot first"
++	echo "Hashing the OEM bank $AB_TARGET_PART (mtd$AB_TARGET_MTD)..."
++	live=$(sha256sum < "$dev/mtd$AB_TARGET_MTD" | cut -d' ' -f1)
++	[ "$live" = "$oem_sha" ] ||
++		die "live OEM bank hash $live does not match your backup $oem_sha"
++fi
++
++# Boot environment: the running bank must come first before the OEM bank is
++# touched, so a power cut never leaves OEM bootipq pointing at a half-written
++# bank. changing_bootcmd is its own write, before bootcmd.
++if [ -z "$resume" ]; then
++	oem_image=$(ab_getenv image)
++	batch=/tmp/cambium-ab-convert.$$
++	printf "${AB_ENV}_ab_oem_image %s\n${AB_ENV}_ab_state converting\n" "${oem_image:-unset}" > "$batch"
++	ab_setenv_batch "$batch" || die 'cannot record the conversion'
++	rm -f "$batch"
++fi
++[ "$(ab_getenv changing_bootcmd)" = 1 ] || ab_setenv changing_bootcmd 1 ||
++	die 'cannot save changing_bootcmd'
++ab_write_boot_vars || die 'cannot write the boot commands'
++ab_setenv bootcmd "run ${AB_ENV}_stable$AB_ACTIVE" || die 'cannot write bootcmd'
++ab_setenv image "$AB_ACTIVE" || die 'cannot write image'
++
++fail() {
++	batch=/tmp/cambium-ab-convert.$$
++	printf "${AB_ENV}_ab_state convert-failed\n${AB_ENV}_ab_last_failure %s\n" "${AB_STEP_ERROR:-$1}" > "$batch"
++	ab_setenv_batch "$batch" >/dev/null 2>&1
++	rm -f "$batch"
++	die "$1 (slot $AB_ACTIVE still boots first; rerun with --resume)"
++}
++
++echo "Writing slot $AB_TARGET ($AB_TARGET_PART) from running slot $AB_ACTIVE..."
++src_kernel=$dev/$(ab_ubi_volume "$AB_ACTIVE_UBI" kernel)
++src_root=$dev/$(ab_ubi_volume "$AB_ACTIVE_UBI" rootfs)
++kernel_size=$(cat "${AB_UBI_SYS:-/sys/class/ubi}/${src_kernel##*/}/data_bytes")
++root_size=$(cat "${AB_UBI_SYS:-/sys/class/ubi}/${src_root##*/}/data_bytes")
++ab_prepare_bank "$kernel_size" "$root_size" || fail "cannot format slot $AB_TARGET"
++# A UBI volume's stat size is 0, so give ubiupdatevol each length.
++ab_step "ubiupdatevol kernel" ubiupdatevol -s "$kernel_size" "$dev/${AB_TARGET_UBI}_0" "$src_kernel" &&
++	ab_step "ubiupdatevol rootfs" ubiupdatevol -s "$root_size" "$dev/${AB_TARGET_UBI}_1" "$src_root" ||
++	fail "cannot write slot $AB_TARGET"
++ab_verify_volume "$dev/${AB_TARGET_UBI}_0" "$src_kernel" "$kernel_size" &&
++	ab_verify_volume "$dev/${AB_TARGET_UBI}_1" "$src_root" "$root_size" ||
++	fail "slot $AB_TARGET readback mismatch"
++[ "$AB_VAULT" != 1 ] || ab_copy_vault || fail 'cannot copy the device-data vault'
++sync
++
++# Converted: ${AB_ENV}_ab_version is written last.
++batch=/tmp/cambium-ab-convert.$$
++printf "${AB_ENV}_ab_confirmed %s\n${AB_ENV}_ab_state confirmed\n${AB_ENV}_ab_version 1\n" "$AB_ACTIVE" > "$batch"
++echo ${AB_ENV}_ab_target >> "$batch"
++ab_setenv_batch "$batch" || fail 'cannot record the finished conversion'
++rm -f "$batch"
++logger -t cambium-ab-convert "slot $AB_TARGET converted; slot $AB_ACTIVE is the default" 2>/dev/null
++echo "Converted: both banks run OpenWrt. Slot $AB_ACTIVE is the default, slot $AB_TARGET the fallback."
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-guard b/package/cambium/cambium-ab/files/cambium-ab-guard
+new file mode 100755
+index 0000000000..92e7794b27
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab-guard
+@@ -0,0 +1,203 @@
++#!/bin/sh
++# Cambium A/B boot guard, for every family with an A/B module.
++#
++# Before conversion (one OpenWrt slot, OEM firmware in the other): after a
++# healthy start, re-arm the family's guarded one-shot that restores the OEM
++# default before booting OpenWrt again.
++#
++# After cambium-ab-convert (two OpenWrt banks): commit a trial bank as the new
++# default only after its health checks pass; if the trial fails, or did not
++# come up, record the rollback and stay on (or return to) the old bank.
++
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++. "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"
++
++PAUSE=${AB_GUARD_PAUSE:-5}
++BOARD_DATA_STATUS=${CAMBIUM_BDF_STATUS:-/tmp/cambium-board-data.status}
++
++log() {
++	logger -t cambium-ab-guard "$*" 2>/dev/null
++	echo "cambium-ab-guard: $*" >&2
++}
++
++do_reboot() {
++	${AB_REBOOT:-reboot}
++}
++
++# Health of the slot this kernel runs from: its UBI device and root volume,
++# a writable overlay, wired DHCP with a default route, the family's required
++# radios and, on A/B for a family that keeps one, a valid device-data vault.
++# OpenWISP is deliberately not required.
++# The LAN interface to check: the device the lan network is configured on
++# (br-lan.1 once VLAN filtering is set up), so a missing VLAN bridge fails
++# the check instead of passing on br-lan. Without a readable configuration,
++# the first of the module's AB_LAN candidates that exists, else the last.
++lan_interface() {
++	local lan
++	lan=$(uci -q get network.lan.device 2>/dev/null)
++	[ -n "$lan" ] && { echo "$lan"; return; }
++	for lan in $AB_LAN; do
++		[ -d "${AB_SYS_NET:-/sys/class/net}/$lan" ] && break
++	done
++	echo "$lan"
++}
++
++# The Wi-Fi phys that count towards AB_RADIOS: all of them, or only those of
++# the device AB_RADIO_DEVICE names (the end of its /sys/devices path), so a
++# radio that is not a serving radio (the XV3-8's scanner) cannot stand in
++# for a missing one.
++radios_up() {
++	local phy n=0
++	for phy in "${AB_SYS_IEEE80211:-/sys/class/ieee80211}"/phy*; do
++		[ -e "$phy" ] || continue
++		if [ -n "${AB_RADIO_DEVICE:-}" ]; then
++			case "$(readlink -f "$phy/device" 2>/dev/null)" in
++			*/"$AB_RADIO_DEVICE") ;;
++			*) continue ;;
++			esac
++		fi
++		n=$((n + 1))
++	done
++	echo "$n"
++}
++
++healthy() {
++	local lan
++	ab_identity >/dev/null 2>&1 || return 1
++	if ab_hook root_healthy; then
++		"ab_${AB_FAMILY}_root_healthy" || return 1
++	else
++		[ -e "${AB_DEV:-/dev}/ubiblock0_1" ] || return 1
++		grep -q ' /overlay ubifs rw' "${AB_PROC_MOUNTS:-/proc/mounts}" || return 1
++	fi
++	lan=$(lan_interface)
++	ip -4 address show dev "$lan" 2>/dev/null | grep -q 'inet ' || return 1
++	ip -4 route show default dev "$lan" 2>/dev/null | grep -q '^default ' || return 1
++	[ "$(radios_up)" -ge "$AB_RADIOS" ] || return 1
++	[ "$1" != ab ] || [ "$AB_VAULT" != 1 ] || [ "$(cat "$BOARD_DATA_STATUS" 2>/dev/null)" = vault ] || return 1
++	! ab_hook healthy_extra || "ab_${AB_FAMILY}_healthy_extra"
++}
++
++wait_healthy() {
++	local attempt=0 tries=${AB_GUARD_TRIES:-${AB_HEALTH_TRIES:-60}}
++	while [ "$attempt" -lt "$tries" ]; do
++		healthy "$1" && return 0
++		attempt=$((attempt + 1))
++		sleep "$PAUSE"
++	done
++	return 1
++}
++
++# The validated one-OEM/one-OpenWrt guard: OpenWrt in one slot, the stock
++# firmware (U-Boot image=) in the other. After a healthy start, re-arm the
++# one-shot that restores the stock default before booting OpenWrt again.
++legacy_guard() {
++	local slot bootcmd image
++	slot=$(ab_running_slot 2>/dev/null) || return 0
++	bootcmd=$(ab_guarded_command "$slot") || return 1
++
++	if wait_healthy legacy; then
++		[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || {
++			log 'bootcmd changed independently; leaving it alone'
++			return 1
++		}
++		# Families whose stock U-Boot has no image variable (Thor) skip this.
++		image=$(ab_getenv image)
++		[ -z "$image" ] || [ "$image" = "$((1 - slot))" ] || {
++			log "U-Boot image is not the stock firmware's slot $((1 - slot)); leaving it alone"
++			return 1
++		}
++		ab_setenv changing_bootcmd 1 || return 1
++		ab_setenv bootcmd "$bootcmd" || return 1
++		log "healthy; guarded OpenWrt boot of slot $slot rearmed"
++		return 0
++	fi
++	# The guarded one-shot restored the stock default before booting, so a
++	# reboot returns to the stock firmware. A committed OpenWrt default (a
++	# single-bank install) would only boot OpenWrt again, every few minutes.
++	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || {
++		log 'startup checks failed, but the default boot is not the stock firmware; not rebooting'
++		return 1
++	}
++	log 'startup checks failed; rebooting to OEM'
++	do_reboot
++}
++
++commit_trial() {
++	local slot="$1" batch=/tmp/cambium-ab-guard.$$ rc=0
++	printf "${AB_ENV}_ab_confirmed %s\n${AB_ENV}_ab_state confirmed\nimage %s\n" "$slot" "$slot" > "$batch"
++	# A committed switch supersedes any earlier failure.
++	printf "${AB_ENV}_ab_target\n${AB_ENV}_ab_last_failure\n" >> "$batch"
++	ab_setenv_batch "$batch" || rc=1
++	rm -f "$batch"
++	[ "$rc" = 0 ] && ab_setenv bootcmd "run ${AB_ENV}_stable$slot" || {
++		log "could not commit slot $slot; the old bank stays the default"
++		return 1
++	}
++	log "slot $slot healthy; it is now the default, with slot $((1 - slot)) as fallback"
++}
++
++record_rollback() {
++	local batch=/tmp/cambium-ab-guard.$$
++	printf "${AB_ENV}_ab_state rolled-back\n${AB_ENV}_ab_last_failure %s\n" "$1" > "$batch"
++	echo ${AB_ENV}_ab_target >> "$batch"
++	ab_setenv_batch "$batch"
++	rm -f "$batch"
++	log "rollback: $1"
++}
++
++ab_guard() {
++	local state target confirmed running
++	ab_identity || { log 'A/B identity check failed'; return 1; }
++	running=$AB_ACTIVE
++	state=$(ab_getenv ${AB_ENV}_ab_state)
++	target=$(ab_getenv ${AB_ENV}_ab_target)
++	confirmed=$(ab_getenv ${AB_ENV}_ab_confirmed)
++
++	case "$state" in
++	trial-started)
++		if [ "$running" != "$target" ]; then
++			record_rollback "slot $target did not boot; slot $running kept"
++			return 1
++		fi
++		if wait_healthy ab; then
++			commit_trial "$running"
++			return
++		fi
++		# bootcmd already boots the old bank first: record, then return to it.
++		record_rollback "slot $running failed its health checks"
++		do_reboot
++		;;
++	armed)
++		log "slot $target is armed for a trial on the next boot"
++		;;
++	*)
++		if [ "$running" != "$confirmed" ] && [ "$state" != fallback ]; then
++			local batch=/tmp/cambium-ab-guard.$$
++			printf "${AB_ENV}_ab_state fallback\n${AB_ENV}_ab_last_failure %s\n" \
++				"confirmed slot $confirmed did not boot; running slot $running" > "$batch"
++			ab_setenv_batch "$batch"
++			rm -f "$batch"
++			log "confirmed slot $confirmed did not boot; running fallback slot $running"
++		fi
++		;;
++	esac
++}
++
++main() {
++	ab_family || return 0
++	if ab_hook takeover; then
++		"ab_${AB_FAMILY}_takeover"
++		case $? in
++		0) return 0 ;;
++		1) return 1 ;;
++		esac
++	fi
++	if ab_converted; then
++		ab_guard
++	elif [ "$AB_LAYOUT" != pair ]; then
++		legacy_guard
++	fi
++}
++
++[ -n "${AB_GUARD_SOURCE_ONLY:-}" ] || main
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-guard.init b/package/cambium/cambium-ab/files/cambium-ab-guard.init
+new file mode 100755
+index 0000000000..ff39f66f87
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab-guard.init
+@@ -0,0 +1,10 @@
++#!/bin/sh /etc/rc.common
++
++START=99
++USE_PROCD=1
++
++start_service() {
++	procd_open_instance
++	procd_set_param command /usr/sbin/cambium-ab-guard
++	procd_close_instance
++}
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-status b/package/cambium/cambium-ab/files/cambium-ab-status
+new file mode 100755
+index 0000000000..d43f1e553a
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab-status
+@@ -0,0 +1,22 @@
++#!/bin/sh
++# Read-only Cambium A/B status as key=value lines, for local diagnostics and
++# OpenWISP: running and confirmed slots, any pending trial target, the state
++# (confirmed, armed, trial-started, rolled-back, fallback, writing,
++# write-failed, converting, convert-failed) and the last failure.
++
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++. "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"
++
++ab_family || { echo 'mode=none'; exit 0; }
++if ab_converted; then
++	echo 'mode=ab'
++else
++	echo 'mode=oem-fallback'
++fi
++echo "family=$AB_FAMILY"
++echo "model=$AB_MODEL"
++echo "running=$(ab_running_slot 2>/dev/null)"
++for name in confirmed target state last_failure oem_image; do
++	echo "$name=$(ab_getenv "${AB_ENV}_ab_$name")"
++done
++echo "board_data=$(cat "${CAMBIUM_BDF_STATUS:-/tmp/cambium-board-data.status}" 2>/dev/null)"
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+new file mode 100644
+index 0000000000..c8256470e5
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -0,0 +1,222 @@
++# Cambium A/B sysupgrade: write only the inactive firmware bank, verify it, then arm a one-shot trial whose first durable
++# step restores the old bank as the default. The boot guard commits the new
++# bank only after its health checks pass. Nothing here falls back to the
++# generic nand_do_upgrade/default_do_upgrade paths.
++#
++# Test hooks: CAMBIUM_AB_LIB, AB_DEV and the hooks listed in
++# /lib/functions/cambium-ab.sh.
++
++. "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"
++
++# The image directory (AB_IMAGE_DIR) and the bank's usable LEBs
++# (AB_BANK_LEBS) come from the family module's board table.
++AB_VAULT_LEBS=8
++# Smallest writable overlay a new bank may get (8 MiB).
++AB_MIN_DATA_LEBS=67
++
++ab_lebs() {
++	echo $(( ($1 + AB_LEB - 1) / AB_LEB ))
++}
++
++# LEBs the device-data vault takes in a bank: none for a family without one.
++ab_vault_lebs() {
++	if [ "$AB_VAULT" = 1 ]; then echo "$AB_VAULT_LEBS"; else echo 0; fi
++}
++
++ab_fail() {
++	echo "A/B sysupgrade: $*" >&2
++	return 1
++}
++
++# ab_step DESCRIPTION COMMAND...: run one write step. Its output goes to
++# $AB_LOG; on failure AB_STEP_ERROR names the step, its exit status
++# and last error line, and is what the environment records as the failure,
++# since stage 2's own output is lost when it reboots.
++ab_step() {
++	local desc=$1 rc err log=${AB_LOG:-/tmp/cambium-ab-upgrade.log}
++	shift
++	"$@" >>"$log" 2>"$log.err"; rc=$?
++	cat "$log.err" >>"$log"
++	[ "$rc" = 0 ] && return 0
++	err=$(grep . "$log.err" | tail -n 1 | tr -d '\r' | cut -c1-120)
++	AB_STEP_ERROR="$desc: exit $rc${err:+: $err}"
++	echo "A/B sysupgrade: $AB_STEP_ERROR" >&2
++	return "$rc"
++}
++
++# Extract and check the image's kernel FIT and root filesystem into
++# $AB_WORK. Sets AB_KERNEL_SIZE and AB_ROOT_SIZE.
++ab_image_extract() {
++	local image="$1" magic
++	AB_WORK=${AB_WORK:-/tmp/cambium-ab-upgrade}
++	rm -rf "$AB_WORK" && mkdir -p "$AB_WORK" || return 1
++	tar -xf "$image" -C "$AB_WORK" "$AB_IMAGE_DIR/kernel" "$AB_IMAGE_DIR/root" 2>/dev/null ||
++		ab_fail "image has no $AB_IMAGE_DIR/kernel and root" || return 1
++	AB_KERNEL=$AB_WORK/$AB_IMAGE_DIR/kernel
++	AB_ROOT=$AB_WORK/$AB_IMAGE_DIR/root
++	magic=$(hexdump -n 4 -v -e '4/1 "%02x"' "$AB_KERNEL")
++	[ "$magic" = d00dfeed ] || ab_fail "kernel is not a FIT image" || return 1
++	# A FIT node name follows the FDT_BEGIN_NODE token, which ends in 0x01.
++	tr '\000' '\n' < "$AB_KERNEL" | grep -q "^$(printf '\001')$AB_FIT\$" ||
++		ab_fail "FIT lacks $AB_FIT for $AB_MODEL" || return 1
++	if [ "$AB_ROOT_MAGIC" = hsqs ]; then
++		[ "$(head -c 4 "$AB_ROOT")" = hsqs ] || ab_fail "root is not SquashFS" || return 1
++	else
++		[ "$(hexdump -n 4 -v -e '4/1 "%02x"' "$AB_ROOT")" = "$AB_ROOT_MAGIC" ] ||
++			ab_fail "root is not the $AB_NAME root filesystem type" || return 1
++	fi
++	AB_KERNEL_SIZE=$(wc -c < "$AB_KERNEL")
++	AB_ROOT_SIZE=$(wc -c < "$AB_ROOT")
++	if ab_hook image_fits; then
++		"ab_${AB_FAMILY}_image_fits" "$AB_KERNEL_SIZE" "$AB_ROOT_SIZE" || return 1
++		return 0
++	fi
++	[ $(( $(ab_lebs "$AB_KERNEL_SIZE") + $(ab_lebs "$AB_ROOT_SIZE") + \
++		$(ab_vault_lebs) + AB_MIN_DATA_LEBS )) -le "$AB_BANK_LEBS" ] ||
++		ab_fail "image does not fit this $AB_MODEL bank ($AB_BANK_LEBS LEBs) with the vault and overlay" || return 1
++}
++
++# Everything a normal A/B upgrade requires of the running system.
++ab_upgrade_preflight() {
++	local state
++	ab_identity || return 1
++	# A pair-layout family (Sage) has no conversion step: writing the other
++	# slot replaces whatever it held, as its first upgrade always has.
++	[ "$AB_LAYOUT" = pair ] || ab_converted ||
++		ab_fail "this AP still has one OEM slot; run cambium-ab-convert first" || return 1
++	ab_mtd_writable "$AB_TARGET_MTD" ||
++		ab_fail "target bank $AB_TARGET_PART is read-only (not an A/B image)" || return 1
++	[ "$AB_MARKER" != 1 ] || [ "$(ab_getenv changing_bootcmd)" = 1 ] ||
++		ab_fail "changing_bootcmd is not saved" || return 1
++	state=$(ab_getenv ${AB_ENV}_ab_state)
++	case "$state" in
++	trial-started|armed)
++		ab_fail "a trial of slot $(ab_getenv ${AB_ENV}_ab_target) is not confirmed yet" || return 1
++		;;
++	esac
++	[ "$AB_VAULT" != 1 ] || ab_ubi_volume "$AB_ACTIVE_UBI" cambium_device_data >/dev/null ||
++		ab_fail "the running bank has no device-data vault" || return 1
++}
++
++cambium_ab_check_image() {
++	ab_upgrade_preflight || return 1
++	[ "$AB_VAULT" != 1 ] || ${AB_BOARD_DATA:-/usr/sbin/cambium-board-data} --check-vault ||
++		ab_fail "the device-data vault is missing or does not match this AP" || return 1
++	ab_image_extract "$1" || return 1
++	rm -rf "$AB_WORK"
++}
++
++# ab_record_failure STATE MESSAGE: the failing step's own error, if one
++# was captured, replaces MESSAGE.
++ab_record_failure() {
++	local batch=/tmp/cambium-ab-env-fail.$$ msg=${AB_STEP_ERROR:-$2}
++	printf "${AB_ENV}_ab_state %s\n${AB_ENV}_ab_last_failure %s\n" "$1" "$msg" > "$batch"
++	ab_setenv_batch "$batch" >/dev/null 2>&1
++	rm -f "$batch"
++	ab_fail "$msg"
++}
++
++# Readback: the first $3 bytes of volume $1 must hash like file $2.
++ab_verify_volume() {
++	[ "$(head -c "$3" "$1" | sha256sum | cut -d' ' -f1)" = \
++		"$(sha256sum < "$2" | cut -d' ' -f1)" ]
++}
++
++# Format the inactive bank and create kernel (0), rootfs (1), the vault (3)
++# if the family keeps one, and rootfs_data (2) from the remaining space. Sets AB_TARGET_UBI.
++ab_prepare_bank() {
++	local kernel_size="$1" root_size="$2" dev=${AB_DEV:-/dev} data ubi
++	if ab_ubi_for_mtd "$AB_TARGET_MTD" >/dev/null; then
++		ab_step "ubidetach mtd$AB_TARGET_MTD" ubidetach -m "$AB_TARGET_MTD" || return 1
++	fi
++	ab_step "ubiformat mtd$AB_TARGET_MTD" ubiformat "$dev/mtd$AB_TARGET_MTD" -y -q || return 1
++	ab_step "ubiattach mtd$AB_TARGET_MTD" ubiattach -m "$AB_TARGET_MTD" || return 1
++	ubi=$(ab_ubi_for_mtd "$AB_TARGET_MTD") || {
++		AB_STEP_ERROR="no UBI device for mtd$AB_TARGET_MTD after ubiattach"
++		return 1
++	}
++	AB_TARGET_UBI=$ubi
++	ab_step "mknod $ubi" ab_ubi_node "$ubi" &&
++		ab_step "ubimkvol $ubi kernel" ubimkvol "$dev/$ubi" -n 0 -N kernel -s "$kernel_size" &&
++		ab_step "mknod ${ubi}_0" ab_ubi_node "${ubi}_0" &&
++		ab_step "ubimkvol $ubi rootfs" ubimkvol "$dev/$ubi" -n 1 -N rootfs -s "$root_size" &&
++		ab_step "mknod ${ubi}_1" ab_ubi_node "${ubi}_1" || return 1
++	if [ "$AB_VAULT" = 1 ]; then
++		ab_step "ubimkvol $ubi vault" ubimkvol "$dev/$ubi" -n 3 -N cambium_device_data \
++			-s $((AB_VAULT_LEBS * AB_LEB)) &&
++			ab_step "mknod ${ubi}_3" ab_ubi_node "${ubi}_3" || return 1
++	fi
++	ab_step "ubimkvol $ubi rootfs_data" ubimkvol "$dev/$ubi" -n 2 -N rootfs_data -m &&
++		ab_step "mknod ${ubi}_2" ab_ubi_node "${ubi}_2" || return 1
++	data=$(cat "${AB_UBI_SYS:-/sys/class/ubi}/${ubi}_2/data_bytes") || return 1
++	[ "$data" -ge $((AB_MIN_DATA_LEBS * AB_LEB)) ] || {
++		AB_STEP_ERROR="only $data bytes left for rootfs_data"
++		ab_fail "$AB_STEP_ERROR"
++	}
++}
++
++# Copy the running bank's vault to the target bank and compare it.
++ab_copy_vault() {
++	local dev=${AB_DEV:-/dev} src dst copy=/tmp/cambium-ab-vault.$$
++	src=$dev/$(ab_ubi_volume "$AB_ACTIVE_UBI" cambium_device_data) || return 1
++	dst=$dev/${AB_TARGET_UBI}_3
++	cat "$src" > "$copy" && ab_step "ubiupdatevol vault" ubiupdatevol "$dst" "$copy" &&
++		ab_verify_volume "$dst" "$copy" "$(wc -c < "$copy")"
++	local rc=$?
++	rm -f "$copy"
++	return "$rc"
++}
++
++# Arm the one-shot trial of the written bank. bootcmd is the last write.
++ab_arm_trial() {
++	local batch=/tmp/cambium-ab-env-arm.$$ trial rc=0
++	trial=$(ab_trial_command "$AB_ACTIVE" "$AB_TARGET") || return 1
++	ab_write_boot_vars || return 1
++	printf "${AB_ENV}_ab_state armed\n${AB_ENV}_ab_target %s\n" "$AB_TARGET" > "$batch"
++	ab_setenv_batch "$batch" || rc=1
++	rm -f "$batch"
++	[ "$rc" = 0 ] && ab_setenv bootcmd "$trial"
++}
++
++cambium_ab_do_upgrade() {
++	local dev=${AB_DEV:-/dev} batch=/tmp/cambium-ab-env-write.$$
++	AB_STEP_ERROR=
++	ab_upgrade_preflight || return 1
++	ab_image_extract "$1" || return 1
++
++	# Record the write before touching the bank. bootcmd still boots the
++	# running bank first, so an interrupted write never loses it.
++	printf "${AB_ENV}_ab_state writing\n${AB_ENV}_ab_target %s\n" "$AB_TARGET" > "$batch"
++	ab_setenv_batch "$batch" || { rm -f "$batch"; ab_fail "cannot record the upgrade"; return 1; }
++	rm -f "$batch"
++
++	echo "cambium-ab: writing slot $AB_TARGET ($AB_TARGET_PART) from slot $AB_ACTIVE"
++	if ab_hook write_target; then
++		"ab_${AB_FAMILY}_write_target" || return 1
++		sync
++		ab_arm_trial ||
++			{ ab_record_failure write-failed "cannot arm the trial of slot $AB_TARGET"; return 1; }
++		echo "cambium-ab: slot $AB_TARGET armed for one trial boot; slot $AB_ACTIVE stays the default until it is confirmed"
++		return 0
++	fi
++	ab_prepare_bank "$AB_KERNEL_SIZE" "$AB_ROOT_SIZE" ||
++		{ ab_record_failure write-failed "cannot format slot $AB_TARGET"; return 1; }
++	ab_step "ubiupdatevol kernel" ubiupdatevol "$dev/${AB_TARGET_UBI}_0" "$AB_KERNEL" &&
++		ab_step "ubiupdatevol rootfs" ubiupdatevol "$dev/${AB_TARGET_UBI}_1" "$AB_ROOT" ||
++		{ ab_record_failure write-failed "cannot write slot $AB_TARGET"; return 1; }
++	ab_verify_volume "$dev/${AB_TARGET_UBI}_0" "$AB_KERNEL" "$AB_KERNEL_SIZE" &&
++		ab_verify_volume "$dev/${AB_TARGET_UBI}_1" "$AB_ROOT" "$AB_ROOT_SIZE" ||
++		{ AB_STEP_ERROR=; ab_record_failure write-failed "slot $AB_TARGET readback mismatch"; return 1; }
++	[ "$AB_VAULT" != 1 ] || ab_copy_vault ||
++		{ ab_record_failure write-failed "cannot copy the device-data vault"; return 1; }
++
++	if [ -n "${UPGRADE_BACKUP:-}" ]; then
++		CI_UBIPART=$AB_TARGET_PART nand_restore_config "$UPGRADE_BACKUP" ||
++			{ ab_record_failure write-failed "cannot save the configuration"; return 1; }
++	fi
++	sync
++
++	ab_arm_trial ||
++		{ ab_record_failure write-failed "cannot arm the trial of slot $AB_TARGET"; return 1; }
++	echo "cambium-ab: slot $AB_TARGET armed for one trial boot; slot $AB_ACTIVE stays the default until it is confirmed"
++}
+diff --git a/package/cambium/cambium-ab/files/cambium-ab.sh b/package/cambium/cambium-ab/files/cambium-ab.sh
+new file mode 100644
+index 0000000000..a724fa53d3
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-ab.sh
+@@ -0,0 +1,317 @@
++#!/bin/sh
++# Cambium A/B core: identity preflight, U-Boot environment access and the
++# stable/trial boot commands shared by every Cambium family with two
++# OpenWrt firmware banks. Family modules (/lib/functions/cambium-ab-*.sh)
++# describe their boards and U-Boot commands; callers provide board_name().
++#
++# A family module registers itself in AB_FAMILIES and defines:
++#   ab_<family>_board BOARD   set the board table values below, or fail
++#   ab_<family>_boot_command SLOT      U-Boot command booting that slot
++#   ab_<family>_guarded_command SLOT   one-shot for the one-OEM/one-OpenWrt
++#                                      state, restoring the stock default
++# and sets for a matching board: AB_NAME, AB_MODEL, AB_SKU (8 hex digits as
++# in the device tree), AB_FIT, AB_QUALIFIED (hardware-tested), AB_ENV (the
++# prefix of its U-Boot variables, e.g. jaguar_boot0), AB_IMAGE_DIR (the
++# sysupgrade tar directory), AB_STOCK_BOOTCMD, AB_VAULT (1: keep a
++# device-data vault), and the bank layout: AB_BANK_SIZE (as in /proc/mtd),
++# AB_SLOT1_OFFSET, AB_BANK_LEBS (usable LEBs: the bank's PEBs less UBI's
++# bad-block reserve of 20 per 1024 PEBs of the whole NAND and 4 PEBs for the
++# volume table and wear levelling) and AB_PROTECTED (partitions that must
++# stay read-only). Optional: AB_LAN (candidate LAN interfaces for the boot
++# guard's DHCP check, first present wins; default br-lan), AB_RADIOS
++# (Wi-Fi phys that must be up before a boot counts as healthy; default 0)
++# and AB_RADIO_DEVICE (count only the phys of this device, the end of its
++# /sys/devices path; default: every phy),
++# AB_HEALTH_TRIES (5-second health checks before a boot counts as failed;
++# default 60), AB_MARKER (0: this U-Boot needs no changing_bootcmd marker)
++# and AB_ROOT_MAGIC (the root image's first four bytes as hex, or hsqs).
++#
++# A family whose slots are not two MTD banks (Sage: volume pairs in one UBI
++# device, AB_LAYOUT=pair) also defines ab_<family>_identity (sets the slot
++# values below after the shared board and SKU checks), and may define
++# ab_<family>_running_slot, ab_<family>_image_fits KERNEL ROOT,
++# ab_<family>_write_target (writes, verifies and carries the configuration
++# into the target slot), ab_<family>_root_healthy, ab_<family>_healthy_extra
++# and ab_<family>_takeover (adopts an earlier A/B state on first boot:
++# returns 0 handled, 1 failed, 2 nothing to adopt).
++#
++# Test hooks: AB_PROC_MTD, AB_CMDLINE, AB_DT, AB_UBI_SYS, AB_MTD_SYS, AB_SYS_MODULE,
++# AB_DEV, CAMBIUM_AB_MODULES.
++
++AB_BANK_ERASE=00020000
++AB_LEB=126976
++
++for _ab_module in "${CAMBIUM_AB_MODULES:-/lib/functions}"/cambium-ab-*.sh; do
++	[ -f "$_ab_module" ] && . "$_ab_module"
++done
++unset _ab_module
++
++# ab_board BOARD: find the family module that knows BOARD. Sets AB_FAMILY.
++ab_board() {
++	local family
++	for family in ${AB_FAMILIES:-}; do
++		AB_QUALIFIED=0 AB_VAULT=0 AB_STOCK_BOOTCMD=bootipq AB_LAN=br-lan AB_RADIOS=0 AB_RADIO_DEVICE=
++		AB_LAYOUT=banks AB_MARKER=1 AB_ROOT_MAGIC=hsqs AB_HEALTH_TRIES=60
++		if "ab_${family}_board" "$1"; then
++			AB_FAMILY=$family
++			return 0
++		fi
++	done
++	return 1
++}
++
++# True when this system runs a Cambium image of a family with an A/B
++# module. Upstream images of the same boards (e.g. upstream's
++# cambiumnetworks,xe3-4) have no cambium-platform node and keep their own
++# upgrade path.
++ab_family() {
++	ab_board "$(board_name)" &&
++		[ -e "${AB_DT:-/proc/device-tree}/cambium-platform/board-sku" ]
++}
++
++ab_dt_sku() {
++	hexdump -v -e '1/1 "%02x"' "${AB_DT:-/proc/device-tree}/cambium-platform/board-sku"
++}
++
++ab_mtd_index() {
++	awk -v wanted="\"$1\"" '$4 == wanted { sub(/^mtd/, "", $1); sub(/:$/, "", $1); print $1 }' \
++		"${AB_PROC_MTD:-/proc/mtd}"
++}
++
++ab_mtd_geometry() {
++	awk -v wanted="\"$1\"" '$4 == wanted { print $2, $3 }' "${AB_PROC_MTD:-/proc/mtd}"
++}
++
++ab_mtd_writable() {
++	local flags
++	flags=$(cat "${AB_MTD_SYS:-/sys/class/mtd}/mtd$1/flags") || return 1
++	[ $(( flags & 0x400 )) -ne 0 ]
++}
++
++ab_bank_name() {
++	case "$1" in
++	0) echo rootfs ;;
++	1) echo rootfs_1 ;;
++	*) return 1 ;;
++	esac
++}
++
++# ab_hook NAME: true when the family module defines ab_<family>_NAME.
++ab_hook() {
++	[ -n "${AB_FAMILY:-}" ] && command -v "ab_${AB_FAMILY}_$1" >/dev/null 2>&1
++}
++
++# The slot named by ubi.mtd= on the kernel command line.
++ab_running_slot() {
++	local arg found slot=
++	if ab_hook running_slot; then
++		"ab_${AB_FAMILY}_running_slot"
++		return
++	fi
++	for arg in $(cat "${AB_CMDLINE:-/proc/cmdline}"); do
++		case "$arg" in
++		ubi.mtd=rootfs) found=0 ;;
++		ubi.mtd=rootfs_1) found=1 ;;
++		ubi.mtd=*) echo "cambium-ab: unexpected $arg" >&2; return 1 ;;
++		*) continue ;;
++		esac
++		[ -z "$slot" ] || [ "$slot" = "$found" ] || {
++			echo 'cambium-ab: conflicting ubi.mtd arguments' >&2
++			return 1
++		}
++		slot=$found
++	done
++	[ -n "$slot" ] || { echo 'cambium-ab: no ubi.mtd slot' >&2; return 1; }
++	echo "$slot"
++}
++
++# The UBI device attached to MTD number $1.
++ab_ubi_for_mtd() {
++	local dev
++	for dev in "${AB_UBI_SYS:-/sys/class/ubi}"/ubi[0-9]*; do
++		case "${dev##*/}" in *_*) continue ;; esac
++		[ -f "$dev/mtd_num" ] || continue
++		[ "$(cat "$dev/mtd_num")" = "$1" ] && { echo "${dev##*/}"; return 0; }
++	done
++	return 1
++}
++
++# Make sure /dev/$1 exists for a UBI device or volume (ubiN or ubiN_M).
++# Sysupgrade stage 2 runs without procd's hotplug handling, so a device
++# attached or a volume created there gets no node by itself (nand.sh's
++# ubi_mknod exists for the same reason).
++ab_ubi_node() {
++	local node=${AB_DEV:-/dev}/$1 devid
++	[ -e "$node" ] && return 0
++	devid=$(cat "${AB_UBI_SYS:-/sys/class/ubi}/$1/dev") || return 1
++	mknod "$node" c "${devid%%:*}" "${devid##*:}"
++}
++
++# The volume node (ubiN_M) named $2 on UBI device $1.
++ab_ubi_volume() {
++	local vol
++	for vol in "${AB_UBI_SYS:-/sys/class/ubi}/$1"_*; do
++		[ -f "$vol/name" ] || continue
++		[ "$(cat "$vol/name")" = "$2" ] && { echo "${vol##*/}"; return 0; }
++	done
++	return 1
++}
++
++# Read-only preflight. On success sets AB_BOARD and the board table
++# values, AB_ACTIVE / AB_TARGET (slots), AB_ACTIVE_MTD /
++# AB_TARGET_MTD, AB_TARGET_PART and AB_ACTIVE_UBI. Refuses an
++# unknown board or SKU, a changed bank layout, a command line that disagrees
++# with the attached UBI device, and any writable calibration or log partition.
++ab_identity() {
++	local board sku name idx slot flags
++	board=$(board_name)
++	ab_board "$board" || { echo "cambium-ab: $board has no A/B support" >&2; return 1; }
++	sku=$(ab_dt_sku) || { echo 'cambium-ab: no board-sku in the device tree' >&2; return 1; }
++	[ "$sku" = "$AB_SKU" ] || {
++		echo "cambium-ab: $board has board-sku $sku, expected $AB_SKU" >&2
++		return 1
++	}
++	if ab_hook identity; then
++		"ab_${AB_FAMILY}_identity" || return 1
++		AB_BOARD=$board
++		return 0
++	fi
++	for slot in 0 1; do
++		name=$(ab_bank_name "$slot")
++		idx=$(ab_mtd_index "$name")
++		case "$idx" in
++		''|*[!0-9]*) echo "cambium-ab: missing or duplicate $name" >&2; return 1 ;;
++		esac
++		[ "$(ab_mtd_geometry "$name")" = "$AB_BANK_SIZE $AB_BANK_ERASE" ] || {
++			echo "cambium-ab: unexpected $name geometry: $(ab_mtd_geometry "$name")" >&2
++			return 1
++		}
++		eval "AB_MTD$slot=$idx"
++	done
++	slot=$(ab_running_slot) || return 1
++	AB_ACTIVE=$slot
++	AB_TARGET=$((1 - slot))
++	eval "AB_ACTIVE_MTD=\$AB_MTD$AB_ACTIVE"
++	eval "AB_TARGET_MTD=\$AB_MTD$AB_TARGET"
++	AB_TARGET_PART=$(ab_bank_name "$AB_TARGET")
++	AB_ACTIVE_UBI=$(ab_ubi_for_mtd "$AB_ACTIVE_MTD") || {
++		echo 'cambium-ab: no UBI device is attached to the command-line active slot' >&2
++		return 1
++	}
++	ab_ubi_volume "$AB_ACTIVE_UBI" kernel >/dev/null &&
++		ab_ubi_volume "$AB_ACTIVE_UBI" rootfs >/dev/null || {
++		echo 'cambium-ab: the active slot lacks kernel/rootfs volumes' >&2
++		return 1
++	}
++	for name in $AB_PROTECTED; do
++		idx=$(ab_mtd_index "$name")
++		[ -n "$idx" ] || { echo "cambium-ab: missing protected $name" >&2; return 1; }
++		flags=$(cat "${AB_MTD_SYS:-/sys/class/mtd}/mtd$idx/flags") || return 1
++		[ $(( flags & 0x400 )) -eq 0 ] || {
++			echo "cambium-ab: protected $name is writable" >&2
++			return 1
++		}
++	done
++	AB_BOARD=$board
++}
++
++# The bank size as U-Boot writes it, e.g. 0x6000000.
++ab_bank_hex() {
++	printf '0x%x\n' $((0x$AB_BANK_SIZE))
++}
++
++# U-Boot commands for the family: booting slot $1, and the guarded one-shot
++# of the one-OEM/one-OpenWrt state.
++ab_boot_command() {
++	[ -n "${AB_FIT:-}" ] || { echo 'cambium-ab: FIT configuration not selected' >&2; return 1; }
++	"ab_${AB_FAMILY}_boot_command" "$@"
++}
++ab_guarded_command() {
++	"ab_${AB_FAMILY}_guarded_command" "$@"
++}
++
++# Stable boot: slot $1, then slot $2 if bootm returns.
++ab_stable_command() {
++	case "$1:$2" in
++	0:1|1:0) echo "run ${AB_ENV}_boot$1; run ${AB_ENV}_boot$2" ;;
++	*) echo 'cambium-ab: a stable command needs distinct slots 0 and 1' >&2; return 1 ;;
++	esac
++}
++
++# One-shot trial of slot $2 from confirmed slot $1. Its first durable step
++# restores the stable old-bank default, so a hung new kernel returns to the
++# old bank on the next power cycle; bootm returning tries the old bank now.
++# Only named variables are used, so no nested quoting reaches U-Boot.
++ab_trial_command() {
++	ab_stable_command "$1" "$2" >/dev/null || return 1
++	echo "setenv bootcmd run ${AB_ENV}_stable$1; setenv image $1; setenv ${AB_ENV}_ab_state trial-started; saveenv; run ${AB_ENV}_boot$2; run ${AB_ENV}_boot$1"
++}
++
++# fw_printenv/fw_setenv against the verified 64 KiB 0:APPSBLENV mapping.
++ab_env_config() {
++	local idx
++	[ -z "${AB_ENV_CONFIG:-}" ] || return 0
++	idx=$(ab_mtd_index 0:APPSBLENV)
++	[ -n "$idx" ] || { echo 'cambium-ab: no 0:APPSBLENV partition' >&2; return 1; }
++	[ "$(ab_mtd_geometry 0:APPSBLENV | cut -d' ' -f1)" = 00010000 ] || {
++		echo 'cambium-ab: unexpected 0:APPSBLENV size' >&2
++		return 1
++	}
++	AB_ENV_CONFIG=/tmp/cambium-ab-fw_env.config
++	printf '/dev/mtd%s 0x0 0x00010000 0x00010000 1\n' "$idx" > "$AB_ENV_CONFIG"
++}
++
++ab_getenv() {
++	ab_env_config && fw_printenv -c "$AB_ENV_CONFIG" -n "$1" 2>/dev/null
++}
++
++# ab_setenv NAME [VALUE]: write one variable and read it back.
++ab_setenv() {
++	ab_env_config || return 1
++	if [ $# -ge 2 ]; then
++		fw_setenv -c "$AB_ENV_CONFIG" "$1" "$2" || return 1
++		[ "$(ab_getenv "$1")" = "$2" ]
++	else
++		fw_setenv -c "$AB_ENV_CONFIG" "$1" || return 1
++		[ -z "$(ab_getenv "$1")" ]
++	fi
++}
++
++# ab_setenv_batch FILE: one environment write from "name value" lines,
++# then read every value back.
++ab_setenv_batch() {
++	local name value
++	ab_env_config || return 1
++	fw_setenv -c "$AB_ENV_CONFIG" -s "$1" || return 1
++	while read -r name value; do
++		[ "$(ab_getenv "$name")" = "$value" ] || {
++			echo "cambium-ab: environment readback failed for $name" >&2
++			return 1
++		}
++	done < "$1"
++}
++
++# True once cambium-ab-convert has made both banks OpenWrt banks.
++ab_converted() {
++	[ "$(ab_getenv ${AB_ENV}_ab_version)" = 1 ]
++}
++
++# Install the boot commands for both slots. changing_bootcmd must already be
++# saved as its own write: this U-Boot discards an environment whose bootcmd
++# differs from the default while the marker is absent.
++ab_write_boot_vars() {
++	local batch=/tmp/cambium-ab-env.$$ rc=0
++	[ "$AB_MARKER" != 1 ] || [ "$(ab_getenv changing_bootcmd)" = 1 ] || {
++		echo 'cambium-ab: changing_bootcmd is not saved' >&2
++		return 1
++	}
++	{
++		echo "${AB_ENV}_boot0 $(ab_boot_command 0)"
++		echo "${AB_ENV}_boot1 $(ab_boot_command 1)"
++		echo "${AB_ENV}_stable0 $(ab_stable_command 0 1)"
++		echo "${AB_ENV}_stable1 $(ab_stable_command 1 0)"
++	} > "$batch" || rc=1
++	[ "$rc" = 0 ] && { ab_setenv_batch "$batch" || rc=1; }
++	rm -f "$batch"
++	return "$rc"
++}
+diff --git a/package/cambium/cambium-board-data/Makefile b/package/cambium/cambium-board-data/Makefile
+new file mode 100644
+index 0000000000..7580789d06
+--- /dev/null
++++ b/package/cambium/cambium-board-data/Makefile
+@@ -0,0 +1,35 @@
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=cambium-board-data
++PKG_RELEASE:=3
++PKG_LICENSE:=GPL-2.0-only
++PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/cambium-board-data
++  SECTION:=firmware
++  CATEGORY:=Firmware
++  TITLE:=Cambium access point Wi-Fi board data importer
++  DEPENDS:=@TARGET_qualcommax +ubi-utils
++  PKGARCH:=all
++endef
++
++define Package/cambium-board-data/description
++  Installs the Wi-Fi board data files used by the access point's own stock
++  firmware. They are read at boot from the retained OEM firmware
++  slot, so no OEM board data is redistributed in OpenWrt images. The ART
++  calibration partition is never modified. Jaguar A/B images keep the files
++  in a per-bank device-data vault bound to the unit's board, SKU and ART.
++endef
++
++define Build/Compile
++endef
++
++define Package/cambium-board-data/install
++	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d
++	$(INSTALL_BIN) ./files/cambium-board-data $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/cambium-board-data.init $(1)/etc/init.d/cambium-board-data
++endef
++
++$(eval $(call BuildPackage,cambium-board-data))
+diff --git a/package/cambium/cambium-board-data/files/cambium-board-data b/package/cambium/cambium-board-data/files/cambium-board-data
+new file mode 100644
+index 0000000000..5301d5ede7
+--- /dev/null
++++ b/package/cambium/cambium-board-data/files/cambium-board-data
+@@ -0,0 +1,373 @@
++#!/bin/sh
++# Install the Wi-Fi board data files (BDFs) that this Cambium access point's
++# own stock firmware uses. The files are read from the retained OEM firmware
++# slot; nothing on the OEM slot or the ART partition is modified.
++# Per-device calibration continues to come from 0:ART via firmware hotplug.
++#
++# A/B families that keep a device-data vault (Jaguar) have a small
++# cambium_device_data UBI volume in each firmware bank holding this unit's
++# board files and a manifest bound to its board, SKU and ART. The vault is
++# preferred at boot, survives sysupgrade -n and factory reset, and is the
++# only source once the OEM slot has been converted. It is filled once, from
++# the OEM slot, while that slot still exists.
++#
++# Usage: cambium-board-data [--check-vault]
++#   --check-vault  exit 0 only if the running bank's vault is valid for this
++#                  unit (checked before an A/B upgrade or conversion)
++
++. "${CAMBIUM_FUNCTIONS:-/lib/functions.sh}"
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++AB_LIB=${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}
++[ -f "$AB_LIB" ] && . "$AB_LIB"
++
++TAG=cambium-board-data
++FW_DIR=${CAMBIUM_BDF_FW_DIR:-/lib/firmware}
++WORK=${CAMBIUM_BDF_WORK:-/tmp/$TAG}
++MNT=$WORK.mnt
++STATUS=${CAMBIUM_BDF_STATUS:-/tmp/$TAG.status}
++VAULT_NAME=cambium_device_data
++VAULT_FORMAT=1
++
++log() {
++	logger -t "$TAG" "$*" 2>/dev/null
++	echo "$TAG: $*" >&2
++}
++
++# One line per file: OEM path, expected size, destination(s) under $FW_DIR.
++# Sources mirror the OEM setup_bdf_wifi6 selection for each board SKU.
++board_files() {
++	case "$(board_name)" in
++	cambiumnetworks,xv3-8)
++		echo "lib/firmware/IPQ8074/WIFI_FW/bdwlan.b215.accton 131072 ath11k/IPQ8074/hw2.0/board.bin IPQ8074/board.bin"
++		;;
++	cambiumnetworks,xv2-21x)
++		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-ocelot 131072 ath11k/IPQ5018/hw1.0/board.bin"
++		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b60-ocelot 131072 ath11k/QCN6122/hw1.0/board.bin"
++		;;
++	cambiumnetworks,xv2-22h)
++		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-cheetah 131072 ath11k/IPQ5018/hw1.0/board.bin"
++		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b50-cheetah 131072 ath11k/QCN6122/hw1.0/board.bin"
++		;;
++	cambiumnetworks,xv2-23t)
++		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-lynx 131072 ath11k/IPQ5018/hw1.0/board.bin"
++		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b60.stock 131072 ath11k/QCN6122/hw1.0/board.bin"
++		;;
++	cambiumnetworks,xv2-2|\
++	cambiumnetworks,xv2-2t0|\
++	cambiumnetworks,xv2-2t1)
++		echo "lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock 65536 ath11k/IPQ6018/hw1.0/board.bin"
++		;;
++	cambiumnetworks,xe3-4)
++		echo "lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma 65536 ath11k/IPQ6018/hw1.0/board.bin"
++		echo "lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma 131072 ath11k/QCN9074/hw1.0/board.bin"
++		;;
++	esac
++}
++
++missing_files() {
++	local src size dst
++	board_files | while read -r src size dst; do
++		for dst in $dst; do
++			[ -s "$FW_DIR/$dst" ] || { echo "$src"; break; }
++		done
++	done
++}
++
++# Board files not yet staged under $1 (by OEM path).
++unstaged_files() {
++	local src size dst
++	board_files | while read -r src size dst; do
++		[ -f "$1/$src" ] || echo "$src"
++	done
++}
++
++sha256() {
++	sha256sum "$1" | cut -d' ' -f1
++}
++
++ubi_dev_for_mtd() {
++	local dev
++	for dev in "${AB_UBI_SYS:-/sys/class/ubi}"/ubi[0-9]*; do
++		[ -f "$dev/mtd_num" ] || continue
++		[ "$(cat "$dev/mtd_num")" = "$1" ] && { echo "${dev##*/}"; return 0; }
++	done
++	return 1
++}
++
++mtd_writeable() {
++	# MTD_WRITEABLE is 0x400 in the MTD flags word.
++	[ $(( $(cat "${AB_MTD_SYS:-/sys/class/mtd}/mtd$1/flags") & 0x400 )) -ne 0 ]
++}
++
++running_part() {
++	sed -n 's/.*ubi\.mtd=\([^ ]*\).*/\1/p' "${AB_CMDLINE:-/proc/cmdline}"
++}
++
++# Candidate OEM slots: the rootfs partition which is not running OpenWrt.
++oem_mtds() {
++	local running name idx
++	running=$(running_part)
++	for name in rootfs_1 rootfs; do
++		[ "$name" = "$running" ] && continue
++		idx=$(find_mtd_index "$name")
++		[ -n "$idx" ] && echo "$idx"
++	done
++}
++
++cleanup() {
++	grep -q " $MNT " /proc/mounts 2>/dev/null && umount "$MNT"
++	[ -n "$BLOCK" ] && ubiblock --remove "/dev/$BLOCK_VOL" >/dev/null 2>&1
++	[ -n "$ATTACHED" ] && ubidetach -m "$ATTACHED" >/dev/null 2>&1
++	rmdir "$MNT" 2>/dev/null
++	BLOCK=; BLOCK_VOL=; ATTACHED=
++}
++
++# Copy each expected board file found under $1 (by OEM path) into $FW_DIR.
++install_from_dir() {
++	local root="$1" origin="$2" src size dst tmp actual hash
++	board_files | while read -r src size dst; do
++		[ -f "$root/$src" ] || { log "$origin lacks $src"; continue; }
++		actual=$(wc -c < "$root/$src")
++		[ "$actual" -eq "$size" ] || {
++			log "unexpected size $actual for $src (expected $size)"
++			continue
++		}
++		hash=$(sha256 "$root/$src")
++		for dst in $dst; do
++			[ -s "$FW_DIR/$dst" ] && cmp -s "$root/$src" "$FW_DIR/$dst" && continue
++			mkdir -p "$(dirname "$FW_DIR/$dst")"
++			tmp="$FW_DIR/$dst.tmp.$$"
++			cp "$root/$src" "$tmp" && mv "$tmp" "$FW_DIR/$dst" || {
++				rm -f "$tmp"
++				log "failed to install $dst"
++				continue
++			}
++			log "installed $dst from $origin $src (sha256 $hash)"
++		done
++	done
++}
++
++# Mount the OEM root filesystem of MTD $1 on $MNT. With $2=allow-writable a
++# A/B image, whose device tree must leave both banks writable, may
++# attach the OEM bank; it does so only to fill an empty vault.
++mount_oem_mtd() {
++	local mtd="$1" ubi vol
++
++	if mtd_writeable "$mtd" && [ "$2" != allow-writable ]; then
++		log "mtd$mtd is writable; refusing to attach it"
++		return 1
++	fi
++
++	ubi=$(ubi_dev_for_mtd "$mtd")
++	if [ -z "$ubi" ]; then
++		ubiattach -m "$mtd" >/dev/null 2>&1 || {
++			log "cannot attach mtd$mtd"
++			return 1
++		}
++		ATTACHED=$mtd
++		ubi=$(ubi_dev_for_mtd "$mtd") || return 1
++	fi
++
++	for vol in "${AB_UBI_SYS:-/sys/class/ubi}/$ubi"_*; do
++		[ "$(cat "$vol/name" 2>/dev/null)" = ubi_rootfs ] || continue
++		BLOCK_VOL=${vol##*/}
++	done
++	[ -n "$BLOCK_VOL" ] || { log "no OEM ubi_rootfs volume on mtd$mtd"; return 1; }
++
++	if [ ! -b "/dev/ubiblock${BLOCK_VOL#ubi}" ]; then
++		ubiblock --create "/dev/$BLOCK_VOL" >/dev/null 2>&1 || {
++			log "cannot create a block device for $BLOCK_VOL"
++			return 1
++		}
++		BLOCK=1
++	fi
++
++	mkdir -p "$MNT"
++	mount -t squashfs -o ro "/dev/ubiblock${BLOCK_VOL#ubi}" "$MNT" || {
++		log "cannot mount the OEM root filesystem on mtd$mtd"
++		return 1
++	}
++}
++
++# --- A/B device-data vault ----------------------------------------------------
++
++# Set VAULT_DEV to the running bank's vault volume, if this image has one.
++vault_locate() {
++	local mtd ubi vol
++	VAULT_DEV=
++	command -v ab_family >/dev/null 2>&1 && ab_family && [ "$AB_VAULT" = 1 ] || return 1
++	mtd=$(find_mtd_index "$(running_part)")
++	[ -n "$mtd" ] || return 1
++	ubi=$(ubi_dev_for_mtd "$mtd") || return 1
++	vol=$(ab_ubi_volume "$ubi" "$VAULT_NAME") || return 1
++	VAULT_DEV=${AB_DEV:-/dev}/$vol
++}
++
++art_hash() {
++	local idx
++	idx=$(find_mtd_index 0:ART)
++	[ -n "$idx" ] || return 1
++	sha256 "${AB_DEV:-/dev}/mtd$idx"
++}
++
++nvram_hash() {
++	local idx
++	idx=$(find_mtd_index NVRAM)
++	[ -n "$idx" ] && sha256 "${AB_DEV:-/dev}/mtd$idx" || echo unknown
++}
++
++# Unpack the vault into $1. Returns 1 when it holds no archive.
++vault_read() {
++	rm -rf "$1" && mkdir -p "$1"
++	tar -xf "$VAULT_DEV" -C "$1" 2>/dev/null
++	[ -f "$1/MANIFEST" ]
++}
++
++manifest_value() {
++	sed -n "s/^$2 //p" "$1/MANIFEST" | head -n 1
++}
++
++# Check the unpacked vault in $1 against this unit: 0 valid, 1 missing or
++# corrupt, 2 made for another board, SKU or calibration (ART).
++vault_check() {
++	local dir="$1" src size dst entry art rc=0
++	[ -f "$dir/MANIFEST" ] || return 1
++	[ "$(manifest_value "$dir" format)" = "$VAULT_FORMAT" ] || return 1
++	[ "$(manifest_value "$dir" board)" = "$(board_name)" ] || return 2
++	[ "$(manifest_value "$dir" sku)" = "$(ab_dt_sku)" ] || return 2
++	art=$(art_hash) || return 1
++	[ "$(manifest_value "$dir" art_sha256)" = "$art" ] || return 2
++	board_files > "$dir.expected"
++	while read -r src size dst; do
++		entry=$(grep "^file $src " "$dir/MANIFEST") || { rc=1; break; }
++		set -- $entry
++		[ "$3" = "$size" ] && [ -f "$dir/files/$src" ] &&
++			[ "$(wc -c < "$dir/files/$src")" -eq "$size" ] &&
++			[ "$(sha256 "$dir/files/$src")" = "$4" ] || { rc=1; break; }
++	done < "$dir.expected"
++	rm -f "$dir.expected"
++	return "$rc"
++}
++
++# Write a vault from board files staged under $1/files (by OEM path), then
++# read it back and check it.
++vault_write() {
++	local stage="$1" origin="$2" src size dst archive=$WORK/vault.tar
++	mkdir -p "$stage/files"
++	{
++		echo "format $VAULT_FORMAT"
++		echo "board $(board_name)"
++		echo "sku $(ab_dt_sku)"
++		echo "art_sha256 $(art_hash)"
++		echo "nvram_sha256_at_capture $(nvram_hash)"
++		echo "source $origin"
++		echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"
++		board_files | while read -r src size dst; do
++			echo "file $src $size $(sha256 "$stage/files/$src")"
++		done
++	} > "$stage/MANIFEST" || return 1
++	(cd "$stage" && tar -cf "$archive" MANIFEST files) || return 1
++	ubiupdatevol "$VAULT_DEV" "$archive" || { rm -f "$archive"; return 1; }
++	rm -f "$archive"
++	vault_read "$WORK/readback" && vault_check "$WORK/readback"
++}
++
++# Fill an empty vault from the OEM slot. Models without board files (the
++# XE3-4TN) get a manifest-only vault and never touch the OEM slot.
++vault_fill_from_oem() {
++	local mtd src size dst stage=$WORK/stage
++	rm -rf "$stage" && mkdir -p "$stage/files"
++	if [ -n "$(unstaged_files "$stage/files")" ]; then
++		for mtd in $(oem_mtds); do
++			BLOCK=; BLOCK_VOL=; ATTACHED=
++			if mount_oem_mtd "$mtd" allow-writable; then
++				log "filling the device-data vault from the OEM slot on mtd$mtd"
++				board_files | while read -r src size dst; do
++					[ -f "$MNT/$src" ] && [ "$(wc -c < "$MNT/$src")" -eq "$size" ] || continue
++					mkdir -p "$(dirname "$stage/files/$src")"
++					cp "$MNT/$src" "$stage/files/$src"
++				done
++			fi
++			cleanup
++			[ -z "$(unstaged_files "$stage/files")" ] && break
++		done
++		[ -z "$(unstaged_files "$stage/files")" ] || {
++			log "no OEM slot holds every board file"
++			return 1
++		}
++	fi
++	vault_write "$stage" "oem-slot" || { log "vault write or readback failed"; return 1; }
++	log "device-data vault written and verified"
++}
++
++vault_main() {
++	local rc
++	if vault_read "$WORK/vault"; then
++		vault_check "$WORK/vault"; rc=$?
++	else
++		rc=1
++	fi
++	case "$rc" in
++	0) ;;
++	2)
++		# Never overwrite another unit's data; the operator must look.
++		log "the device-data vault belongs to another board, SKU or ART; not using it"
++		echo vault-mismatch > "$STATUS"
++		return 1
++		;;
++	*)
++		if ! vault_fill_from_oem || ! vault_read "$WORK/vault"; then
++			if [ -n "$(missing_files)" ]; then
++				echo missing > "$STATUS"
++				log "board data unavailable; affected radios will stay down"
++				return 1
++			fi
++			echo present > "$STATUS"
++			return 0
++		fi
++		;;
++	esac
++	install_from_dir "$WORK/vault/files" vault
++	[ -z "$(missing_files)" ] || { echo missing > "$STATUS"; return 1; }
++	echo vault > "$STATUS"
++}
++
++legacy_main() {
++	local mtd writable=
++	[ -z "$(missing_files)" ] && { echo present > "$STATUS"; return 0; }
++
++	# An A/B image's device tree leaves both banks writable. Without a vault
++	# (e.g. a single-bank install upgraded in place to an A/B image) the
++	# stock bank is still the only source, and is only read, mounted
++	# read-only.
++	command -v ab_family >/dev/null 2>&1 && ab_family && writable=allow-writable
++	for mtd in $(oem_mtds); do
++		BLOCK=; BLOCK_VOL=; ATTACHED=
++		mount_oem_mtd "$mtd" $writable && install_from_dir "$MNT" OEM
++		cleanup
++		[ -z "$(missing_files)" ] && break
++	done
++
++	if [ -n "$(missing_files)" ]; then
++		echo missing > "$STATUS"
++		log "board data unavailable; affected radios will stay down"
++		return 1
++	fi
++	echo imported > "$STATUS"
++}
++
++main() {
++	mkdir -p "$WORK"
++	if [ "$1" = --check-vault ]; then
++		vault_locate && vault_read "$WORK/check" && vault_check "$WORK/check"
++		return
++	fi
++	if vault_locate; then
++		vault_main
++	else
++		[ -n "$(board_files)" ] || return 0
++		legacy_main
++	fi
++}
++
++main "$@"
+diff --git a/package/cambium/cambium-board-data/files/cambium-board-data.init b/package/cambium/cambium-board-data/files/cambium-board-data.init
+new file mode 100644
+index 0000000000..2d3c4a5591
+--- /dev/null
++++ b/package/cambium/cambium-board-data/files/cambium-board-data.init
+@@ -0,0 +1,12 @@
++#!/bin/sh /etc/rc.common
++
++# Run before the boot script loads kernel modules so ath11k finds board.bin.
++START=09
++
++boot() {
++	/usr/sbin/cambium-board-data
++}
++
++start() {
++	/usr/sbin/cambium-board-data
++}
+diff --git a/package/cambium/cambium-jaguar-support/Makefile b/package/cambium/cambium-jaguar-support/Makefile
+new file mode 100644
+index 0000000000..7ec5f81886
+--- /dev/null
++++ b/package/cambium/cambium-jaguar-support/Makefile
+@@ -0,0 +1,32 @@
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=cambium-jaguar-support
++PKG_RELEASE:=7
++PKG_LICENSE:=GPL-2.0-only
++PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/cambium-jaguar-support
++  SECTION:=utils
++  CATEGORY:=Utilities
++  TITLE:=Cambium Jaguar family access point support
++  DEPENDS:=@TARGET_qualcommax_ipq60xx +cambium-ab +cambium-board-data
++  PKGARCH:=all
++endef
++
++define Package/cambium-jaguar-support/description
++  The Jaguar (XV2-2 / XE3-4 family) module for cambium-ab (board table,
++  firmware bank layouts and U-Boot boot commands) and management bridge
++  defaults for Cambium Jaguar access points.
++endef
++
++define Build/Compile
++endef
++
++define Package/cambium-jaguar-support/install
++	$(INSTALL_DIR) $(1)/lib/functions
++	$(INSTALL_DATA) ./files/cambium-ab-jaguar.sh $(1)/lib/functions/cambium-ab-jaguar.sh
++endef
++
++$(eval $(call BuildPackage,cambium-jaguar-support))
+diff --git a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
+new file mode 100644
+index 0000000000..e8c159b39a
+--- /dev/null
++++ b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
+@@ -0,0 +1,67 @@
++#!/bin/sh
++# Cambium A/B module for the Jaguar family (IPQ6018). See cambium-ab.sh.
++#
++# Each Jaguar has two NAND firmware banks, rootfs (slot 0) and rootfs_1
++# (slot 1), whose size depends on the NAND: two 96 MiB banks on the 256 MiB
++# models (captured on the XV2-2T1, OEM 7.2-r1) and two 52 MiB banks on the
++# XV2-2's 128 MiB NAND. The identity preflight re-checks the layout on every
++# unit instead of assuming it.
++
++case " ${AB_FAMILIES:-} " in
++*" jaguar "*) ;;
++*) AB_FAMILIES="${AB_FAMILIES:+$AB_FAMILIES }jaguar" ;;
++esac
++
++ab_jaguar_board() {
++	AB_NAME=Jaguar
++	AB_ENV=jaguar
++	AB_IMAGE_DIR=sysupgrade-cambiumnetworks_jaguar
++	AB_VAULT=1
++	AB_BANK_SIZE=06000000
++	AB_SLOT1_OFFSET=0x6000000
++	AB_BANK_LEBS=724
++	AB_PROTECTED='NVRAM crashLog 0:ART'
++	# OpenWiFi normally puts the DHCP uplink on up0v0. Keep the standalone
++	# bridge names as fallbacks for recovery and diagnostic configurations.
++	AB_LAN='up0v0 eth0 br-lan.1 br-lan'
++	case "$1" in
++	cambiumnetworks,xv2-2)
++		# 128 MiB Winbond NAND: 416-PEB banks, 20 reserved + 4.
++		AB_MODEL=XV2-2; AB_SKU=00000014; AB_FIT=config@cp01-c1; AB_QUALIFIED=1
++		AB_BANK_SIZE=03400000
++		AB_SLOT1_OFFSET=0x3400000
++		AB_BANK_LEBS=392
++		AB_PROTECTED='0:NVRAM crashlog 0:ART'
++		;;
++	cambiumnetworks,xv2-2t0) AB_MODEL=XV2-2T0; AB_SKU=00000016; AB_FIT=config@cp01-c1-1 ;;
++	cambiumnetworks,xv2-2t1) AB_MODEL=XV2-2T1; AB_SKU=0000001f; AB_FIT=config@cp01-c1-2; AB_QUALIFIED=1 ;;
++	cambiumnetworks,xe3-4) AB_MODEL=XE3-4; AB_SKU=00000020; AB_FIT=config@cp01-c3-xv3-4; AB_QUALIFIED=1 ;;
++	cambiumnetworks,xe3-4tn) AB_MODEL=XE3-4TN; AB_SKU=00000021; AB_FIT=config@cp01-c3-2 ;;
++	*) return 1 ;;
++	esac
++}
++
++# Boot slot $1: the validated slot-0 guard command apart from the bank.
++ab_jaguar_boot_command() {
++	local part offset
++	case "$1" in
++	0) part=rootfs; offset=0x0 ;;
++	1) part=rootfs_1; offset=$AB_SLOT1_OFFSET ;;
++	*) echo "cambium-ab: invalid slot $1" >&2; return 1 ;;
++	esac
++	printf 'nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts "mtdparts=nand0:%s@%s(fs)" && ubi part fs && ubi read 0x60000000 kernel && setenv bootargs "console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=%s root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1" && bootm 0x60000000#%s\n' \
++		"$(ab_bank_hex)" "$offset" "$part" "$AB_FIT"
++}
++
++# One-OEM/one-OpenWrt guarded boot of OpenWrt slot $1. Slot 0 is the command
++# validated on the XV2-2T1; slot 1 uses the "(fs)" / "ubi part fs" form that
++# booted the XV2-2 from its slot 1.
++ab_jaguar_guarded_command() {
++	local mtdparts part
++	case "$1" in
++	0) mtdparts="$(ab_bank_hex)@0x0(rootfs)"; part=rootfs ;;
++	1) mtdparts="$(ab_bank_hex)@$AB_SLOT1_OFFSET(fs)"; part=fs ;;
++	*) echo "cambium-ab: invalid slot $1" >&2; return 1 ;;
++	esac
++	echo "setenv bootcmd bootipq; setenv changing_bootcmd; saveenv; nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset"
++}
+diff --git a/scripts/cambium-family-its.sh b/scripts/cambium-family-its.sh
+new file mode 100755
+index 0000000000..e9c3387fb1
+--- /dev/null
++++ b/scripts/cambium-family-its.sh
+@@ -0,0 +1,104 @@
++#!/bin/sh
++# SPDX-License-Identifier: GPL-2.0-only
++#
++# Write a FIT image source holding one kernel and several board device trees.
++# Cambium's OEM U-Boot boots a named configuration (for example config@5 or
++# config@hk02), so each board keeps the configuration name used by the OEM
++# family image. Several configurations may share one device tree.
++#
++# Usage: cambium-family-its.sh -k KERNEL -A ARCH -C COMP -a LOAD -e ENTRY \
++#          -d DESCRIPTION [-D DEFAULT] CONFIG:FDT:DTB...
++# DEFAULT names the default configuration; it defaults to the first CONFIG.
++
++set -eu
++
++usage() {
++	echo "Usage: $0 -k kernel -A arch -C compression -a load -e entry -d description [-D default] config:fdt:dtb..." >&2
++	exit 2
++}
++
++kernel= arch= comp= load= entry= desc= default=
++while getopts "k:A:C:a:e:d:D:" opt; do
++	case "$opt" in
++	k) kernel=$OPTARG ;;
++	A) arch=$OPTARG ;;
++	C) comp=$OPTARG ;;
++	a) load=$OPTARG ;;
++	e) entry=$OPTARG ;;
++	d) desc=$OPTARG ;;
++	D) default=${OPTARG#config@} ;;
++	*) usage ;;
++	esac
++done
++shift $((OPTIND - 1))
++[ -n "$kernel" ] && [ -n "$arch" ] && [ -n "$comp" ] && [ -n "$load" ] && [ "$#" -gt 0 ] || usage
++[ -n "$entry" ] || entry=$load
++[ -n "$default" ] || default=$(echo "$1" | cut -d: -f1)
++[ -s "$kernel" ] || { echo "$0: missing kernel $kernel" >&2; exit 1; }
++
++hashes='      hash@1 { algo = "crc32"; };
++      hash@2 { algo = "sha1"; };'
++
++cat <<EOF
++/dts-v1/;
++
++/ {
++  description = "$desc";
++  #address-cells = <1>;
++
++  images {
++    kernel@1 {
++      description = "$desc kernel";
++      data = /incbin/("$kernel");
++      type = "kernel";
++      arch = "$arch";
++      os = "linux";
++      compression = "$comp";
++      load = <$load>;
++      entry = <$entry>;
++$hashes
++    };
++EOF
++
++seen=' '
++for board in "$@"; do
++	fdt=$(echo "$board" | cut -d: -f2)
++	dtb=$(echo "$board" | cut -d: -f3-)
++	case "$seen" in *" $fdt "*) continue ;; esac
++	seen="$seen$fdt "
++	[ -s "$dtb" ] || { echo "$0: missing device tree $dtb" >&2; exit 1; }
++	cat <<EOF
++    fdt@$fdt {
++      description = "${dtb##*/}";
++      data = /incbin/("$dtb");
++      type = "flat_dt";
++      arch = "$arch";
++      compression = "none";
++$hashes
++    };
++EOF
++done
++
++cat <<EOF
++  };
++
++  configurations {
++    default = "config@$default";
++EOF
++
++for board in "$@"; do
++	config=$(echo "$board" | cut -d: -f1)
++	fdt=$(echo "$board" | cut -d: -f2)
++	cat <<EOF
++    config@$config {
++      description = "$desc ($config)";
++      kernel = "kernel@1";
++      fdt = "fdt@$fdt";
++    };
++EOF
++done
++
++cat <<EOF
++  };
++};
++EOF
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-controls.dtsi b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-controls.dtsi
+new file mode 100644
+index 0000000000..a567841d47
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-controls.dtsi
+@@ -0,0 +1,71 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/*
++ * All five Jaguar OEM 7.2 FIT trees use GPIO19 for the sole physical
++ * button and list status GPIOs 73, 56, 37 and 35 in the same order.
++ * OEM calls the key WPS; on the XV2-2T1 enclosure it is the reset button.
++ * Physical XV2-2T1 test established the four colours and active-high GPIO
++ * drive (the original XE3-4 active-low assumption illuminated at brightness
++ * zero). Other family models retain this best-effort mapping until checked.
++ * GPIO50 is the OEM USB indicator.
++ */
++&tlmm {
++	jaguar_reset_button_pins: jaguar-reset-button-pins {
++		pins = "gpio19";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-pull-up;
++	};
++};
++
++&{/keys} {
++	pinctrl-0 = <&jaguar_reset_button_pins>;
++	pinctrl-names = "default";
++
++	reset {
++		debounce-interval = <60>;
++	};
++};
++
++/* Match the established E410/XV3-8 OpenWrt status sequence. */
++&{/aliases} {
++	led-boot = &jaguar_led_orange;
++	led-failsafe = &jaguar_led_red;
++	led-running = &led_status_white;
++	led-upgrade = &jaguar_led_orange;
++};
++
++&led_status_white {
++	/delete-property/ color;
++	label = "jaguar:status:green";
++	gpios = <&tlmm 56 GPIO_ACTIVE_HIGH>;
++	default-state = "off";
++};
++
++&led_status_amber {
++	/delete-property/ color;
++	label = "jaguar:status:blue";
++	gpios = <&tlmm 35 GPIO_ACTIVE_HIGH>;
++	default-state = "off";
++};
++
++&{/leds} {
++	jaguar_led_red: status-gpio73 {
++		label = "jaguar:status:red";
++		gpios = <&tlmm 73 GPIO_ACTIVE_HIGH>;
++		default-state = "off";
++	};
++
++	jaguar_led_orange: status-gpio37 {
++		label = "jaguar:status:orange";
++		gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>;
++		default-state = "off";
++	};
++
++	usb {
++		label = "jaguar:usb";
++		gpios = <&tlmm 50 GPIO_ACTIVE_HIGH>;
++		linux,default-trigger = "usb-host";
++		default-state = "off";
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent-96m.dtsi b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent-96m.dtsi
+new file mode 100644
+index 0000000000..a59748f28e
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent-96m.dtsi
+@@ -0,0 +1,6 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/* Second 96 MiB firmware bank of the 256 MiB NAND models (XV2-2T1 layout). */
++&{/soc@0/nand-controller@79b0000/nand@0/partitions/partition@6000000} {
++	/delete-property/ read-only;
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent.dtsi b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent.dtsi
+new file mode 100644
+index 0000000000..707167aa4f
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-persistent.dtsi
+@@ -0,0 +1,17 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/*
++ * A/B: U-Boot's boot command selects the bank with ubi.mtd=rootfs or
++ * ubi.mtd=rootfs_1, so no root arguments are appended here. This makes
++ * bank 0 and the U-Boot environment (for the boot guard) writable; each
++ * model's persistent tree unlocks its own second bank, whose offset depends
++ * on the NAND size. ART, NVRAM, crashLog and every other NOR partition stay
++ * read-only.
++ */
++&{/soc@0/nand-controller@79b0000/nand@0/partitions/partition@0} {
++	/delete-property/ read-only;
++};
++
++&{/soc@0/spi@78b5000/flash@0/partitions/partition@6f0000} {
++	/delete-property/ read-only;
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-storage-recovery.dtsi b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-storage-recovery.dtsi
+new file mode 100644
+index 0000000000..f54757a132
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-storage-recovery.dtsi
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/*
++ * OEM 7.2-r1 XV2-2T1 running NOR/NAND layout. Sibling running layouts are
++ * still provisional: OEM FIT DTBs omit the bootloader-added partition map.
++ * No initial recovery write targets.
++ */
++&blsp1_spi1 {
++	flash@0 {
++		partitions {
++			partition@510000 {
++				label = "oldappsblenv";
++				read-only;
++				/delete-node/ nvmem-layout;
++			};
++
++			partition@6e0000 {
++				label = "0:DEVCFG_1";
++				reg = <0x6e0000 0x10000>;
++				read-only;
++			};
++
++			partition@6f0000 {
++				label = "0:APPSBLENV";
++				reg = <0x6f0000 0x10000>;
++				read-only;
++				nvmem-layout {
++					compatible = "u-boot,env";
++					ethaddr: ethaddr { #nvmem-cell-cells = <0>; };
++					eth1addr: eth1addr { #nvmem-cell-cells = <0>; };
++					eth2addr: eth2addr { #nvmem-cell-cells = <0>; };
++					eth5addr: eth5addr { #nvmem-cell-cells = <0>; };
++				};
++			};
++
++			partition@700000 {
++				label = "config";
++				reg = <0x700000 0x10000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&qpic_nand {
++	/* RAM diagnostic: OEM 7.2 reports ECC strength 8 in MTD sysfs. */
++	compatible = "qcom,ipq6018-nand";
++	nand@0 {
++		nand-ecc-strength = <8>;
++		partitions {
++			partition@0 { read-only; };
++			partition@6000000 { read-only; };
++			partition@c000000 { read-only; };
++			partition@f000000 { read-only; };
++		};
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-persistent.dts
+new file mode 100644
+index 0000000000..56546b3b24
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-persistent.dts
+@@ -0,0 +1,4 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++#include "ipq6010-xe3-4-recovery.dts"
++#include "ipq6010-jaguar-persistent.dtsi"
++#include "ipq6010-jaguar-persistent-96m.dtsi"
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-recovery.dts
+new file mode 100644
+index 0000000000..ee97916f8f
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4-recovery.dts
+@@ -0,0 +1,31 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/* CP01-C3 XE3-4 baseline; 7.2 storage offsets provisional on this sibling. */
++#include "ipq6010-xe3-4.dts"
++#include "ipq6010-jaguar-storage-recovery.dtsi"
++#include "ipq6010-jaguar-controls.dtsi"
++
++/ {
++	model = "Cambium Networks XE3-4";
++	compatible = "cambiumnetworks,xe3-4", "qcom,ipq6018-ap-cp01-c3",
++		     "qcom,ipq6018-ap-cp01", "qcom,ipq6018";
++
++	chosen { /delete-property/ bootargs-append; };
++
++	cambium-platform {
++		compatible = "cambium-platform";
++		board-sku = <32>;
++	};
++};
++
++/* OEM 7.2 XE3-4 disables SD; this image boots solely from RAM. */
++&sdhc { status = "disabled"; };
++
++&blsp1_i2c3 { clock-frequency = <400000>; };
++
++/* Physical XE3-4, SKU 32, OEM 7.2-r1 reports BCH4/512 in MTD sysfs. */
++&qpic_nand {
++	nand@0 {
++		nand-ecc-strength = <4>;
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-persistent.dts
+new file mode 100644
+index 0000000000..92f3ff609e
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-persistent.dts
+@@ -0,0 +1,4 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++#include "ipq6010-xe3-4tn-recovery.dts"
++#include "ipq6010-jaguar-persistent.dtsi"
++#include "ipq6010-jaguar-persistent-96m.dtsi"
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-recovery.dts
+new file mode 100644
+index 0000000000..8b3866fda3
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xe3-4tn-recovery.dts
+@@ -0,0 +1,25 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/* OEM XE3-4TN differs from XE3-4 in SKU, PoE/GPS GPIOs and SD/I2C setup. */
++#include "ipq6010-xe3-4-recovery.dts"
++
++/ {
++	model = "Cambium Networks XE3-4TN";
++	compatible = "cambiumnetworks,xe3-4tn", "qcom,ipq6018-ap-cp01-c3",
++		     "qcom,ipq6018-ap-cp01", "qcom,ipq6018";
++
++	cambium-platform {
++		board-sku = <33>;
++	};
++};
++
++/* The OEM TN tree enables SD and uses a 100 kHz I2C bus. */
++&sdhc { status = "okay"; };
++&blsp1_i2c3 { clock-frequency = <100000>; };
++
++/* Preserve XE3-4TN's existing BCH8 assumption; SKU 32 alone is BCH4. */
++&qpic_nand {
++	nand@0 {
++		nand-ecc-strength = <8>;
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-persistent.dts
+new file mode 100644
+index 0000000000..3d9dffc80e
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-persistent.dts
+@@ -0,0 +1,8 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++#include "ipq6010-xv2-2-recovery.dts"
++#include "ipq6010-jaguar-persistent.dtsi"
++
++/* Second 52 MiB firmware bank of the XV2-2's 128 MiB NAND. */
++&{/soc@0/nand-controller@79b0000/nand@0/partitions/partition@3400000} {
++	/delete-property/ read-only;
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts
+new file mode 100644
+index 0000000000..34aef13f92
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts
+@@ -0,0 +1,64 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/* OEM 7.2-r1 XV2-2 lacks the second Ethernet path of the two T models. */
++#include "ipq6010-xv2-2t1-recovery.dts"
++
++/ {
++	model = "Cambium Networks XV2-2";
++	compatible = "cambiumnetworks,xv2-2", "qcom,ipq6018-ap-cp01-c1",
++		     "qcom,ipq6018-ap-cp01", "qcom,ipq6018";
++
++	aliases {
++		/delete-property/ ethernet1;
++	};
++
++	cambium-platform {
++		board-sku = <20>;
++	};
++};
++
++&swport4 {
++	status = "disabled";
++};
++
++/* Best-effort radio enablement; validate board data on physical XV2-2. */
++&wifi {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Cambium-XV2-2";
++};
++
++/* Physically observed on XV2-2 OEM 7.2-r1: 128 MiB NAND, not the T1's 256 MiB. */
++&qpic_nand {
++	nand@0 {
++		/* Winbond W29N01HZ has 64-byte OOB; BCH8 cannot fit. */
++		nand-ecc-strength = <4>;
++		partitions {
++			/delete-node/ partition@6000000;
++			/delete-node/ partition@c000000;
++			/delete-node/ partition@f000000;
++
++			partition@0 {
++				reg = <0x0 0x3400000>;
++				read-only;
++			};
++
++			partition@3400000 {
++				label = "rootfs_1";
++				reg = <0x3400000 0x3400000>;
++				read-only;
++			};
++
++			partition@6800000 {
++				label = "0:NVRAM";
++				reg = <0x6800000 0x1000000>;
++				read-only;
++			};
++
++			partition@7800000 {
++				label = "crashlog";
++				reg = <0x7800000 0x800000>;
++				read-only;
++			};
++		};
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-persistent.dts
+new file mode 100644
+index 0000000000..dde3189e73
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-persistent.dts
+@@ -0,0 +1,4 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++#include "ipq6010-xv2-2t0-recovery.dts"
++#include "ipq6010-jaguar-persistent.dtsi"
++#include "ipq6010-jaguar-persistent-96m.dtsi"
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-recovery.dts
+new file mode 100644
+index 0000000000..09e69e2b6b
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t0-recovery.dts
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/* OEM 7.2-r1 XV2-2T0 and XV2-2T1 trees differ only in board-sku. */
++#include "ipq6010-xv2-2t1-recovery.dts"
++
++/ {
++	model = "Cambium Networks XV2-2T0";
++	compatible = "cambiumnetworks,xv2-2t0", "qcom,ipq6018-ap-cp01-c1",
++		     "qcom,ipq6018-ap-cp01", "qcom,ipq6018";
++
++	cambium-platform {
++		board-sku = <22>;
++	};
++};
++
++/* Best-effort radio enablement; this model's board data is unqualified. */
++&wifi {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Cambium-XV2-2T0";
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-persistent.dts
+new file mode 100644
+index 0000000000..7979960d54
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-persistent.dts
+@@ -0,0 +1,4 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++#include "ipq6010-xv2-2t1-recovery.dts"
++#include "ipq6010-jaguar-persistent.dtsi"
++#include "ipq6010-jaguar-persistent-96m.dtsi"
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-recovery.dts
+new file mode 100644
+index 0000000000..5308f8b1cf
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2t1-recovery.dts
+@@ -0,0 +1,69 @@
++// SPDX-License-Identifier: (GPL-2.0+)
++
++/*
++ * First, RAM-only XV2-2T1 trial. The existing XE3-4 port supplies the
++ * IPQ6018 Ethernet/flash baseline; the 7.2-r1 OEM XV2-2T1 tree supplies
++ * the board identity and the corrected SPI-NOR partition layout.
++ *
++ * No persistent storage, boot environment, or PoE output is enabled for
++ * writing/operation by this recovery tree. The integrated radio is enabled
++ * only for the physically checked XV2-2T1 variant in the radio trial.
++ */
++
++#include "ipq6010-xe3-4.dts"
++#include "ipq6010-jaguar-storage-recovery.dtsi"
++#include "ipq6010-jaguar-controls.dtsi"
++
++/ {
++	model = "Cambium Networks XV2-2T1";
++	compatible = "cambiumnetworks,xv2-2t1", "qcom,ipq6018-ap-cp01-c1",
++		     "qcom,ipq6018-ap-cp01", "qcom,ipq6018";
++
++	chosen {
++		/delete-property/ bootargs-append;
++	};
++
++	cambium-platform {
++		compatible = "cambium-platform";
++		board-sku = <31>;
++	};
++};
++
++/* The OEM XV2-2T1 uses the same MDIO addresses and switch ports as XE3-4. */
++&dp5 {
++	label = "lan1";
++};
++
++&dp4 {
++	label = "lan2";
++};
++
++&blsp1_i2c3 {
++	clock-frequency = <400000>;
++};
++
++/* The XV2-2T1 integrated IPQ6018 radio uses OEM board ID 0x13 data. */
++&wifi {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Cambium-XV2-2T1";
++};
++
++&pcie0 {
++	status = "disabled";
++};
++
++&pcie_phy {
++	status = "disabled";
++};
++
++&sdhc {
++	status = "disabled";
++};
++
++&usb2 {
++	status = "disabled";
++};
++
++&qusb_phy_1 {
++	status = "disabled";
++};
+diff --git a/target/linux/qualcommax/image/ipq60xx.mk b/target/linux/qualcommax/image/ipq60xx.mk
+index 7e38d384a8..2cdc838be7 100644
+--- a/target/linux/qualcommax/image/ipq60xx.mk
++++ b/target/linux/qualcommax/image/ipq60xx.mk
+@@ -48,6 +48,57 @@ define Device/cambiumnetworks_xe3-4
+ endef
+ TARGET_DEVICES += cambiumnetworks_xe3-4
+ 
++define Device/cambiumnetworks_jaguar-recovery
++	$(call Device/FitImage)
++	DEVICE_VENDOR := Cambium Networks
++	DEVICE_MODEL := Jaguar RAM recovery
++	DEVICE_DTS := ipq6010-xv2-2-recovery ipq6010-xv2-2t0-recovery ipq6010-xv2-2t1-recovery ipq6010-xe3-4-recovery ipq6010-xe3-4tn-recovery
++	DEVICE_DTS_CONFIG := config@cp01-c1-2
++	KERNEL = kernel-bin | libdeflate-gzip | cambium-family-fit gzip
++	CAMBIUM_FIT_BOARDS := cp01-c1:cp01-c1:ipq6010-xv2-2-recovery \
++		cp01-c1-1:cp01-c1-2T:ipq6010-xv2-2t0-recovery \
++		cp01-c1-2:cp01-c1-2T1:ipq6010-xv2-2t1-recovery \
++		cp01-c3-xv3-4:cp01-c3-xv3-4:ipq6010-xe3-4-recovery \
++		cp01-c3-2:cp01-c3-2:ipq6010-xe3-4tn-recovery
++	DEVICE_PACKAGES := ipq-wifi-cambiumnetworks_xe34 ath11k-firmware-qcn9074 kmod-ath11k-pci cambium-board-data
++	SOC := ipq6010
++	IMAGES :=
++endef
++TARGET_DEVICES += cambiumnetworks_jaguar-recovery
++
++define Device/cambiumnetworks_jaguar-persistent
++	$(call Device/FitImage)
++	$(call Device/UbiFit)
++	DEVICE_VENDOR := Cambium Networks
++	DEVICE_MODEL := Jaguar family
++	DEVICE_VARIANT := persistent
++	DEVICE_DTS := ipq6010-xv2-2-persistent ipq6010-xv2-2t0-persistent ipq6010-xv2-2t1-persistent ipq6010-xe3-4-persistent ipq6010-xe3-4tn-persistent
++	DEVICE_DTS_CONFIG := config@cp01-c1-2
++	KERNEL = kernel-bin | libdeflate-gzip | cambium-family-fit gzip
++	CAMBIUM_FIT_BOARDS := cp01-c1:cp01-c1:ipq6010-xv2-2-persistent \
++		cp01-c1-1:cp01-c1-2T:ipq6010-xv2-2t0-persistent \
++		cp01-c1-2:cp01-c1-2T1:ipq6010-xv2-2t1-persistent \
++		cp01-c3-xv3-4:cp01-c3-xv3-4:ipq6010-xe3-4-persistent \
++		cp01-c3-2:cp01-c3-2:ipq6010-xe3-4tn-persistent
++	SOC := ipq6010
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	NAND_SIZE := 256m
++	IMAGE_SIZE := 98304k
++	IMAGES := factory.ubi sysupgrade.bin
++	IMAGE/factory.ubi := cambium-ab-ubi
++	IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++	BOARD_NAME := cambiumnetworks_jaguar
++	# WARNING: upstream OpenWrt's own XE3-4 image uses the same board name,
++	# cambiumnetworks,xe3-4, so an XE3-4 running upstream firmware accepts
++	# this image as well and would write it with upstream's nand_do_upgrade,
++	# not the A/B writer. It MUST NOT be used to upgrade an upstream XE3-4.
++	SUPPORTED_DEVICES := cambiumnetworks,xv2-2 cambiumnetworks,xv2-2t0 \
++		cambiumnetworks,xv2-2t1 cambiumnetworks,xe3-4 cambiumnetworks,xe3-4tn
++	DEVICE_PACKAGES := ipq-wifi-cambiumnetworks_xe34 ath11k-firmware-qcn9074 kmod-ath11k-pci uboot-envtools cambium-board-data cambium-jaguar-support
++endef
++TARGET_DEVICES += cambiumnetworks_jaguar-persistent
++
+ define Device/glinet_gl-common
+ 	$(call Device/FitImage)
+ 	$(call Device/UbiFit)
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+index b8b22bcffe..3daa690aac 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
+@@ -18,7 +18,13 @@ ipq60xx_setup_interfaces()
+ 	alfa-network,ap120c-ax)
+ 		ucidef_set_interfaces_lan_wan "lan" "wan"
+ 		;;
+-	cambiumnetworks,xe3-4)
++	cambiumnetworks,xv2-2)
++		ucidef_set_interface_lan "lan1" "dhcp"
++		;;
++	cambiumnetworks,xv2-2t0|\
++	cambiumnetworks,xv2-2t1|\
++	cambiumnetworks,xe3-4|\
++	cambiumnetworks,xe3-4tn)
+ 		ucidef_set_interface_lan "lan1 lan2" "dhcp"
+ 		;;
+ 	glinet,gl-ax1800|\
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index 8d323563bf..90a392af2d 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -19,7 +19,10 @@ case "$FIRMWARE" in
+ 		ath11k_patch_mac $(macaddr_add $label_mac 1) 0
+ 		ath11k_set_macflag
+ 		;;
+-	cambiumnetworks,xe3-4)
++	cambiumnetworks,xe3-4|\
++	cambiumnetworks,xv2-2|\
++	cambiumnetworks,xv2-2t0|\
++	cambiumnetworks,xv2-2t1)
+ 		caldata_extract "0:ART" 0x1000 0x10000
+ 		;;
+ 	glinet,gl-ax1800|\
+diff --git a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+index d31363521f..bd94a51f07 100644
+--- a/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq60xx/base-files/lib/upgrade/platform.sh
+@@ -1,7 +1,7 @@
+ PART_NAME=firmware
+ REQUIRE_IMAGE_METADATA=1
+ 
+-RAMFS_COPY_BIN='fw_printenv fw_setenv head'
++RAMFS_COPY_BIN='fw_printenv fw_setenv head seq sha256sum tr'
+ RAMFS_COPY_DATA='/etc/fw_env.config /var/lock/fw_printenv.lock'
+ 
+ remove_oem_ubi_volume() {
+@@ -78,6 +78,11 @@ tplink_do_upgrade() {
+ }
+ 
+ platform_check_image() {
++	# Cambium A/B family images must never reach a generic NAND path.
++	if command -v ab_family >/dev/null && ab_family; then
++		cambium_ab_check_image "$1"
++		return
++	fi
+ 	return 0;
+ }
+ 
+@@ -105,6 +110,10 @@ EOF
+ }
+ 
+ platform_do_upgrade() {
++	if command -v ab_family >/dev/null && ab_family; then
++		cambium_ab_do_upgrade "$1"
++		return
++	fi
+ 	case "$(board_name)" in
+ 	alfa-network,ap120c-ax)
+ 		CI_UBIPART="rootfs_1"
+-- 
+2.54.0 (Apple Git-157)
+

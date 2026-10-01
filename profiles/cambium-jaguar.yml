@@ -1,0 +1,8 @@
+---
+profile: cambiumnetworks_jaguar-persistent
+target: qualcommax
+subtarget: ipq60xx
+description: Build the OpenWiFi image for qualified Cambium Jaguar access points
+image: bin/targets/qualcommax/ipq60xx/openwrt-qualcommax-ipq60xx-cambiumnetworks_jaguar-persistent-squashfs-sysupgrade.bin
+include:
+  - ucentral-ap
