@@ -13,8 +13,8 @@ let ARGV = ["saved.json", "--boot"]; let inputjson = {}; let logs = []; let boot
 let schemareader = { validate: () => { push(logs, ...c[1]); return c[0] ? {} : null; } };
 let renderer = {render: () => "batch", write_files: () => c[2]};
 let ready = false; let commands = [];
-let fs = {writefile: (path, data) => { if (path == "/tmp/ucentral-network.ready") ready = true; return length(data); } };
-let staging = {foreach: () => {}, delete: () => {}, commit: () => {}};
+let fs = {readfile: () => "", writefile: (path, data) => { if (path == "/tmp/ucentral-network.ready") ready = true; return length(data); } };
+let staging = {load: () => true, foreach: () => {}, delete: () => {}, commit: () => true};
 let require = () => ({cursor: () => staging});
 let system = cmd => { push(commands, cmd); return 0; };
 let actual_exit = null; let exit = code => { actual_exit = code; };

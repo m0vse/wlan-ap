@@ -1,0 +1,2 @@
+// Only the ubus/PHY hardware boundary is stubbed; rendering and UCI are real.
+return {connect: () => ({call: () => null})};

@@ -1,0 +1,2 @@
+config globals 'globals'
+	option ula_prefix 'fd00:1234:5678::/48'

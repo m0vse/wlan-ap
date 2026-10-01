@@ -1,0 +1,4 @@
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option path 'platform/soc/c000000.wifi'
+	option disabled '1'

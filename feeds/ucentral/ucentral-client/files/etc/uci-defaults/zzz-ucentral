@@ -1,10 +1,14 @@
 #!/bin/sh
 
-[ -d /etc/config-shadow/ ] && exit 0
-
+# Old managed upgrades restored config-shadow/ucentral only. Directory
+# existence is not proof of a complete baseline. Retain every restored file
+# (especially controller identity); fill only missing files after S10 defaults.
+set -eu
 uci commit
-
-cp -r /etc/config/ /etc/config-shadow/
-# The saved JSON is rendered before netifd starts; do not regenerate the
-# stock static LAN/DHCP-server profile after capturing the baseline.
-cp /rom/etc/config/uhttpd /rom/etc/config/firewall /rom/etc/config/dhcp /rom/etc/config/dropbear /etc/config
+mkdir -p /etc/config-shadow
+for file in /etc/config/*; do
+	[ -f "$file" ] || continue
+	name=${file##*/}
+	[ -e "/etc/config-shadow/$name" ] || cp -p "$file" "/etc/config-shadow/$name"
+done
+# S18 renders before activation; never regenerate the stock LAN here.

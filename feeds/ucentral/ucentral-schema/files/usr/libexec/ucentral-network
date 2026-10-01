@@ -4,6 +4,15 @@ set -eu
 [ ! -e /tmp/ucentral-network.ready ] || exit 0
 fail() {
 	logger -t ucentral-network "$*; network remains disabled, saved JSON retained"
+	# The next A/B boot loses tmpfs. Retain bounded startup diagnostics in this
+	# slot, never the rendered batch or controller document (which contain keys).
+	{
+		printf '%s\n' "$*"
+		grep '^DISTRIB_TIP=' /etc/openwrt_release
+		for log in /tmp/ucentral-capabilities.log /tmp/ucentral-network.log /tmp/ucentral-uci.errors; do
+			[ ! -f "$log" ] || tail -n 40 "$log"
+		done
+	} > /etc/ucentral/network-boot.failure 2>/dev/null || :
 	exit 1
 }
 
@@ -27,7 +36,7 @@ fi
 # capabilities on an AP while firmware loading is still completing.
 tries=60
 while :; do
-	/sbin/wifi config
+	/sbin/wifi config || fail 'Radio configuration detection failed'
 	rm -f /etc/ucentral/capabilities.json
 	/usr/share/ucentral/capabilities.uc > /tmp/ucentral-capabilities.log 2>&1 ||
 		fail 'Capability detection failed'
@@ -39,11 +48,15 @@ while :; do
 done
 
 [ -d /etc/config-shadow ] || fail 'Configuration baseline is missing'
+for name in network system dhcp firewall dropbear ucentral; do
+	[ -f "/etc/config-shadow/$name" ] || fail "Configuration baseline lacks $name"
+done
 # These are renderer-owned temporary staging directories, never saved JSON.
 rm -rf /tmp/config-shadow /tmp/.uci-shadow
-if ! /usr/share/ucentral/ucentral.uc "$config" --boot > /tmp/ucentral-network.log 2>&1; then
+if ! /usr/bin/ucode -- /usr/share/ucentral/ucentral.uc "$config" --boot > /tmp/ucentral-network.log 2>&1; then
 	fail 'Saved configuration could not be validated/rendered (see /tmp/ucentral-network.log)'
 fi
+[ -s /tmp/ucentral-network.ready ] || fail 'Renderer returned without a validated network'
 if [ ! -e "$active" ] && [ ! -L "$active" ]; then
 	ln -s "$config" "$active" || {
 		rm -f /tmp/ucentral-network.ready

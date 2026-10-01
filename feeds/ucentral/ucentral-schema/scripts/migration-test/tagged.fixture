@@ -1,0 +1,1 @@
+{"uuid":2,"interfaces":[{"name":"Management","role":"upstream","vlan":{"id":37},"ethernet":[{"select-ports":["WAN"],"vlan-tag":"tagged"}],"ipv4":{"addressing":"dynamic"},"services":["ssh"]}],"services":{"ssh":{"port":22}}}

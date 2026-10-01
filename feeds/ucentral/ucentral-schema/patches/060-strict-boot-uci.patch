@@ -1,0 +1,26 @@
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -42,16 +42,21 @@
+ 			network: ['interface', 'device', 'bridge-vlan', 'switch', 'switch_vlan', 'route', 'route6', 'rule', 'rule6'],
+ 			dhcp: ['dhcp'], firewall: ['zone', 'rule', 'forwarding']
+ 		}) {
++			assert(staging.load(package), 'Cannot load baseline package ' + package);
+ 			let sections = [];
+ 			for (let section_type in types)
+ 				staging.foreach(package, section_type, s => push(sections, s['.name']));
+ 			for (let section in sections)
+ 				staging.delete(package, section);
+-			staging.commit(package);
++			assert(staging.commit(package), 'Cannot commit baseline package ' + package);
+ 		}
+ 		assert(system('/usr/share/ucentral/wifi_detect.sh') == 0, 'Cannot detect radios');
+-		assert(system('/sbin/uci -c /tmp/config-shadow -t /tmp/.uci-shadow batch < /tmp/ucentral.uci') == 0,
++		// libuci's batch CLI returns 0 even when individual commands failed.
++		// Preserve its diagnostics and reject partial renders before activation.
++		assert(system('/sbin/uci -c /tmp/config-shadow -t /tmp/.uci-shadow batch < /tmp/ucentral.uci 2> /tmp/ucentral-uci.errors') == 0,
+ 		       'Cannot apply staged UCI batch');
++		assert(!length(fs.readfile('/tmp/ucentral-uci.errors') || ''),
++		       'UCI batch command failed; see /tmp/ucentral-uci.errors');
+ 		assert(system('/sbin/uci -c /tmp/config-shadow -t /tmp/.uci-shadow commit') == 0,
+ 		       'Cannot commit staged UCI configuration');
+ 		assert(renderer.write_files(logs), 'Cannot install rendered files');

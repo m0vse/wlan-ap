@@ -1,0 +1,5 @@
+config system
+	option hostname 'migration-test'
+config timeserver 'ntp'
+	option enabled '1'
+	list server '0.openwrt.pool.ntp.org'
