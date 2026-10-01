@@ -162,7 +162,7 @@ new file mode 100644
 +include $(TOPDIR)/rules.mk
 +
 +PKG_NAME:=cambium-ab
-+PKG_RELEASE:=7
++PKG_RELEASE:=8
 +PKG_LICENSE:=GPL-2.0-only
 +PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 +
@@ -350,7 +350,7 @@ diff --git a/package/cambium/cambium-ab/files/cambium-ab-guard b/package/cambium
 new file mode 100755
 --- /dev/null
 +++ b/package/cambium/cambium-ab/files/cambium-ab-guard
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,236 @@
 +#!/bin/sh
 +# Cambium A/B boot guard, for every family with an A/B module.
 +#
@@ -391,6 +391,9 @@ new file mode 100755
 +	for section in $(uci -q show network 2>/dev/null |
 +		sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do
 +		case "$section" in up*) ;; *) continue ;; esac
++		# up_none is the unaddressed parent bridge, not management DHCP.
++		[ "$(uci -q get "network.$section.proto" 2>/dev/null)" = none ] && continue
++		[ "$(uci -q get "network.$section.disabled" 2>/dev/null)" = 1 ] && continue
 +		lan=$(uci -q get "network.$section.device" 2>/dev/null)
 +		[ -n "$lan" ] || lan=$(uci -q get "network.$section.ifname" 2>/dev/null)
 +		[ -n "$lan" ] || lan=$section
