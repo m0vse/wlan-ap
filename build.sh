@@ -19,6 +19,7 @@ else
 fi
 
 cd ${BUILD_DIR}
+"${ROOT_PATH}/scripts/check-init-backups.sh" "${BUILD_DIR}/package" "${ROOT_PATH}/feeds"
 ./scripts/gen_config.py ${TARGET} || exit 1
 # DISTRIB_TIP is generated from the parent wlan-ap commit and release tag.
 # An incremental build otherwise reuses base-files and can ship a stale
@@ -29,3 +30,6 @@ cd -
 echo "### Building image ..."
 cd $BUILD_DIR
 make -j$(nproc) V=s
+for rootfs in "${BUILD_DIR}"/build_dir/target-*/root-*; do
+	[ ! -d "$rootfs" ] || "${ROOT_PATH}/scripts/check-init-backups.sh" "$rootfs"
+done
