@@ -1,4 +1,4 @@
-From 870d7b85253dcbd3e09b2c92d0848e760d6860eb Mon Sep 17 00:00:00 2001
+From 54848ee4a69d49a74ba0a4ce07db02dfce9801c5 Mon Sep 17 00:00:00 2001
 From: Phil Taylor <phil@Phils-Mac-mini.local>
 Date: Thu, 1 Oct 2026 01:19:11 +0100
 Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
@@ -36,10 +36,10 @@ Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
  .../dts/qcom/ipq6010-xv2-2t1-persistent.dts   |   4 +
  .../dts/qcom/ipq6010-xv2-2t1-recovery.dts     |  69 ++++
  target/linux/qualcommax/image/ipq60xx.mk      |  51 +++
- .../ipq60xx/base-files/etc/board.d/02_network |  10 +-
+ .../ipq60xx/base-files/etc/board.d/02_network |  17 +-
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |   5 +-
  .../base-files/lib/upgrade/platform.sh        |  11 +-
- 35 files changed, 2070 insertions(+), 6 deletions(-)
+ 35 files changed, 2077 insertions(+), 6 deletions(-)
  create mode 100644 package/cambium/cambium-ab/Makefile
  create mode 100755 package/cambium/cambium-ab/files/18_cambium_ab_guard
  create mode 100755 package/cambium/cambium-ab/files/cambium-ab-convert
@@ -2339,7 +2339,7 @@ index 7e38d384a8..2cdc838be7 100644
  	$(call Device/FitImage)
  	$(call Device/UbiFit)
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
-index b8b22bcffe..c4ed1600de 100644
+index b8b22bcffe..5c760b4113 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
 @@ -18,7 +18,13 @@ ipq60xx_setup_interfaces()
@@ -2358,6 +2358,14 @@ index b8b22bcffe..c4ed1600de 100644
 +		ucidef_set_interfaces_lan_wan "lan2" "lan1"
  		;;
  	glinet,gl-ax1800|\
+@@ -60,0 +67,7 @@ ipq60xx_setup_macs()
++	cambiumnetworks,xe3-4|\
++	cambiumnetworks,xe3-4tn|\
++	cambiumnetworks,xv2-2|\
++	cambiumnetworks,xv2-2t0|\
++	cambiumnetworks,xv2-2t1)
++		label_mac=$(get_mac_label_dt)
++		;;
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 index 8d323563bf..90a392af2d 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
