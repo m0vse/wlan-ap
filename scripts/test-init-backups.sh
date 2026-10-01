@@ -21,7 +21,13 @@ if "$checker" "$fixture" >/dev/null 2>&1; then
 	exit 1
 fi
 rm "$fixture/root/etc/rc.d/S20network.orig"
+ln -s ../init.d/network.orig "$fixture/root/etc/rc.d/S20other"
+if "$checker" "$fixture" >/dev/null 2>&1; then
+	echo 'Missed renamed boot link to backup script' >&2
+	exit 1
+fi
+rm "$fixture/root/etc/rc.d/S20other"
 mkdir -p "$fixture/package/netifd/patches"
 touch "$fixture/package/netifd/patches/intentional.orig"
 "$checker" "$fixture"
-echo 'PASS: clean init tree, four backup suffixes, dangling boot entry'
+echo 'PASS: clean init tree, four backup suffixes, dangling and renamed boot links'
