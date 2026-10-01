@@ -1,4 +1,4 @@
-From 232339cef8ad3888d16aec98ebed9e910c081299 Mon Sep 17 00:00:00 2001
+From a8e39165460a08cac7d77218f195f1730460dcbd Mon Sep 17 00:00:00 2001
 From: Phil Taylor <phil@Phils-Mac-mini.local>
 Date: Thu, 1 Oct 2026 01:19:11 +0100
 Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
@@ -2087,7 +2087,7 @@ index 0000000000..3d9dffc80e
 +};
 diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts
 new file mode 100644
-index 0000000000..34aef13f92
+index 0000000000..309e46cfc2
 --- /dev/null
 +++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-xv2-2-recovery.dts
 @@ -0,0 +1,64 @@
@@ -2110,7 +2110,7 @@ index 0000000000..34aef13f92
 +	};
 +};
 +
-+&swport4 {
++&dp4 {
 +	status = "disabled";
 +};
 +
