@@ -1,0 +1,62 @@
+--- a/renderer/templates/radio.uc
++++ b/renderer/templates/radio.uc
+@@ -17,7 +17,7 @@
+ 
+ 		let supported_phy_modes = map(sort(map(phy.htmode, (mode) => {
+ 			let m = match(mode, /^([A-Z]+)(.+)$/);
+-			return [ mode, mode_weight[m[1]] * (m[2] == "80+80" ? 159 : +m[2]) ];
++			return [ mode, mode_weight[m[1]] * 1024 + (m[2] == "80+80" ? 159 : +m[2]) ];
+ 		}), (a, b) => (b[1] - a[1])), i => i[0]);
+ 		supported_phy_modes = filter(supported_phy_modes, mode =>
+ 			!(index(phy.band, "2G") >= 0 && mode == "VHT80"));
+@@ -26,12 +26,21 @@
+ 
+ 		for (let supported_mode in supported_phy_modes) {
+ 			if (match(supported_mode, fallback_modes[channel_mode])) {
++				let m = match(supported_mode, /^([A-Z]+)(.+)$/);
++				let width = m[2] == "80+80" ? 8080 : +m[2];
++				/* Never widen a fallback, or turn a contiguous request into 80+80. */
++				if ((width == 8080 && channel_width != 8080) ||
++				    (width != 8080 && width > (channel_width == 8080 ? 160 : channel_width)))
++					continue;
+ 				if (!radio.allow_dfs && radio.band == "5G" &&
+ 				    substr(supported_mode, length(supported_mode) - 3) == "160")
+ 					continue;
+ 				warn("Selected radio does not support requested HT mode %s, falling back to %s",
+ 					wanted_mode, supported_mode);
+-				delete radio.channel;
++				/* Channel validation must use the effective width too. */
++				if (width != channel_width)
++					delete radio.channel;
++				radio.channel_width = width;
+ 				return supported_mode;
+ 			}
+ 		}
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -134,8 +134,8 @@
+ 	}
+ 	if (!length(batch) || !state)
+ 		error = 2;
+-	else if (length(logs))
+-		error = 1;
++	else if (length(filter(logs, message => substr(message, 0, 3) == "[E]")))
++		error = 1;
+ }
+ catch (e) {
+ 	error = 2;
+@@ -148,8 +148,12 @@
+ 		error,
+ 		text: text[error] || "Failed",
+ 	};
+-	if (length(logs))
+-		status.rejected = logs;
++	if (length(logs)) {
++		if (error)
++			status.rejected = logs;
++		else
++			status.warnings = logs;
++	}
+ 
+ 	ubus.call("ucentral", "result", {
+ 		uuid: inputjson.uuid || 0,
