@@ -1,6 +1,6 @@
 --- a/command/cmd_upgrade.uc
 +++ b/command/cmd_upgrade.uc
-@@ -108,22 +108,48 @@
+@@ -108,22 +108,47 @@
  }
  
  let archive_cmdline = [
@@ -60,7 +60,7 @@
  if (args.keep_config) {
  	let active_config = fs.readlink("/etc/ucentral/ucentral.active");
  
-@@ -133,23 +159,19 @@
+@@ -133,23 +158,19 @@
  		result(2, "Unable to determine active configuration: %s", fs.error());
  }
  
