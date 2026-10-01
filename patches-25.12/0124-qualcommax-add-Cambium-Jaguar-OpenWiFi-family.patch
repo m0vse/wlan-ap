@@ -1,4 +1,4 @@
-From a8e39165460a08cac7d77218f195f1730460dcbd Mon Sep 17 00:00:00 2001
+From 870d7b85253dcbd3e09b2c92d0848e760d6860eb Mon Sep 17 00:00:00 2001
 From: Phil Taylor <phil@Phils-Mac-mini.local>
 Date: Thu, 1 Oct 2026 01:19:11 +0100
 Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
@@ -36,10 +36,10 @@ Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
  .../dts/qcom/ipq6010-xv2-2t1-persistent.dts   |   4 +
  .../dts/qcom/ipq6010-xv2-2t1-recovery.dts     |  69 ++++
  target/linux/qualcommax/image/ipq60xx.mk      |  51 +++
- .../ipq60xx/base-files/etc/board.d/02_network |   8 +-
+ .../ipq60xx/base-files/etc/board.d/02_network |  10 +-
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |   5 +-
  .../base-files/lib/upgrade/platform.sh        |  11 +-
- 35 files changed, 2069 insertions(+), 5 deletions(-)
+ 35 files changed, 2070 insertions(+), 6 deletions(-)
  create mode 100644 package/cambium/cambium-ab/Makefile
  create mode 100755 package/cambium/cambium-ab/files/18_cambium_ab_guard
  create mode 100755 package/cambium/cambium-ab/files/cambium-ab-convert
@@ -2339,7 +2339,7 @@ index 7e38d384a8..2cdc838be7 100644
  	$(call Device/FitImage)
  	$(call Device/UbiFit)
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
-index b8b22bcffe..3daa690aac 100644
+index b8b22bcffe..c4ed1600de 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
 +++ b/target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network
 @@ -18,7 +18,13 @@ ipq60xx_setup_interfaces()
@@ -2347,14 +2347,15 @@ index b8b22bcffe..3daa690aac 100644
  		ucidef_set_interfaces_lan_wan "lan" "wan"
  		;;
 -	cambiumnetworks,xe3-4)
+-		ucidef_set_interface_lan "lan1 lan2" "dhcp"
 +	cambiumnetworks,xv2-2)
-+		ucidef_set_interface_lan "lan1" "dhcp"
++		ucidef_set_interface_wan "lan1"
 +		;;
 +	cambiumnetworks,xv2-2t0|\
 +	cambiumnetworks,xv2-2t1|\
 +	cambiumnetworks,xe3-4|\
 +	cambiumnetworks,xe3-4tn)
- 		ucidef_set_interface_lan "lan1 lan2" "dhcp"
++		ucidef_set_interfaces_lan_wan "lan2" "lan1"
  		;;
  	glinet,gl-ax1800|\
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
@@ -2411,4 +2412,3 @@ index d31363521f..bd94a51f07 100644
  		CI_UBIPART="rootfs_1"
 -- 
 2.54.0 (Apple Git-157)
-
