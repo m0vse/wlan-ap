@@ -7,6 +7,21 @@ generate_certificate_volume() {
 
 	ubinfo /dev/ubi0 -N certificates > /dev/null
 	[ $? -eq 0 ] || {
+		# A/B sysupgrade may already have formatted rootfs_data while
+		# restoring configuration. UBIFS cannot shrink: reducing the UBI
+		# volume below its superblock's LEB count makes it unmountable.
+		local data magic
+		for data in /sys/class/ubi/ubi0_*/name; do
+			[ "$(cat "$data")" = rootfs_data ] || continue
+			data=${data%/name}
+			magic=$(hexdump -n 4 -v -e '4/1 "%02x"' "/dev/${data##*/}" 2>/dev/null)
+			if [ "$magic" = 31181006 ]; then
+				ubimkvol /dev/ubi0 -N certificates -S 20 ||
+					echo 'certificates: retaining formatted UBIFS overlay; certificate volume needs reserved space' >&2
+				return
+			fi
+		done
+
 		ubinfo /dev/ubi0 -N wifi_fw > /dev/null
 		[ $? -eq 0 ] && ubirmvol /dev/ubi0 -N wifi_fw
 
