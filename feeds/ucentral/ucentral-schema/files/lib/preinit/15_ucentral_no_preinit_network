@@ -1,0 +1,5 @@
+# Keep normal board port naming and serial failsafe, but no stock static-IP
+# network or switch activation before the persistent configuration is mounted.
+preinit_ip_config() { return 0; }
+preinit_config_switch() { return 0; }
+preinit_net_echo() { return 0; }

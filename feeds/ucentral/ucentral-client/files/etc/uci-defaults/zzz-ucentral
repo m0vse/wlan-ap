@@ -5,6 +5,6 @@
 uci commit
 
 cp -r /etc/config/ /etc/config-shadow/
-rm /etc/config/network
+# The saved JSON is rendered before netifd starts; do not regenerate the
+# stock static LAN/DHCP-server profile after capturing the baseline.
 cp /rom/etc/config/uhttpd /rom/etc/config/firewall /rom/etc/config/dhcp /rom/etc/config/dropbear /etc/config
-config_generate

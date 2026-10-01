@@ -1,0 +1,79 @@
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -13,12 +13,58 @@
+ let inputfile = fs.open(ARGV[0], "r");
+ let inputjson = json(inputfile.read("all"));
+ let custom_config = (split(ARGV[0], ".")[0] != "/etc/ucentral/ucentral");
++let boot_render = (ARGV[1] == '--boot');
+ 
+ let error = 0;
+ 
+ inputfile.close();
+ let logs = [];
+ 
++// Render the same configuration as a normal controller apply, but before
++// netifd starts. Do not start/reload services, report results, or change the
++// active JSON symlink here. An invalid saved config must not activate ports.
++if (boot_render) {
++	try {
++		let state = schemareader.validate(inputjson, logs);
++		let batch = state ? renderer.render(state, logs) : '';
++		print(join('\n', logs) + '\n');
++		assert(state && length(batch), 'Invalid boot configuration');
++		assert(!length(filter(logs, m => substr(m, 0, 3) == '[E]')),
++		       'Boot configuration has rendering errors');
++		assert(!state.strict || !length(logs), 'Strict boot configuration rejected');
++		assert(fs.writefile('/tmp/ucentral.uci', batch), 'Cannot stage UCI batch');
++		assert(system('mkdir -p /tmp/ucentral') == 0, 'Cannot prepare renderer files');
++		assert(system('cp -r /etc/config-shadow /tmp/config-shadow') == 0,
++		       'Cannot stage configuration baseline');
++		// Keep daemon/global defaults, but no stale network or forwarding.
++		let staging = require('uci').cursor('/tmp/config-shadow', '/tmp/.uci-shadow');
++		for (let package, types in {
++			network: ['interface', 'device', 'bridge-vlan', 'switch', 'switch_vlan', 'route', 'route6', 'rule', 'rule6'],
++			dhcp: ['dhcp'], firewall: ['zone', 'rule', 'forwarding']
++		}) {
++			let sections = [];
++			for (let section_type in types)
++				staging.foreach(package, section_type, s => push(sections, s['.name']));
++			for (let section in sections)
++				staging.delete(package, section);
++			staging.commit(package);
++		}
++		assert(system('/usr/share/ucentral/wifi_detect.sh') == 0, 'Cannot detect radios');
++		assert(system('/sbin/uci -c /tmp/config-shadow -t /tmp/.uci-shadow batch < /tmp/ucentral.uci') == 0,
++		       'Cannot apply staged UCI batch');
++		assert(system('/sbin/uci -c /tmp/config-shadow -t /tmp/.uci-shadow commit') == 0,
++		       'Cannot commit staged UCI configuration');
++		assert(renderer.write_files(logs), 'Cannot install rendered files');
++		assert(system('cp /tmp/config-shadow/* /etc/config/') == 0, 'Cannot install boot configuration');
++		assert(fs.writefile('/tmp/ucentral-network.ready', ARGV[0] + '\n'), 'Cannot mark network ready');
++		exit(0);
++	}
++	catch (e) {
++		warn('Boot configuration failed closed: ', e, '\n');
++		exit(1);
++	}
++}
++
+ function wait_wireless_ready() {
+ 	for (let i = 0; i < 30; i++) {
+ 		let status = ubus.call('network.wireless', 'status');
+--- a/renderer/templates/base.uc
++++ b/renderer/templates/base.uc
+@@ -37,6 +37,7 @@
+ 		uci_named_section(output, 'network.up', 'device');
+ 		uci_set_string(output, 'network.up.name', 'up');
+ 		uci_set_string(output, 'network.up.type', 'bridge');
++		uci_set_string(output, 'network.up.vlan_filtering', '1');
+ 		uci_set_string(output, 'network.up.igmp_snooping', '1');
+ 		uci_set_string(output, 'network.up.macaddr', capab.macaddr?.wan);
+ 		
+@@ -46,6 +47,7 @@
+ 			uci_named_section(output, 'network.down', 'device');
+ 			uci_set_string(output, 'network.down.name', 'down');
+ 			uci_set_string(output, 'network.down.type', 'bridge');
++			uci_set_string(output, 'network.down.vlan_filtering', '1');
+ 			uci_set_string(output, 'network.down.igmp_snooping', '1');
+ 			uci_set_string(output, 'network.down.macaddr', capab.macaddr?.lan);
+ 		}

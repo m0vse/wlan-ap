@@ -18,6 +18,7 @@ stop_service() {
 }
 
 start_service() {
+	[ -e /tmp/ucentral-network.ready ] || return 1
 	[ -s /etc/ucentral/capabilities.json ] || rm -f /etc/ucentral/capabilities.json
 	if [ ! -f /etc/ucentral/capabilities.json ]; then
 		if [ "$(cat /etc/ucentral/platform 2>/dev/null)" = "ap" ]; then
@@ -46,10 +47,8 @@ start_service() {
 		fi
 	fi
 
-	[ -f /etc/ucentral/ucentral.cfg.0000000002 ] && {
-		/usr/share/ucentral/ucentral.uc /etc/ucentral/ucentral.cfg.0000000002 > /dev/null
-		rm /etc/ucentral/ucentral.cfg.0000000002
-	}
+	# S18 already rendered the active or initial configuration. Do not apply a
+	# different profile late in boot or delete it before it can be diagnosed.
 
 	[ -f /tmp/ucentral.version ] || cat /etc/openwrt_release | grep DISTRIB_REVISION= | cut -d\' -f2 > /tmp/ucentral.version
 

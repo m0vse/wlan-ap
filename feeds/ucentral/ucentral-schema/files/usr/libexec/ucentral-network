@@ -1,0 +1,53 @@
+#!/bin/sh
+# Use the stock schema renderer before any network activation. No site VLANs.
+set -eu
+[ ! -e /tmp/ucentral-network.ready ] || exit 0
+fail() {
+	logger -t ucentral-network "$*; network remains disabled, saved JSON retained"
+	exit 1
+}
+
+# A dangling active symlink is an error, not an unconfigured device.
+active=/etc/ucentral/ucentral.active
+if [ -e "$active" ] || [ -L "$active" ]; then
+	[ -s "$active" ] || fail 'Saved active configuration is missing or empty'
+	config="$active"
+	# UUID 1 is OpenWiFi's factory/bootstrap profile, not a managed config.
+	if [ "$(jsonfilter -i "$active" -e '@.uuid' 2>/dev/null)" = 1 ]; then
+		config=/rom/etc/ucentral/ucentral.cfg.0000000001
+	fi
+elif [ -e /etc/ucentral/ucentral.cfg.0000000002 ]; then
+	config=/etc/ucentral/ucentral.cfg.0000000002
+else
+	config=/rom/etc/ucentral/ucentral.cfg.0000000001
+fi
+
+# kmodloader and wifi config have run in S10boot. Refresh capabilities using
+# stock detection, without bringing any interface up. Do not cache no-radio
+# capabilities on an AP while firmware loading is still completing.
+tries=60
+while :; do
+	/sbin/wifi config
+	rm -f /etc/ucentral/capabilities.json
+	/usr/share/ucentral/capabilities.uc > /tmp/ucentral-capabilities.log 2>&1 ||
+		fail 'Capability detection failed'
+	[ "$(cat /etc/ucentral/platform 2>/dev/null)" = ap ] || break
+	grep -q '"wifi"' /etc/ucentral/capabilities.json && break
+	tries=$((tries - 1))
+	[ "$tries" -gt 0 ] || fail 'Radio capabilities unavailable'
+	sleep 1
+done
+
+[ -d /etc/config-shadow ] || fail 'Configuration baseline is missing'
+# These are renderer-owned temporary staging directories, never saved JSON.
+rm -rf /tmp/config-shadow /tmp/.uci-shadow
+if ! /usr/share/ucentral/ucentral.uc "$config" --boot > /tmp/ucentral-network.log 2>&1; then
+	fail 'Saved configuration could not be validated/rendered (see /tmp/ucentral-network.log)'
+fi
+if [ ! -e "$active" ] && [ ! -L "$active" ]; then
+	ln -s "$config" "$active" || {
+		rm -f /tmp/ucentral-network.ready
+		fail 'Cannot record the initial active configuration'
+	}
+fi
+logger -t ucentral-network "Rendered $config before network startup"

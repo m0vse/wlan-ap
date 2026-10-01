@@ -1,0 +1,5 @@
+#!/bin/sh /etc/rc.common
+START=18
+start() {
+	/usr/libexec/ucentral-network
+}
