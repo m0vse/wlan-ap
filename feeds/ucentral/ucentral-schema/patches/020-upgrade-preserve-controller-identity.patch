@@ -23,11 +23,10 @@
 + * only its controller identity and onboarding state; keep_config below still
 + * controls whether the active network and wireless configuration survives.
 + * Explicit factory reset is the supported way to remove controller identity.
-+ *
-+ * config-shadow is important: the ucentral init script copies it over the
-+ * live UCI configuration on boot. */
++ * Do not restore an individual file below /etc/config-shadow: merely creating
++ * that directory makes zzz-ucentral skip first-boot network generation. */
 +let files = [
-+	"/etc/config/ucentral", "/etc/config-shadow/ucentral",
++	"/etc/config/ucentral",
 +	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
 +	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
 +	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
