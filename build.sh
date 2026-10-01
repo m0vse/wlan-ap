@@ -20,6 +20,10 @@ fi
 
 cd ${BUILD_DIR}
 ./scripts/gen_config.py ${TARGET} || exit 1
+# DISTRIB_TIP is generated from the parent wlan-ap commit and release tag.
+# An incremental build otherwise reuses base-files and can ship a stale
+# TIP-devel/version string even after the source has been tagged.
+make package/base-files/clean
 cd -
 
 echo "### Building image ..."
