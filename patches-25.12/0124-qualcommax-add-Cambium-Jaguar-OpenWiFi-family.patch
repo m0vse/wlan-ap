@@ -162,7 +162,7 @@ new file mode 100644
 +include $(TOPDIR)/rules.mk
 +
 +PKG_NAME:=cambium-ab
-+PKG_RELEASE:=10
++PKG_RELEASE:=11
 +PKG_LICENSE:=GPL-2.0-only
 +PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 +
@@ -486,7 +486,7 @@ new file mode 100755
 +		printf 'failure=%s\nmanagement=%s\n' "$AB_HEALTH_FAILURE" "$lan"
 +		date -u
 +		bridge vlan show 2>&1
-+		ip -d link show 2>&1
++		ip link show 2>&1
 +		ip -4 addr show 2>&1
 +		ip -4 route show 2>&1
 +		for bridge in up down; do
@@ -500,7 +500,7 @@ new file mode 100755
 +		printf '\nDHCP client PIDs (no arguments):\n'
 +		pgrep udhcpc 2>/dev/null || :
 +		printf '\nNetwork log tail:\n'
-+		logread 2>/dev/null | grep -Ei 'netifd|udhcpc|ess_edma|nss-dp|Link is (Up|Down)' | tail -n 30 | cut -c 1-200
++		logread 2>/dev/null | grep -Ei 'netifd|udhcpc|ess_edma|nss-dp|Link is (Up|Down)' | tail -n 100 | cut -c 1-200
 +	} | head -c 12288 > "$dir/network-boot.health.tmp"
 +	mv "$dir/network-boot.health.tmp" "$dir/network-boot.health" && sync
 +)

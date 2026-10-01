@@ -1,10 +1,10 @@
-Subject: OpenWiFi: render management before network activation
+Subject: OpenWiFi: early network activation gates and temporary protocol diagnostics
 
-Keep stock netifd bridge VLAN/PVID behavior. Only gate activation on the
-early renderer, and prevent stale DHCP-server startup after render failure.
+Keep stock bridge topology. The XV2-2T1 diagnostic candidate records device
+events and raw protocol wait statuses; no command arguments are logged.
 
 diff --git a/package/network/config/netifd/Makefile b/package/network/config/netifd/Makefile
-index fe1b234fbb..4636e11dbe 100644
+index fe1b234fbb..adba191463 100644
 --- a/package/network/config/netifd/Makefile
 +++ b/package/network/config/netifd/Makefile
 @@ -1,7 +1,7 @@
@@ -12,15 +12,15 @@ index fe1b234fbb..4636e11dbe 100644
  
  PKG_NAME:=netifd
 -PKG_RELEASE:=1
-+PKG_RELEASE:=3
++PKG_RELEASE:=4
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
 diff --git a/package/network/config/netifd/files/etc/init.d/network b/package/network/config/netifd/files/etc/init.d/network
-index 11bf3eabdf..811378cc0e 100755
+index 11bf3eabdf..fc0e42dbf0 100755
 --- a/package/network/config/netifd/files/etc/init.d/network
 +++ b/package/network/config/netifd/files/etc/init.d/network
-@@ -17,6 +17,10 @@ init_switch() {
+@@ -17,10 +17,19 @@ init_switch() {
  }
  
  start_service() {
@@ -31,6 +31,15 @@ index 11bf3eabdf..811378cc0e 100755
  	init_switch
  
  	procd_open_instance
+ 	procd_set_param command /sbin/netifd
++	# Temporary XV2-2T1 trial diagnostics; no topology/protocol changes.
++	if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = cambiumnetworks,xv2-2t1 ]; then
++		procd_append_param command -d 7 -l 5
++		procd_set_param stderr 1
++	fi
+ 	procd_set_param respawn
+ 	procd_set_param watch network.interface
+ 	[ -e /proc/sys/kernel/core_pattern ] && {
 diff --git a/package/network/services/dnsmasq/files/dnsmasq.init b/package/network/services/dnsmasq/files/dnsmasq.init
 index be3d4cbabb..9bf6d3d39d 100755
 --- a/package/network/services/dnsmasq/files/dnsmasq.init
@@ -46,3 +55,28 @@ index be3d4cbabb..9bf6d3d39d 100755
  	local instance="$1"
  	local instance_found=0
  	local first_instance=""
+diff --git a/package/network/config/netifd/patches/302-protocol-exit-diagnostics.patch b/package/network/config/netifd/patches/302-protocol-exit-diagnostics.patch
+new file mode 100644
+index 0000000000..1ee61943d3
+--- /dev/null
++++ b/package/network/config/netifd/patches/302-protocol-exit-diagnostics.patch
+@@ -0,0 +1,19 @@
++--- a/proto-shell.c
+++++ b/proto-shell.c
++@@ -366,5 +366,7 @@
++ 	struct proto_shell_state *state;
++ 
++ 	state = container_of(p, struct proto_shell_state, script_task);
+++	netifd_log_message(L_NOTICE, "diagnostic: interface %s script pid=%d state=%d wait_status=%d\n",
+++		state->proto.iface->name, p->uloop.pid, state->sm, ret);
++ 	proto_shell_task_finish(state, p);
++ }
++@@ -378,5 +380,8 @@
++ 
++ 	state = container_of(p, struct proto_shell_state, proto_task);
++ 
+++	netifd_log_message(L_NOTICE, "diagnostic: interface %s protocol pid=%d state=%d wait_status=%d\n",
+++		state->proto.iface->name, p->uloop.pid, state->sm, ret);
+++
++ 	if (state->sm == S_IDLE || state->sm == S_SETUP)
++ 		state->last_error = WEXITSTATUS(ret);

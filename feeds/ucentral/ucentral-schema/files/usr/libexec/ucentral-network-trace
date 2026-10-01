@@ -1,0 +1,13 @@
+#!/bin/sh
+# Temporary diagnostic capture for a manual trial. Exactly one bounded file;
+# no network writes, commands/arguments, controller JSON or credentials saved.
+umask 077
+dir=${UCENTRAL_TRACE_DIR:-/etc/ucentral}
+[ -d "$dir" ] || exit 0
+{
+	grep '^DISTRIB_TIP=' /etc/openwrt_release
+	printf 'Initial network state:\n'
+	ip link show 2>&1
+	printf 'Network event/process trace (maximum 128 KiB):\n'
+	logread -f 2>/dev/null | grep -E 'netifd:|netifd\[[0-9]+\]|ess_edma|nss-dp'
+} | head -c 131072 > "$dir/network-boot.trace"
