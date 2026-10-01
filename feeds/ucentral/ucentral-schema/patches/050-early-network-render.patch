@@ -59,21 +59,3 @@
  function wait_wireless_ready() {
  	for (let i = 0; i < 30; i++) {
  		let status = ubus.call('network.wireless', 'status');
---- a/renderer/templates/base.uc
-+++ b/renderer/templates/base.uc
-@@ -37,6 +37,7 @@
- 		uci_named_section(output, 'network.up', 'device');
- 		uci_set_string(output, 'network.up.name', 'up');
- 		uci_set_string(output, 'network.up.type', 'bridge');
-+		uci_set_string(output, 'network.up.vlan_filtering', '1');
- 		uci_set_string(output, 'network.up.igmp_snooping', '1');
- 		uci_set_string(output, 'network.up.macaddr', capab.macaddr?.wan);
- 		
-@@ -46,6 +47,7 @@
- 			uci_named_section(output, 'network.down', 'device');
- 			uci_set_string(output, 'network.down.name', 'down');
- 			uci_set_string(output, 'network.down.type', 'bridge');
-+			uci_set_string(output, 'network.down.vlan_filtering', '1');
- 			uci_set_string(output, 'network.down.igmp_snooping', '1');
- 			uci_set_string(output, 'network.down.macaddr', capab.macaddr?.lan);
- 		}

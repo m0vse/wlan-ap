@@ -1,10 +1,9 @@
-Subject: OpenWiFi: render management before activation; create filtered bridges without an implicit PVID
+Subject: OpenWiFi: render management before network activation
 
 Keep VLAN selection in the stock schema renderer and bridge-vlan handling in
-netifd. Setting default_pvid=0 in the bridge creation request makes new members
-deny-all until netifd installs their declared memberships/native PVID. This
-does not assume a site VLAN. The startup gates are conditional on the OpenWiFi
-early-render helper, so ordinary OpenWrt startup is unchanged.
+netifd, including its stock bridge filtering and PVID handling. The startup
+gates are conditional on the OpenWiFi early-render helper, so ordinary
+OpenWrt startup is unchanged.
 
 --- a/package/network/config/netifd/Makefile
 +++ b/package/network/config/netifd/Makefile
@@ -13,7 +12,7 @@ early-render helper, so ordinary OpenWrt startup is unchanged.
  
  PKG_NAME:=netifd
 -PKG_RELEASE:=1
-+PKG_RELEASE:=2
++PKG_RELEASE:=3
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=$(PROJECT_GIT)/project/netifd.git
@@ -30,23 +29,6 @@ early-render helper, so ordinary OpenWrt startup is unchanged.
  	init_switch
  
  procd_open_instance
-
---- /dev/null
-+++ b/package/network/config/netifd/patches/301-bridge-no-default-pvid.patch
-@@ -0,0 +1,13 @@
-+--- a/system-linux.c
-++++ b/system-linux.c
-+@@ -1563,6 +1563,10 @@
-+ 	}
-+ 
-+ 	nla_put_u8(msg, IFLA_BR_VLAN_FILTERING, !!cfg->vlan_filtering);
-++	/* Filter from creation, with no implicit native VLAN during port attach.
-++	 * netifd installs the configured bridge-vlan memberships/PVIDs below. */
-++	if (cfg->vlan_filtering)
-++		nla_put_u16(msg, IFLA_BR_VLAN_DEFAULT_PVID, 0);
-+ 	nla_put_u16(msg, IFLA_BR_PRIORITY, cfg->priority);
-+ 	nla_put_u32(msg, IFLA_BR_HELLO_TIME, sec_to_jiffies(cfg->hello_time));
-+ 	nla_put_u32(msg, IFLA_BR_MAX_AGE, sec_to_jiffies(cfg->max_age));
 
 --- a/package/network/services/dnsmasq/files/dnsmasq.init
 +++ b/package/network/services/dnsmasq/files/dnsmasq.init

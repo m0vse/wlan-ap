@@ -6,11 +6,15 @@ mount -t sysfs sysfs /sys
 sysctl -qw net.ipv6.conf.all.disable_ipv6=1
 sysctl -qw net.ipv6.conf.default.disable_ipv6=1
 ip link set lo up
-ip link add filtered type bridge vlan_filtering 1 vlan_default_pvid 0
+ip link add filtered type bridge vlan_filtering 1
 [ "$(cat /sys/class/net/filtered/bridge/vlan_filtering)" = 1 ]
-[ "$(cat /sys/class/net/filtered/bridge/default_pvid)" = 0 ]
+[ "$(cat /sys/class/net/filtered/bridge/default_pvid)" = 1 ]
+# Model stock netifd: configured bridge-vlans enable filtering and netifd
+# removes the automatic VLAN 1 from the bridge and each newly attached port.
+bridge vlan del dev filtered vid 1 self
 ip link add trunk type veth peer name peer
 ip link set trunk master filtered
+bridge vlan del dev trunk vid 1
 ip link set trunk up
 ip link set peer up
 ip link set filtered up

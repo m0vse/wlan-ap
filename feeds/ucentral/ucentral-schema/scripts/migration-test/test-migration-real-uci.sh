@@ -98,7 +98,7 @@ for profile in default tagged; do
 	test ! -s "$root/tmp/ucentral-uci.errors"
 	if [ "$profile" = default ]; then iface=up0v0; vid=4090; port=$portbase; else iface=up0v37; vid=37; port=$portbase:t; fi
 	test "$("$native/bin/uci" -c "$root/etc/config" -t "$root/tmp/.uci" get network.$iface.proto)" = dhcp
-	test "$("$native/bin/uci" -c "$root/etc/config" -t "$root/tmp/.uci" get network.up.vlan_filtering)" = 1
+	! "$native/bin/uci" -c "$root/etc/config" -t "$root/tmp/.uci" -q get network.up.vlan_filtering
 	"$native/bin/uci" -c "$root/etc/config" -t "$root/tmp/.uci" show network | grep "vlan='$vid'"
 	"$native/bin/uci" -c "$root/etc/config" -t "$root/tmp/.uci" show network | grep "ports='$port'"
 	printf '%s\n' "$profile migration and explicit management render passed"

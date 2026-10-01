@@ -39,8 +39,7 @@ if (!c[0] || length(c[1])) assert(!length(commands), "invalid config had side ef
 let capab = {platform: "ap", network: {wan: ["lan1"]}};
 let ethernet = create_ethernet(capab, null, null);
 let base = render(root + "base.uc", {...helpers, capab, board: {}});
-assert(index(base, "network.up.vlan_filtering=\u00271\u0027") >= 0, "up filtering not explicit");
-assert(index(base, "network.down.vlan_filtering=\u00271\u0027") >= 0, "down filtering not explicit");
+assert(index(base, "vlan_filtering") < 0, "base template overrides stock netifd filtering");
 for (let c in [[37, "tagged", ":t"], [203, "un-tagged", ""], [4090, "un-tagged", ""]]) {
  let input = {uuid: 2, interfaces: [{name: "Management", role: "upstream", vlan: {id: c[0]}, ethernet: [{"select-ports": ["WAN"], "vlan-tag": c[1]}], ipv4: {addressing: "dynamic"}}]};
  if (c[0] == 4090) delete input.interfaces[0].vlan;
