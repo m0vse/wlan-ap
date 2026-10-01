@@ -32,7 +32,7 @@ OpenWrt startup is unchanged.
 
 --- a/package/network/services/dnsmasq/files/dnsmasq.init
 +++ b/package/network/services/dnsmasq/files/dnsmasq.init
-@@ -1340,6 +1340,10 @@
+@@ -1340,4 +1340,8 @@
  start_service() {
 +	# Do not start a stale bootstrap DHCP server after a failed early render.
 +	if [ -x /usr/libexec/ucentral-network ]; then
