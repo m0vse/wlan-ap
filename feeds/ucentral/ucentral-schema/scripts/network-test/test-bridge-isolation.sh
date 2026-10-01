@@ -65,6 +65,9 @@ wait "$noise_pid" || true
 fixture_dir=$(dirname "$0")
 nsenter -t "$peer_pid" -n busybox udhcpd -f "$fixture_dir/dhcp-tagged.conf" >/dev/null 2>&1 &
 server_pid=$!
+# Give the fixture server time to bind before flooding/requesting DHCP.
+sleep 1
+kill -0 "$server_pid"
 udp_noise &
 noise_pid=$!
 busybox udhcpc -i mgmt -n -q -f -t 3 -T 1 -s "$fixture_dir/dhcp-hook.sh"
@@ -86,6 +89,8 @@ ip link set bootstrap up
 remote ping -c 2 -W 1 -I peer 198.18.1.1
 nsenter -t "$peer_pid" -n busybox udhcpd -f "$fixture_dir/dhcp-untagged.conf" >/dev/null 2>&1 &
 server_pid=$!
+sleep 1
+kill -0 "$server_pid"
 busybox udhcpc -i bootstrap -n -q -f -t 3 -T 1 -s "$fixture_dir/dhcp-hook.sh"
 bridge vlan show
 printf '%s\n' 'Namespace tests passed: declared tagged management, unrelated tagged multicast isolation, filtered untagged bootstrap'
