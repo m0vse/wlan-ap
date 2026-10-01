@@ -1,4 +1,4 @@
-From 54848ee4a69d49a74ba0a4ce07db02dfce9801c5 Mon Sep 17 00:00:00 2001
+From d48196cd5a70891a7ad72e49922b0f826f0f67c2 Mon Sep 17 00:00:00 2001
 From: Phil Taylor <phil@Phils-Mac-mini.local>
 Date: Thu, 1 Oct 2026 01:19:11 +0100
 Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
@@ -18,7 +18,8 @@ Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
  package/cambium/cambium-board-data/Makefile   |  35 ++
  .../files/cambium-board-data                  | 373 ++++++++++++++++++
  .../files/cambium-board-data.init             |  12 +
- .../cambium/cambium-jaguar-support/Makefile   |  32 ++
+ .../cambium/cambium-jaguar-support/Makefile   |  33 ++
+ .../files/19_cambium_openwifi_identity        |  23 ++
  .../files/cambium-ab-jaguar.sh                |  67 ++++
  scripts/cambium-family-its.sh                 | 104 +++++
  .../dts/qcom/ipq6010-jaguar-controls.dtsi     |  71 ++++
@@ -39,7 +40,7 @@ Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
  .../ipq60xx/base-files/etc/board.d/02_network |  17 +-
  .../etc/hotplug.d/firmware/11-ath11k-caldata  |   5 +-
  .../base-files/lib/upgrade/platform.sh        |  11 +-
- 35 files changed, 2077 insertions(+), 6 deletions(-)
+ 36 files changed, 2101 insertions(+), 6 deletions(-)
  create mode 100644 package/cambium/cambium-ab/Makefile
  create mode 100755 package/cambium/cambium-ab/files/18_cambium_ab_guard
  create mode 100755 package/cambium/cambium-ab/files/cambium-ab-convert
@@ -52,6 +53,7 @@ Subject: [PATCH] qualcommax: add Cambium Jaguar OpenWiFi family
  create mode 100644 package/cambium/cambium-board-data/files/cambium-board-data
  create mode 100644 package/cambium/cambium-board-data/files/cambium-board-data.init
  create mode 100644 package/cambium/cambium-jaguar-support/Makefile
+ create mode 100644 package/cambium/cambium-jaguar-support/files/19_cambium_openwifi_identity
  create mode 100644 package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
  create mode 100755 scripts/cambium-family-its.sh
  create mode 100644 target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq6010-jaguar-controls.dtsi
@@ -1589,14 +1591,14 @@ index 0000000000..2d3c4a5591
 +}
 diff --git a/package/cambium/cambium-jaguar-support/Makefile b/package/cambium/cambium-jaguar-support/Makefile
 new file mode 100644
-index 0000000000..7ec5f81886
+index 0000000000..d82db5360d
 --- /dev/null
 +++ b/package/cambium/cambium-jaguar-support/Makefile
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,33 @@
 +include $(TOPDIR)/rules.mk
 +
 +PKG_NAME:=cambium-jaguar-support
-+PKG_RELEASE:=7
++PKG_RELEASE:=8
 +PKG_LICENSE:=GPL-2.0-only
 +PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 +
@@ -1620,11 +1622,41 @@ index 0000000000..7ec5f81886
 +endef
 +
 +define Package/cambium-jaguar-support/install
-+	$(INSTALL_DIR) $(1)/lib/functions
++	$(INSTALL_DIR) $(1)/lib/functions $(1)/etc/uci-defaults
 +	$(INSTALL_DATA) ./files/cambium-ab-jaguar.sh $(1)/lib/functions/cambium-ab-jaguar.sh
++	$(INSTALL_BIN) ./files/19_cambium_openwifi_identity $(1)/etc/uci-defaults/
 +endef
 +
 +$(eval $(call BuildPackage,cambium-jaguar-support))
+diff --git a/package/cambium/cambium-jaguar-support/files/19_cambium_openwifi_identity b/package/cambium/cambium-jaguar-support/files/19_cambium_openwifi_identity
+new file mode 100644
+index 0000000000..706052c96d
+--- /dev/null
++++ b/package/cambium/cambium-jaguar-support/files/19_cambium_openwifi_identity
+@@ -0,0 +1,23 @@
++#!/bin/sh
++
++# OpenWiFi uses its compatible string as the model identity. Keep the
++# upstream OpenWrt board names for sysupgrade and A/B qualification, but
++# expose the established Cambium model names to uCentral when it is present.
++[ -d "${UCENTRAL_DIR:=/etc/ucentral}" ] || exit 0
++
++board=${CAMBIUM_BOARD_NAME:-}
++[ -n "$board" ] || {
++	. /lib/functions/system.sh
++	board=$(board_name)
++}
++
++case "$board" in
++	cambiumnetworks,xv2-2) compatible=cambium_xv2-2 ;;
++	cambiumnetworks,xv2-2t0) compatible=cambium_xv2-2t0 ;;
++	cambiumnetworks,xv2-2t1) compatible=cambium_xv2-2t1 ;;
++	cambiumnetworks,xe3-4) compatible=cambium_xe3-4 ;;
++	cambiumnetworks,xe3-4tn) compatible=cambium_xe3-4tn ;;
++	*) exit 0 ;;
++esac
++
++printf '%s\n' "$compatible" > "$UCENTRAL_DIR/compatible"
 diff --git a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
 new file mode 100644
 index 0000000000..e8c159b39a
