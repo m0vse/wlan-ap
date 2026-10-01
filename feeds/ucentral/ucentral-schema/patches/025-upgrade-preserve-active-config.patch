@@ -1,0 +1,26 @@
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -150,14 +150,15 @@ for (let f in files)
+ 	if (fs.stat(f))
+ 		push(archive_cmdline, f);
+ 
+-if (args.keep_config) {
+-	let active_config = fs.readlink("/etc/ucentral/ucentral.active");
+-
+-	if (active_config)
+-		push(archive_cmdline, '/etc/ucentral/ucentral.active', active_config);
+-	else
+-		result(2, "Unable to determine active configuration: %s", fs.error());
+-}
++/* The active controller document contains the management bridge/VLAN and
++ * DHCP configuration.  A managed A/B trial cannot become healthy or return
++ * to its controller without it, so preserve it independently of the UI's
++ * keep_config flag.  Unprovisioned APs have no active document and continue
++ * through the normal first-boot path. */
++let active_config = fs.readlink("/etc/ucentral/ucentral.active");
++
++if (active_config && fs.stat(active_config))
++	push(archive_cmdline, '/etc/ucentral/ucentral.active', active_config);
+ 
+ let rc = system(archive_cmdline);
+ 

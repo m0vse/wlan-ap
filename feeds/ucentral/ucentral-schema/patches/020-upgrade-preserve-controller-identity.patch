@@ -1,6 +1,6 @@
 --- a/command/cmd_upgrade.uc
 +++ b/command/cmd_upgrade.uc
-@@ -108,22 +108,47 @@
+@@ -108,22 +108,45 @@
  }
  
  let archive_cmdline = [
@@ -19,14 +19,12 @@
 -	for (let f in files)
 -		if (fs.stat(f))
 -			push(archive_cmdline, f);
-+/* A managed firmware upgrade must not silently deprovision the AP.  Preserve
-+ * only its controller identity and onboarding state; keep_config below still
-+ * controls whether the active network and wireless configuration survives.
-+ * Explicit factory reset is the supported way to remove controller identity.
-+ * Do not restore an individual file below /etc/config-shadow: merely creating
-+ * that directory makes zzz-ucentral skip first-boot network generation. */
++/* A managed firmware upgrade must retain the complete rendered UCI state.
++ * The restored network and config-shadow trees are available before procd
++ * starts netifd, so bridge VLAN filtering and the management VLAN exist
++ * before DHCP.  Explicit factory reset is the supported deprovision path. */
 +let files = [
-+	"/etc/config/ucentral",
++	"/etc/config", "/etc/config-shadow",
 +	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
 +	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
 +	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
@@ -60,7 +58,7 @@
  if (args.keep_config) {
  	let active_config = fs.readlink("/etc/ucentral/ucentral.active");
  
-@@ -133,23 +158,19 @@
+@@ -133,23 +156,19 @@
  		result(2, "Unable to determine active configuration: %s", fs.error());
  }
  
