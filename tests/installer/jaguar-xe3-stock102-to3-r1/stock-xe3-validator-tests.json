@@ -1,0 +1,132 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "phase": "reviewed-outgoing",
+      "case": "matching-default",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "matching-explicit",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "major-fence",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "minor-fence-preserve",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "unqualified-model",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "platform-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "clean-minor-reset",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "clean-major-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "clean-board-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "matching-default",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "matching-explicit",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "major-fence",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "minor-fence-preserve",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "unqualified-model",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "platform-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "clean-minor-reset",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "clean-major-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "installed-bridge",
+      "case": "clean-board-refusal",
+      "result": 1,
+      "passed": true
+    }
+  ],
+  "count": 18,
+  "fixture": "/tmp/jaguar-stock-sysupgrade.0ehnusio",
+  "reviewed_source_sha256": {
+    "sbin/sysupgrade": "88dbd9b86649e75397960f15aa980b7d6e31ed92fffddea3cb03ca50f0b32e61",
+    "usr/libexec/validate_firmware_image": "344d0f57b3af9ee13bb1fb4e64eca931d431b3c5157076d693d72a585fc46d43",
+    "lib/upgrade/fwtool.sh": "46c12af239165cf612fe4d375c99ed8f210c58c616f9e7cfdfe41a354c20e2ba",
+    "usr/share/libubox/jshn.sh": "89fb5871dc9f02e952168da2dd311286d5a2fdd4dd39558557611063129c4fec",
+    "usr/bin/fwtool": "de6ac9f72133359054d99c63792b935ebfd1259bf5936d43e187e7d6cc5495ab",
+    "usr/bin/jshn": "b095430a1f661e446d43aa4efcf51e0ba6070a0d05f6aa3e45161c11af292bb7",
+    "sbin/uci": "9704c037c3ce0a3ae82b2555f50b3a3a829c2652b7f50dd90ca88bf65e07c767"
+  },
+  "image_sha256": "9237bac70039fbdaffbb013018dd9c6c9328830e0a4f8f4babe375fd4044821d",
+  "image_compat_version": "1.0",
+  "no_qualification_config_write_required_for_default_or_1_0": true,
+  "source_paths_and_fixture_ash_interpreter_redirected_only": true,
+  "native_busybox_ash": "/home/phil/openwifi-cheetah-build/operator-r2/busybox-ash/busybox",
+  "actual_outgoing_arm64_fwtool_jshn_uci": true,
+  "platform_hardware_boundary_stubbed": true,
+  "full_device_sysupgrade_or_ram_pivot_acceptance": false
+}

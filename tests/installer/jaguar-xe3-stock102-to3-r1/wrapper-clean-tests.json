@@ -1,0 +1,95 @@
+{
+  "passed": true,
+  "count": 9,
+  "cases": [
+    {
+      "case": "default",
+      "passed": true,
+      "trace": [
+        "preflight:--check"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "explicit-check",
+      "passed": true,
+      "trace": [
+        "preflight:--check"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "check-refusal",
+      "passed": true,
+      "trace": [
+        "preflight:--check"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "recover-refusal",
+      "passed": true,
+      "trace": [
+        "preflight:--recover"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "bridge-refusal",
+      "passed": true,
+      "trace": [
+        "preflight:--recover",
+        "preflight:--check",
+        "preflight:--install"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "verify-refusal",
+      "passed": true,
+      "trace": [
+        "preflight:--recover",
+        "preflight:--check",
+        "preflight:--install",
+        "preflight:--verify-installed"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "validator-refusal",
+      "passed": true,
+      "trace": [
+        "preflight:--recover",
+        "preflight:--check",
+        "preflight:--install",
+        "preflight:--verify-installed",
+        "sysupgrade:-n"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "install-flow",
+      "passed": true,
+      "trace": [
+        "preflight:--recover",
+        "preflight:--check",
+        "preflight:--install",
+        "preflight:--verify-installed",
+        "sysupgrade:-n",
+        "sysupgrade:-v"
+      ],
+      "device_fixture_unchanged": true
+    },
+    {
+      "case": "unsafe-active-document",
+      "passed": true,
+      "trace": [
+        "preflight:--check"
+      ],
+      "device_fixture_unchanged": true
+    }
+  ],
+  "fixture": "/tmp/jaguar-wrapper-flow.a7w2jk5i",
+  "wrapper_sha256": "80d91c30bcee823a470dc5454124de5efe1e2baca29988a8bdd598904c941f95",
+  "scope": "Actual wrapper with filesystem-only path redirects; preflight and sysupgrade boundaries stubbed; no AP scripts, flash, environment changes or reboot"
+}

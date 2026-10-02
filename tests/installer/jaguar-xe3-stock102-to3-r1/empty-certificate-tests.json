@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "count": 11,
+  "cases": [
+    "empty-export-and-bound-validation",
+    "preserving-execution-refused-before-export",
+    "legacy-unsafe-material-and-crypto-untouched",
+    "equivalent-empty-archive-accepted",
+    "extra-key-refused",
+    "duplicate-manifest-refused",
+    "newline-manifest-refused",
+    "nonempty-manifest-refused",
+    "missing-manifest-refused",
+    "wrong-boot-binding-refused",
+    "checksum-drift-refused"
+  ],
+  "helper_sha256": "5043e44277c62f5da631b73afab006b28beaea2d771a028566f1e90c022673ed",
+  "fixture": "/tmp/stock-empty-certificates.uthcv_lt",
+  "scope": "Actual export/validator with identity fixtures; no mount, restore, bank/env writes or AP execution"
+}

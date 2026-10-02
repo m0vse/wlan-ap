@@ -1,0 +1,72 @@
+{
+  "passed": true,
+  "count": 13,
+  "cases": [
+    {
+      "case": "baseline",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "case": "newer-compatible",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "case": "below-minimum",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "malformed-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-family",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-target",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "TIP-marker",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "changed-updater",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "changed-runtime",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "extra-script",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "installed-bridge",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "case": "mixed-bridge",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "metadata-drift",
+      "accepted": false,
+      "passed": true
+    }
+  ],
+  "scope": "Actual complete updater/minimum/runtime gates; private extracted roots; no AP scripts sourced or executed, no bank operations."
+}

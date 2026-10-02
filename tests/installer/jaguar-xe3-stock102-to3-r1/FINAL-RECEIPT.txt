@@ -1,0 +1,38 @@
+XE3-4 clean-stock migration replacement, installer-only r1.
+
+Outgoing authenticated retained cnbeacon artifact:
+/home/phil/jaguar-xe3-4-supported-output/jaguar/images/openwrt-qualcommax-ipq60xx-cambiumnetworks_jaguar-persistent-squashfs-sysupgrade.bin
+Build 2026.09.30.102, source aff0cccda079fea3fbbe6b1b305fd5d2f3a7abf0,
+upstream unknown as embedded. 17,428,868 bytes.
+SHA256 a3c32626de7b0c1907eefbbe0b27db8ff16ebbd2726cb30f9402bdb7d2a46ae6
+Minimum release gate is .102, not an exact-only version pin; independently
+authenticated compatible updater/runtime contract excludes unknown changes.
+
+Incoming immutable Jaguar .3-e3ea012e: 21,770,647 bytes.
+SHA256 9237bac70039fbdaffbb013018dd9c6c9328830e0a4f8f4babe375fd4044821d
+Model-specific filename does not change family image bytes.
+
+Fresh focused actual-source results:
+- 13 source/minimum/runtime gate cases: baseline and newer compatible release,
+  installed bridge accepted; below minimum, unsafe/mixed metadata, target,
+  script/runtime drift, additional wildcard script and mixed bridge refused.
+- 18 real .102 sysupgrade/firmware metadata validator cases under target-tool
+  emulation. Platform hardware hook isolated; actual FIT checked separately.
+  -n permits minor config reset, not major/unsupported-board bypass.
+- 9 actual clean wrapper cases; default check only, stage failures prevent
+  upgrade, no configuration archive, -n retained. Boundaries stubbed.
+- 11 actual clean empty-certificate export/validator cases; no legacy identity
+  or crypto accessed, no writes outside private filesystem fixtures.
+- 3 actual XE3 FIT/capacity cases: qualified SKU32, config@cp01-c3-xv3-4,
+  96MiB fit accepted; wrong FIT and insufficient capacity refused.
+
+Reused, not rerun or claimed fresh: existing Jaguar model/geometry/vault/A/B
+support and previously tested transactional five-file bridge from preserving
+from-.1 r2; empty export source from clean stock-r3. No new port qualification,
+firmware build, live AP changes or FMS catalogue/firmware changes.
+
+User live read-only corroboration: XE3-4, confirmed running bank0, no target
+or failure, device-data vault, two 0x06000000 banks with 0x00020000 erase.
+SKU and full protected identity/layout/capacity checks remain live --check
+requirements; operator-provided status alone is not migration acceptance.
+No physical RAM pivot/UBI/flash/power-loss or post-upgrade result is claimed.

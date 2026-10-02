@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "count": 3,
+  "cases": [
+    {
+      "case": "XE3-FIT96MiB",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "case": "wrong-FIT",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "insufficient-bank",
+      "accepted": false,
+      "passed": true
+    }
+  ],
+  "scope": "Actual current XE3 family selection and FIT/root/capacity extractor on immutable .3; host POSIX utilities, no bank writes/mounts/AP action."
+}
