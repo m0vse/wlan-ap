@@ -7,5 +7,6 @@ image: bin/targets/qualcommax/ipq60xx/openwrt-qualcommax-ipq60xx-cambiumnetworks
 include:
   - ucentral-ap
 diffconfig: |
-  CONFIG_BUSYBOX_DEFAULT_STAT=y
-  CONFIG_BUSYBOX_DEFAULT_FEATURE_STAT_FORMAT=y
+  CONFIG_BUSYBOX_CUSTOM=y
+  CONFIG_BUSYBOX_CONFIG_STAT=y
+  CONFIG_BUSYBOX_CONFIG_FEATURE_STAT_FORMAT=y
