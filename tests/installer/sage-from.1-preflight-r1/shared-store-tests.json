@@ -1,0 +1,140 @@
+{
+  "passed": true,
+  "count": 22,
+  "cases": [
+    {
+      "case": "valid-mounted",
+      "passed": true,
+      "accepted": true,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "named-mounted",
+      "passed": true,
+      "accepted": true,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "larger-store",
+      "passed": true,
+      "accepted": true,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-layout",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-mtd",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "missing-volume-no-space",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "missing-volume-free-space",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "short-volume",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-device",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-type",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "duplicate-mount",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "unmounted",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "symlink-store",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "symlink-content",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "different-runtime-key",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "different-runtime-cert",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "world-readable-key",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "wrong-owner",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "unmatched-crypto-pair",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "missing-runtime-key",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    },
+    {
+      "case": "missing-store-cert",
+      "passed": true,
+      "accepted": false,
+      "store_and_runtime_unchanged": true
+    }
+  ],
+  "helper_sha256": "f4123c48ffa42a814e2580a2f385c024b48850e135cc2a2bd84d7f69d9d68bb3",
+  "scope": "Actual shared-store checker, real native local synthetic key/cert crypto, private sysfs/mount-table fixtures. No AP credentials, actual mount/allocation, bank, environment, flash or reboot."
+}

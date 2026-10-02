@@ -1,0 +1,41 @@
+Sage .1 -> .3: conditional normal controller/UI upgrade route
+
+Frozen .1 image SHA256:
+83c62ef4a6a38700bb04044ca3f91a52f6469eeb1386e90cd9b1f2ce22421758
+Incoming .3 image SHA256:
+2f86a4dd48bcc66912422fef411a4133c582c792b278b35ac5565444a92b495a
+TIP-sage-2026.10.02.3-0d3e14c4, 13855050 bytes.
+
+Actual .1 cmd_upgrade.uc four keep-option combinations PASS: full config,
+shadow baseline, active controller JSON, identity and custom gateway CA
+archived; sysupgrade -f without -n even with keep_redirector false/omitted.
+Command SHA e3db102971239f319ce0f4b9f58bd852c3ff4361421c7357732438a1b55b6c25.
+Actual .1 stage2 copy loop, retained-only .3 FIT/capacity extraction and
+target ARM ash external tr positive/negative cases PASS (4).
+Actual .1 firmware validator/minor cases PASS: 24 E410 and 24 E410B.
+
+Sage .1 writer touches only inactive linux/rootfs/rootfs_data volumes,
+not the shared certificates volume. Jaguar bank-local bridge requirement
+does not apply. The unpublished Sage bridge is not needed for this route
+when the following actual-AP prerequisites are satisfied.
+
+Read-only AP preflight must establish reviewed .1 source/runtime tuple,
+compatibility 1.0, confirmed qualified E410/E410B pair and board-data vault,
+adequate target kernel/rootfs/data capacities, same validated fs UBI binding,
+and an existing healthy shared certificates UBIFS volume >=20 LEBs of
+126976 bytes. Require durable store identity to match current runtime
+key/cert, valid cryptographic pairing and private key ownership/mode;
+also check durable operational credentials/trust against current runtime.
+Do not print private key contents. No manual mount/resize/erase bypass.
+
+Incoming .3 allocator preserves existing valid empty/provisioned stores
+unchanged. Absent stores require >=20 genuinely free blocks; neither this
+audit nor restored runtime credentials prove durable allocation/identity
+when the source store is absent/unmounted/stale. Such cases remain blocked
+pending explicit read-only diagnosis and a separately reviewed route.
+
+Fixtures isolate sysfs/UBI and hardware validation; no real RAM pivot,
+mount, volume write, AP upgrade or power-loss trial has been performed.
+Only after actual AP preflight PASS should the human perform normal UI
+upgrade to .3 and check reconnect/config/identity/new-slot confirmation.
+This is an offline-qualified conditional route, NOT hardware confirmation.
