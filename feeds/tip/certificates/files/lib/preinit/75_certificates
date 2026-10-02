@@ -1,4 +1,44 @@
+generate_cambium_sage_certificate_volume() {
+	local sys=${AB_UBI_SYS:-/sys/class/ubi} dev=${AB_DEV:-/dev}
+	local ubi volume free geometry reserved
+	ab_identity || return 1
+	[ "$AB_FAMILY" = sage ] && [ "$AB_LAYOUT" = pair ] &&
+		[ "$AB_QUALIFIED" = 1 ] && [ "${AB_CERTIFICATE_LEBS:-0}" = 0 ] &&
+		[ "$AB_ACTIVE_MTD" = "$AB_TARGET_MTD" ] || return 1
+	ubi=$AB_ACTIVE_UBI
+	case "$ubi" in ubi[0-9]|ubi[0-9][0-9]) ;; *) return 1 ;; esac
+	[ "$(cat "$sys/$ubi/mtd_num")" = "$AB_ACTIVE_MTD" ] || return 1
+	geometry=$(cat "$sys/$ubi/eraseblock_size") || return 1
+	[ "$geometry" = 126976 ] && [ "$geometry" = "$AB_LEB" ] || return 1
+	volume=$(ab_ubi_volume "$ubi" certificates) || volume=
+	if [ -n "$volume" ]; then
+		reserved=$(cat "$sys/$volume/reserved_ebs") || return 1
+		case "$reserved" in ''|*[!0-9]*) return 1 ;; esac
+		[ "$reserved" -ge 20 ] &&
+			[ "$(cat "$sys/$volume/usable_eb_size")" = "$geometry" ] || return 1
+		return 0 # Existing empty or provisioned stores are never changed.
+	fi
+	free=$(cat "$sys/$ubi/avail_eraseblocks") || return 1
+	case "$free" in ''|*[!0-9]*) return 1 ;; esac
+	[ "$free" -ge 20 ] || return 1
+	# Recheck binding immediately before allocation. Kernel UBI enforces free
+	# capacity atomically; failure never triggers deletion or volume resizing.
+	[ "$(cat "$sys/$ubi/mtd_num")" = "$AB_ACTIVE_MTD" ] || return 1
+	ubimkvol "$dev/$ubi" -N certificates -S 20
+}
+
 generate_certificate_volume() {
+	if [ -f "${CAMBIUM_AB_CORE:-/lib/functions/cambium-ab.sh}" ]; then
+		. "${CAMBIUM_AB_CORE:-/lib/functions/cambium-ab.sh}"
+		case "$(board_name)" in
+		cambium,e410|cambiumnetworks,e410|cambiumnetworks,e410b)
+			generate_cambium_sage_certificate_volume || {
+				echo 'certificates: Sage shared-store identity/capacity/allocation refused; no volume resized or removed' >&2
+				return 1
+			}
+			return 0 ;;
+		esac
+	fi
 	grep certificates /proc/mtd > /dev/null
 	[ $? -eq 0 ] && return
 
