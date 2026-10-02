@@ -1,6 +1,9 @@
 #!/bin/sh
 uci add rtty rtty
-uci set rtty.@rtty[-1].id=$(cat /sys/class/net/eth0/address | tr -d :)
+. /lib/functions/system.sh
+label_mac=$(get_mac_label)
+[ -n "$label_mac" ] || label_mac=$(cat /sys/class/net/lan/address 2>/dev/null)
+uci set rtty.@rtty[-1].id="$(printf %s "$label_mac" | tr -d :)"
 uci set rtty.@rtty[-1].description="$(cat /tmp/sysinfo/model)"
 uci set rtty.@rtty[-1].ssl=1
 uci set rtty.@rtty[-1].port='5912'

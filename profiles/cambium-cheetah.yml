@@ -1,0 +1,8 @@
+---
+profile: cambiumnetworks_cheetah-persistent
+target: qualcommax
+subtarget: ipq50xx
+description: Build OpenWiFi for qualified Cheetah XV2-21X
+image: bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-cambiumnetworks_cheetah-persistent-squashfs-sysupgrade.bin
+include:
+  - ucentral-ap
