@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "helper_sha256": "b03dfd7501604d1a4b47da04cc566fc2837725329a01399edb0bc5130a855042",
+  "runs": [
+    {"shell": "native Linux POSIX sh", "awk_wc": "native", "count": 76, "passed": true, "fixture": "/tmp/minimum-release-contract.fbq67_l0"},
+    {"shell": "archived ARM BusyBox ash", "awk_wc": "actual archived ARM BusyBox through QEMU", "count": 76, "passed": true, "fixture": "/tmp/minimum-release-contract.qpu_7qlq"},
+    {"shell": "archived ARM64 BusyBox ash", "awk_wc": "actual archived ARM64 BusyBox through QEMU", "count": 76, "passed": true, "fixture": "/tmp/minimum-release-contract.8ebe0s07"},
+    {"shell": "archived MIPS BusyBox ash", "awk_wc": "actual archived MIPS BusyBox through QEMU", "count": 76, "passed": true, "fixture": "/tmp/minimum-release-contract.kx2shbmn"}
+  ],
+  "scope": "Same 76 shared metadata fixture cases per host/target runtime. Not live AP or full upgrade acceptance. No release file was sourced."
+}

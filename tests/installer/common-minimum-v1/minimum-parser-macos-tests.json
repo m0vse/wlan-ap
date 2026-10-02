@@ -1,0 +1,544 @@
+{
+  "passed": true,
+  "count": 76,
+  "cases": [
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "jaguar",
+      "namespace": "stock",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "jaguar",
+      "namespace": "stock",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "jaguar",
+      "namespace": "stock",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "jaguar",
+      "namespace": "stock",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "stock",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "stock",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "stock",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "stock",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "tip",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "tip",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "tip",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "thor",
+      "namespace": "tip",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "stock",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "stock",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "stock",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "stock",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "tip",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "tip",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "tip",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "cheetah",
+      "namespace": "tip",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "stock",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "stock",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "stock",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "stock",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "tip",
+      "case": "minimum",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "tip",
+      "case": "newer-date-and-source",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "tip",
+      "case": "below-date",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "gambit",
+      "namespace": "tip",
+      "case": "numeric-revision",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "duplicate-key",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "shell-statement",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "symlink-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "missing-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "oversize-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "unquoted",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "shell-control-key",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-devel",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.13.01.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.02.29.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.09.31.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.10.2.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.10.02.-1",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.10.02.01",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "malformed-2026.10.02.1000000",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "wrong-target",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "wrong-arch",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "duplicate-key",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "shell-statement",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "symlink-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "missing-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "oversize-release",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "unquoted",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "shell-control-key",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-devel",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.13.01.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.02.29.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.09.31.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.10.2.0",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.10.02.-1",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.10.02.01",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "malformed-2026.10.02.1000000",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "wrong-target",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "wrong-arch",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "wrong-family",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "stock",
+      "case": "TIP-on-stock",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "mixed-route",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "wrong-family",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "inconsistent-full",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "family": "sage",
+      "namespace": "tip",
+      "case": "bad-source-suffix",
+      "accepted": false,
+      "passed": true
+    }
+  ],
+  "fixture": "/tmp/minimum-release-contract.cawwv0p8",
+  "helper_sha256": "b03dfd7501604d1a4b47da04cc566fc2837725329a01399edb0bc5130a855042",
+  "shell": [
+    "sh"
+  ],
+  "scope": "Shared metadata data-parser fixtures under stated shell and PATH-selected awk/wc; no sourced AP metadata, implementation approval, AP operations or hardware proof"
+}

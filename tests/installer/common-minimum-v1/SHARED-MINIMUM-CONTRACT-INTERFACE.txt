@@ -1,0 +1,62 @@
+Frozen shared interface v1, 2026-10-02. Offline installer-only use.
+
+minimum-release-contract.sh
+SHA256 b03dfd7501604d1a4b47da04cc566fc2837725329a01399edb0bc5130a855042
+ow_release_contract_check POLICY SOURCE_ROOT
+Policy: exactly one newline-terminated line with five fields:
+stock|tip family YYYY.MM.DD.N target architecture
+ow_release_contract_check_values NAMESPACE FAMILY MINIMUM TARGET ARCH ROOT
+The literal argument API permits embedding the same trusted parser in an
+authenticated stock-only helper without environment flags/temp policy data.
+Empty ROOT uses live root; absolute ROOT uses offline private file fixtures.
+Neither API sources/evals release metadata. Only whitelisted literal keys;
+duplicate, mixed namespace, wrong family/target/arch, below/minimum malformed
+calendar version, inconsistent TIP full marker/source suffix refuse.
+Stock floors: Sage/Jaguar/Cheetah/Thor2026.09.29.0, Gambit2026.10.02.0.
+Separate TIP floors: Sage2026.10.02.1, Cheetah2026.10.02.11,
+Thor2026.10.02.8, Gambit2026.10.02.12. No Jaguar preservation route invented.
+
+runtime-implementation-contract.sh
+SHA256 01eec67f15e7ecf84ea6478eff0d8542ef4c16297db03614e87e2a68f43ff291
+ow_runtime_contract_check LEDGER SOURCE_ROOT
+Ledger: X executable-sha256 /path, F readable-file-sha256 /path,
+L literal-link-target /path, A - /expected-absent-path.
+Manifest must be approved bundle data, complete/nonempty/unique/safe rows.
+Unknown bytes, missing components, lost X permission, changed aliases,
+unexpected optional commands and malformed/symlink ledgers refuse.
+
+make-runtime-implementation-set.py
+SHA256 0c2e1ec6005678b7a82acb670cc6f0b38210d98a1b30849b44c3300339e593b6
+Usage: verified-offline-root output-ledger seed-file [ELF e_machine].
+Seeds one per line: required command/absolute executable; ?optional-command;
+@/absolute/readable-plugin-or-library. Resolves standard PATH candidates
+usr/sbin,usr/bin,sbin,bin, records aliases including directory links in
+target namespace, recursively authenticates ELF interpreter/DT_NEEDED closure.
+Explicitly seed actual dlopen/ucode imports; DT_NEEDED alone cannot infer them.
+Never run generator on live AP or learn hashes from a rejected candidate.
+Stock clean route must not require unused OpenSSL or read legacy credentials.
+
+Integration:
+SHA-authenticate bundle first; pin live PATH to /usr/sbin:/usr/bin:/sbin:/bin.
+Keep exact reviewed implementation tuples/wildcard closure; remove ONLY
+/etc/openwrt_release and /etc/cambium-openwrt-release from code fingerprints.
+Metadata minimum + runtime ledger + code contract are independent mandatory
+gates before sourcing AP code/install writes. Recheck at mutation boundaries;
+freeze validated metadata fingerprint within invocation to detect drift.
+Recovery restores only authenticated original target bytes, never metadata;
+check live tool identities before recovery execution. Inability to qualify
+current metadata must not permit new install/flash. Safe rollback handling
+must remain explicit and not introduce unknown executable script sourcing.
+Retain model/SKU/layout/calibration/vault/RAM/crypto/store/snapshot/compatibility
+guards; a valid newer label is not approval of unknown implementation code.
+Changed code/tool/library variants require separate offline qualification.
+Installer images/published artifacts/AP state remain immutable until own
+route receipts and explicit publication/deployment authorization.
+
+Shared evidence:
+Parser76controls on macOS;76each on nativeLinux and actual archived ARM,
+ARM64,MIPS BusyBox ash+awk+wc through QEMU (304Linux/target controls).
+Runtime matcher15synthetic file/link/permission/absence controls on macOS and
+Linux. Actual Sage/Jaguar archived tool closure ledgers generate and match;
+their route-specific seeds/ledger receipts are separate, not generic hardware
+proof. No actual mounts, AP actions, flash, reboot or runtime enrollment.

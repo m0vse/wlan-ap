@@ -1,0 +1,84 @@
+{
+  "passed": true,
+  "count": 15,
+  "cases": [
+    {
+      "case": "reviewed",
+      "accepted": true,
+      "passed": true
+    },
+    {
+      "case": "changed-binary",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "changed-library",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "nonexecutable",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "missing-library",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-link",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "link-to-file",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "file-to-link",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "unexpected-optional",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "dangling-optional",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "empty-ledger",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "duplicate-ledger",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "malformed-hash",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "unsafe-ledger-path",
+      "accepted": false,
+      "passed": true
+    },
+    {
+      "case": "symlink-ledger",
+      "accepted": false,
+      "passed": true
+    }
+  ],
+  "fixture": "/tmp/runtime-contract-tests.86mjtcwo",
+  "helper_sha256": "01eec67f15e7ecf84ea6478eff0d8542ef4c16297db03614e87e2a68f43ff291",
+  "scope": "Synthetic files/links/absence and matcher only; no target code, live enrollment or AP actions"
+}
