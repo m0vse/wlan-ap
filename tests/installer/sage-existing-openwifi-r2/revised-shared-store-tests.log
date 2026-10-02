@@ -1,0 +1,4 @@
+Actual test-shared-store.sh rerun against corrected operator-openwifi-r2.
+Exit 0: PASS: shared geometry/capacity/mount/credential refusals; no store writes.
+Test byte-identical to frozen operator-openwifi-r1; generated synthetic credentials only.
+No actual AP/mount/UBI/flash/environment actions.

@@ -1,0 +1,31 @@
+OFFLINE-QUALIFIED CANDIDATE -- PUBLICATION ON HOLD; NO AP EXECUTION
+
+Operator revision 2: complete UCI/source tuple authenticated before set +u.
+Stock optional-variable semantics restored; -e and refusal gates unchanged.
+Firmware and installed bridge payload/source tuples remain unchanged.
+
+Exact converted stock OpenWrt 2026.09.29.0 -> Sage OpenWiFi .3 only.
+Qualified E410/E410B. This is not an already-OpenWiFi preserving upgrade.
+Default --check is read-only preflight. Explicit --install changes six fixed
+updater files transactionally, then delegates to normal sysupgrade -n.
+No -f config archive, force flag or compatibility-UCI edit.
+
+All outgoing configuration and identity/endpoint/trust files are discarded.
+No outgoing crypto requirement for discarded credentials. Hardware data and
+protected partitions remain under canonical A/B guards. Incoming .3 starts
+unprovisioned and needs authorised unique enrollment/manual first testing.
+The image contains normal stock public trust certificates, not a shared AP
+private key or fixture CA. No production issuer/trust activation is included.
+
+Shared-store prerequisite: verified mounted empty volume with >=20LEBs and
+exact geometry, or absent volume with >=20 independently free LEBs. Refuse
+nonempty, unmounted existing, wrong-device/mount/geometry/private-link states.
+No shared-store mount, erase, clear, rename or allocation by this installer.
+Installed stock helper rechecks after services stop, before pair writes.
+Incoming .3 preinit can allocate only from verified free space without
+removing wifi_fw, shrinking/resizing volumes or changing existing stores.
+
+Physical early-boot timing, target mounts/UBIFS behavior, power loss, RAM
+pivot and AP acceptance remain unproved. See FINAL-RECEIPT.txt for exact
+test scope/counts; draft transaction-mechanics and final-payload tests are
+explicitly distinguished. Do not publish or deploy during the E400 incident.

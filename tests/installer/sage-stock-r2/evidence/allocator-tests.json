@@ -1,0 +1,91 @@
+{
+  "passed": true,
+  "count": 13,
+  "cases": [
+    {
+      "case": "absent-capacity20",
+      "passed": true,
+      "trace": [
+        "ubimkvol /tmp/sage-certificate-allocator.uc1h31bp/absent-capacity20/dev/ubi0 -N certificates -S 20"
+      ],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "absent-capacity19",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "existing-empty",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "existing-nonempty",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "wrong-mtd",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "wrong-layout",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "unqualified",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "identity-refusal",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "existing-short",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "existing-wrong-geometry",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "allocation-refusal",
+      "passed": true,
+      "trace": [
+        "ubimkvol /tmp/sage-certificate-allocator.uc1h31bp/allocation-refusal/dev/ubi0 -N certificates -S 20"
+      ],
+      "existing_store_unchanged": true
+    },
+    {
+      "case": "invalid-capacity",
+      "passed": true,
+      "trace": [],
+      "existing_store_unchanged": true
+    }
+  ],
+  "source_sha256": "3c27e4c08b4faacf389e2ede3562051d55553b0fd32a8f68afec973ab3ed0368",
+  "fixture": "/tmp/sage-certificate-allocator.uc1h31bp",
+  "scope": "Actual preinit dispatch/allocator with identity and UBI/sysfs fixture boundaries; no real allocation, resize, erase, mount or AP execution"
+}

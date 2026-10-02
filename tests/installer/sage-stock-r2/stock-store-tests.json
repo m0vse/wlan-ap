@@ -1,0 +1,74 @@
+{
+  "passed": true,
+  "count": 13,
+  "cases": [
+    {
+      "case": "empty-mounted",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "nonempty-mounted",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "absent20",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "absent19",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-mtd",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-mount",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "duplicate-mount",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "short-volume",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "symlink-store",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "missing-mounts",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "preserving-refused",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "late-identity-file",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    }
+  ],
+  "helper_sha256": "b694545aa37699c2fb47fed9794a07a003afbfac82f97f26db98d5d858a5d402",
+  "fixture": "/tmp/sage-stock-store.bld79u3q",
+  "scope": "Actual stock store checker and pre-RAM export hook; identity/sysfs/mount-table fixtures; no AP, real mount, bank/env or allocation writes"
+}

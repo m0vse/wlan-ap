@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "count": 8,
+  "cases": [
+    {
+      "case": "outgoing",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "installed",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "changed-source",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "missing-source",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "mixed-tuple",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "extra-upgrade-script",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "extra-function-script",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "symlink-source",
+      "passed": true,
+      "accepted": false
+    }
+  ],
+  "fixture": "/tmp/family-complete-source-gate.w3jxwy5e",
+  "preparer_sha256": "6287e36ae6b2e899be78cb27a5083150936aeefd6ecfd9edfce98b2f88fbefb7",
+  "scope": "Actual complete source gate and tuple checker; private filesystem prefix/root mapping only; no AP script sourced or executed"
+}

@@ -1,0 +1,80 @@
+{
+  "passed": true,
+  "count": 14,
+  "cases": [
+    {
+      "case": "empty-mounted",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "nonempty-mounted",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "absent20",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "absent19",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-mtd",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-mount",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "duplicate-mount",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "short-volume",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "symlink-store",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "missing-mounts",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "preserving-refused",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "late-identity-file",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    },
+    {
+      "case": "unmounted-store",
+      "passed": true,
+      "no_crypto_mount_allocation_env_commands": true
+    }
+  ],
+  "helper_sha256": "f38a0716c78482cdfbaa61e643e3b976a8722c8b0dca41eead71432df95e6bf6",
+  "fixture": "/tmp/sage-stock-store.gkfxtvk5",
+  "actual_platform_hook": true,
+  "scope": "Actual stock store checker/pre-RAM export and optional real platform hook; identity/sysfs/mount-table fixtures; no AP, real mount, bank/env or allocation writes"
+}

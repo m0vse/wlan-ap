@@ -1,0 +1,48 @@
+Jaguar converted stock OpenWrt -> OpenWiFi .2 operator-stock-r3.
+Installer-only nounset revision of frozen operator-stock-r2. Firmware and
+installed five-file bridge payload/source tuples are unchanged. New checks
+and the exact inherited evidence distinction are in INSTALLER-R3-AUDIT.txt.
+Offline-qualified candidate; no AP execution, flash, boot environment changes,
+publication or production trust changes performed by this chat.
+
+Frozen incoming: TIP-jaguar-2026.10.02.2-b4596201, 21,750,167 bytes.
+SHA256 3957cab679b6a01e928d4f755ed05e733aba3659c980de66c6ec7af7befbd3ba
+Exact outgoing stock OpenWrt 2026.09.29.0, source aff0cccda079fea3fbbe6b1b305fd5d2f3a7abf0.
+Outgoing image SHA256:
+e73551db75bed43ed691ec507dd5b1273c87917c19105a672881cc1befbaac86
+Qualified outgoing XV2-2/XV2-2T1 only. XE3-4 not approved by this inventory.
+
+Stock clean migration deliberately uses -n and no -f configuration archive.
+No outgoing network/wireless/system config, keys/certificates, gateway,
+redirector or trust policy is carried forward. The source-gated stock-only
+installed helper exports a strictly empty boot/bank-bound certificate archive;
+only the zero-byte manifest/root directory are accepted. Config-preserving
+execution, extra keys, duplicate/nonempty/newline manifests, wrong binding
+and archive checksum drift refuse. Legacy stores remain untouched. No
+outgoing OpenSSL prerequisite is imposed to validate discarded identities.
+Canonical hardware-vault/calibration/protected-layout safeguards remain.
+Incoming firmware retains the canonical identity-preserving helper for later
+OpenWiFi upgrades; this outgoing clean helper is not that upgrade route.
+Device starts unprovisioned, requiring unique authorised enrollment or
+manual test provisioning; no shared private key, test CA or TLS bypass.
+
+Final test counts, isolated Linux fixtures:
+  32 real bridge transaction/fault/retry cases passed.
+  14 recovery refusals passed, unknown wildcard scripts rejected before writes.
+  18 actual frozen stock validator cases passed, target ARM64 tools under QEMU:
+     -n admits minor config mismatch, not major/unsupported-board mismatches.
+  9 actual wrapper control-flow cases passed with sysupgrade boundaries stubbed.
+  8 actual complete source-gate cases passed before AP script sourcing.
+  11 actual empty-certificate export/validator cases passed, crypto not invoked.
+  Actual incoming image static architecture/tool/library RAM closure passed.
+
+Default --check does not recover journals, install bridge files or arm a trial.
+Explicit --install can recover only approved own pending transactions and
+replace five fixed updater targets transactionally before normal sysupgrade.
+Image/signature/platform checks are not bypassed. No force or UCI fence edits.
+
+Limitations: no real target UBIFS/mount/erase, physical power-loss testing,
+RAM pivot or AP boot acceptance. Helper export/validator tests use identity
+fixtures; bank allocation/restore remains covered by canonical simulated
+fixtures, not physical media. Runtime prerequisites and hardware acceptance
+are still required. Installer-only revision; frozen .2 bytes unchanged.

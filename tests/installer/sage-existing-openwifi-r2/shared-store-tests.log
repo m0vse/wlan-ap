@@ -1,0 +1,3 @@
+Shared certificates absent and capacity below 20 LEBs
+Shared certificates absent: explicit provision/persist prerequisite; no allocation attempted
+PASS: shared geometry/capacity/mount/credential refusals; no store writes

@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "bundle": "/Volumes/Phil's Data/Codex/Documents/cambium-openwrt/builds/openwifi-jaguar/operator-stock-r3",
+  "prior_frozen_bundle": "/Volumes/Phil's Data/Codex/Documents/cambium-openwrt/builds/openwifi-jaguar/operator-stock-r2",
+  "unchanged_sha256": {
+    "cambium-ab.sh": "9ad7dc91b5bf5481c9d3311b6f4c703923a6fb98b076627c2e92bf95cf1d636d",
+    "cambium-ab-upgrade.sh": "b46173e21bd6fd0a6dc5682203844cc4a346516e826326e47b1f6f8dbf3dfc61",
+    "cambium-ab-certificates.sh": "5043e44277c62f5da631b73afab006b28beaea2d771a028566f1e90c022673ed",
+    "modules/cambium-ab-jaguar.sh": "0d72ce8f4384eb90e2ebad7b635a1790861e687d953c5b2a87c40598521d6265",
+    "platform.sh": "19a02110eab3eed46e012d9e7872e080f918ad9667042da84886e1f9e0cdc54f",
+    "bridge-transaction.sh": "9b5d3a1d0c876d6a0c654196dbad52766d6dd3721899eee1d3292ba7ae341a8d",
+    "source-set-check.sh": "ae85282ccbf5bdd7d161459e5ebdba07a1d66f3e5c64a8b7444d89f4a31c8f6c",
+    "source-sets/required-paths": "7aa898e3a136043b25c20b3c6b8221202866dd53442b34159a18d1ab824372be",
+    "source-sets/installed-bridge.set": "9effada1d1e4ff5eb328a2ee7202e9637c59cfe6bd7da769e16dfc84edb55520",
+    "IMAGE": "aa60c8aafa9522992fa577652cfb39f377464d93dbd28ee93804bcfc13389816",
+    "source-sets/outgoing-2026.09.29.0.set": "f6e27464ca641feac22b386dddfffa58e2f96288556a707e4a9b760bfef07194",
+    "jaguar-sysinstall.sh": "db32329570a6864d9bde9c487ad629db312c5db7835ac5f72d405edfad34d28b",
+    "cambium_xv2-2t1-jaguar-2026.10.02.2-sysupgrade.bin": "3957cab679b6a01e928d4f755ed05e733aba3659c980de66c6ec7af7befbd3ba"
+  },
+  "scope": "Byte comparison of immutable firmware, all installed bridge targets, transaction/recovery functions, complete source tuples, wrapper and store/compatibility guards. Prior transaction/validator evidence applies to unchanged bytes; not a rerun or hardware proof."
+}

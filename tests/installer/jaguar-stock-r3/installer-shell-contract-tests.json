@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "count": 11,
+  "cases": [
+    {
+      "shell": "native-fixture-ash",
+      "case": "unset-IPKG_INSTROOT-reproduces",
+      "passed": true,
+      "exit": 2
+    },
+    {
+      "shell": "native-fixture-ash",
+      "case": "empty-IPKG-only-unsafe",
+      "passed": true,
+      "exit": 2
+    },
+    {
+      "shell": "native-fixture-ash",
+      "case": "fixed-authenticated-normal-contract",
+      "passed": true,
+      "exit": 0
+    },
+    {
+      "shell": "native-fixture-ash",
+      "case": "tampered-UCI-before-source",
+      "passed": true,
+      "exit": 71
+    },
+    {
+      "shell": "actual-outgoing-target-ash",
+      "case": "unset-IPKG_INSTROOT-reproduces",
+      "passed": true,
+      "exit": 2
+    },
+    {
+      "shell": "actual-outgoing-target-ash",
+      "case": "empty-IPKG-only-unsafe",
+      "passed": true,
+      "exit": 2
+    },
+    {
+      "shell": "actual-outgoing-target-ash",
+      "case": "fixed-authenticated-normal-contract",
+      "passed": true,
+      "exit": 0
+    },
+    {
+      "shell": "actual-outgoing-target-ash",
+      "case": "tampered-UCI-before-source",
+      "passed": true,
+      "exit": 71
+    },
+    {
+      "case": "missing-tr",
+      "passed": true,
+      "exit": 73
+    },
+    {
+      "case": "nonexecutable-tr",
+      "passed": true,
+      "exit": 73
+    },
+    {
+      "case": "executable-tr",
+      "passed": true,
+      "exit": 0
+    }
+  ],
+  "preparer_sha256": "8542764cf6f4f75880b4d862a5c968b85169df3887a56892bda8ed6fa9fdbe03",
+  "actual_outgoing_source_sha256": {
+    "lib/functions.sh": "9517db82e694624559c41f3773f3f18bf5d3cd1b0ffc41bfb514fa2c08d08062",
+    "lib/functions/system.sh": "cf149a65472a9c24334f77c6c56886ded12cdb77254cd0df8c4f52bd6b4544f6",
+    "usr/share/libubox/jshn.sh": "89fb5871dc9f02e952168da2dd311286d5a2fdd4dd39558557611063129c4fec",
+    "lib/config/uci.sh": "08b91a09a010137cf2a5fea5b75cf6898bdc7358405769b6c7432a98aeb2c7a4"
+  },
+  "fixture": "/tmp/sage-jaguar-installer-shell.qckisbiv",
+  "scope": "Actual outgoing native/target ash library logic with literal private path redirects; authenticated UCI refusal before source; exact executable dependency loop with isolated PATH. No AP, bank, mount, environment writes or reboot."
+}

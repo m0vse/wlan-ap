@@ -1,0 +1,32 @@
+OFFLINE CANDIDATE -- NOT PUBLISHED OR APPROVED FOR AP EXECUTION
+
+Image: TIP-jaguar-2026.10.02.2-b4596201
+Scope: converted OpenWrt 2026.09.29.0 aff0ccc on XV2-2/XV2-2T1 ONLY.
+XE3-4 is not qualified for this particular outgoing source inventory.
+No OEM install, forced upgrade, environment edit or configuration fence bypass.
+
+Default jaguar-sysinstall.sh --check performs preflight only.
+An operator-authorized --install deliberately discards stock configuration,
+transactionally replaces exactly five outgoing updater files, verifies the
+complete installed source tuple and delegates to stock sysupgrade -n.
+No -f archive, legacy keys/certificates, endpoint or trust policy is imported.
+Explicit prepare-upgrader.sh --recover restores an approved interrupted
+transaction; default check refuses pending journals without recovery writes.
+
+The stock-only installed certificate helper exports a strictly empty,
+boot/bank-bound archive. It never reads legacy credentials or invokes crypto,
+and refuses configuration-preserving execution. Incoming firmware contains
+the canonical preservation helper for later OpenWiFi upgrades. Source tuple,
+root identity, binary prerequisites,
+protected flash/vault state, candidate FIT/capacity, private certificate
+snapshot, and stock metadata/signature/configuration checks must all pass
+before any outgoing source replacements or flash writes are permitted.
+
+File-only transaction and stock-validator fixtures do not prove physical
+power-loss atomicity, kernel UBI behavior, a real RAM pivot or AP boot.
+Hardware/runtime validation remains required. Do not execute on an AP
+until operator review and runtime prerequisites are satisfied. This revised
+stock-clean operator policy is revision 3; prior sealed revisions are immutable.
+This revision authenticates the complete UCI/source tuple before relaxing
+unset-variable handling to the stock shell contract. Error/refusal handling
+remains enabled; firmware and installed bridge payload remain unchanged.

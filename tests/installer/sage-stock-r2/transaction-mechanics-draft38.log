@@ -1,0 +1,313 @@
+{
+  "helper_sha256": "c216c8bcc916fe35488d01dd2e190dca4c7206cd26ed125c135bf9be181fafe7",
+  "passed": true,
+  "cases": [
+    {
+      "case": "normal",
+      "target_index": 0,
+      "passed": true,
+      "retry": false,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "stage-copy",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-copy",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-chmod",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "install-move",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "term",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    },
+    {
+      "case": "kill",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "kill",
+      "target_index": 2,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "kill",
+      "target_index": 3,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "kill",
+      "target_index": 4,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "kill",
+      "target_index": 5,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "kill",
+      "target_index": 6,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": false,
+      "killed_process_recovered_before_retry": true
+    },
+    {
+      "case": "postcheck",
+      "target_index": 1,
+      "passed": true,
+      "retry": true,
+      "original_content_modes_uid_gid_restored": true,
+      "killed_process_recovered_before_retry": false
+    }
+  ],
+  "count": 38,
+  "fixture": "/tmp/sage-transaction-tests.4xyy1jrt",
+  "scope": "Real transaction functions and canonical complete tuple checker; file-only root fixtures; no AP scripts, flash, reboot or environment tools executed"
+}

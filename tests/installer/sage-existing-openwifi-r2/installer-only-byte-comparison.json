@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "bundle": "/Volumes/Phil's Data/Codex/Documents/cambium-openwrt/builds/openwifi-sage/operator-openwifi-r2",
+  "prior_frozen_bundle": "/Volumes/Phil's Data/Codex/Documents/cambium-openwrt/builds/openwifi-sage/operator-openwifi-r1",
+  "unchanged_sha256": {
+    "cambium-ab.sh": "1fe1c8c74526a61bfe8a514ff286351300c5906aa69d22137f886cd6c1d794f7",
+    "cambium-ab-upgrade.sh": "c6c4857dd5f212ff0dad8c0dab0f374bd5dec62a167fb10691719a1170c475c9",
+    "cambium-ab-certificates.sh": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971",
+    "modules/cambium-ab-sage.sh": "ec23c08235a65bb914483b820624df484ce344a4803e44dee5c6ffccb594e022",
+    "cambium-sage.sh": "2bb109e9111abec52ff2acb72e981468d7c073ae410718626f479cc63b12491c",
+    "platform.sh": "c418e4a343088ade1f51e4b5d027adeae7ae422ed735f0c0dfbd483d568c9e63",
+    "bridge-transaction.sh": "c216c8bcc916fe35488d01dd2e190dca4c7206cd26ed125c135bf9be181fafe7",
+    "source-set-check.sh": "ae85282ccbf5bdd7d161459e5ebdba07a1d66f3e5c64a8b7444d89f4a31c8f6c",
+    "source-sets/required-paths": "1cee80743672e7176747b8df4cad120c00c53b8d8a3fddcfc92beec38730f1bf",
+    "source-sets/installed-bridge.set": "3135387334ba55a08f7a933d6788672177eed92ca70dcd9023a3d4bf27e7ee73",
+    "IMAGE": "519ef754731ea032e60a560dfe9956fb03669aa86a5a6d4467fb5a28e10f5638",
+    "source-sets/outgoing-openwifi-2026.10.02.1.set": "e276d5c9c7c49a33abbe76b98f752c2cd46c0f4a5cad6727fa45312b847b21fb",
+    "shared-store-check.sh": "f4123c48ffa42a814e2580a2f385c024b48850e135cc2a2bd84d7f69d9d68bb3",
+    "compatibility-check.sh": "656d4111152b285a7a23bc023f05a7907d01180483f0f58712bb026a3eafabc5",
+    "sage-sysinstall.sh": "442525f5c24c17f65ff4dc3460a9fd5981bd1c2850756d456aebc7834b505919",
+    "cambium-sage-sage-2026.10.02.2-sysupgrade.bin": "afa05459b20b8557ee07b39a89bcf41b77ce05d53b22d8551e742d8348a808ee"
+  },
+  "scope": "Byte comparison of immutable firmware, all installed bridge targets, transaction/recovery functions, complete source tuples, wrapper and store/compatibility guards. Prior transaction/validator evidence applies to unchanged bytes; not a rerun or hardware proof."
+}
