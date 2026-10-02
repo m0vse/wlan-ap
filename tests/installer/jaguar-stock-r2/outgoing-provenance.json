@@ -1,0 +1,16 @@
+{
+  "family": "jaguar",
+  "release": "2026.09.29.0",
+  "source": "aff0cccda079fea3fbbe6b1b305fd5d2f3a7abf0",
+  "upstream": "5c8e736980fbc2fee00a9f13a0b94e1a29fc6189",
+  "artifact_sha256": "e73551db75bed43ed691ec507dd5b1273c87917c19105a672881cc1befbaac86",
+  "artifact_size": 17428846,
+  "offline_models": [
+    "XV2-2",
+    "XV2-2T1"
+  ],
+  "source_paths": 35,
+  "tuple_sha256": "f6e27464ca641feac22b386dddfffa58e2f96288556a707e4a9b760bfef07194",
+  "openssl_present": false,
+  "ap_installed_provenance": false
+}

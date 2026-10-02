@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "case": "initializing-without-pid",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "live-owner",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "symlink-pid",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "unsafe-journal-mode",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "corrupt-original",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "unrelated-source-drift",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "unapproved-source-set",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "symlink-original",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "changed-original-mode",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "symlink-source-set",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "symlink-state",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "invalid-state",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "extra-upgrade-script",
+      "passed": true,
+      "live_source_unchanged": true
+    },
+    {
+      "case": "extra-function-script",
+      "passed": true,
+      "live_source_unchanged": true
+    }
+  ],
+  "count": 14,
+  "fixture": "/tmp/jaguar-transaction-tests.wff4t3t2/normal-0",
+  "scope": "Malformed, unsafe or live-owner journals and unrelated source drift refused before writes; file-only fixture"
+}
