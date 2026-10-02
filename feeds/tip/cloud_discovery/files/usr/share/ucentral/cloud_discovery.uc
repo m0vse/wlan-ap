@@ -2,6 +2,7 @@
 
 import * as libubus from 'ubus';
 import * as fs from 'fs';
+import { select_controller } from './discovery_policy.uc';
 
 let cmd = ARGV[0];
 let ifname = getenv("interface");
@@ -22,22 +23,21 @@ if (file.server && file.port && file.valid)
 let cloud = {
 	lease: true,
 };
-if (opt138) {
-	let dhcp = opt138;
-	dhcp = split(dhcp, ':');
-	cloud.dhcp_server = dhcp[0];
-	cloud.dhcp_port = dhcp[1] ?? 15002;
-	cloud.no_validation = true;
+let policy_file = fs.readfile('/etc/ucentral/discovery-policy.json');
+let policy = null;
+if (policy_file != null) {
+	try { policy = json(policy_file); }
+	catch (e) { policy = {}; }
+	/* Explicit JSON null is not permission to use arbitrary DHCP hints. */
+	policy ??= {};
 }
-if (opt224) {
-	let dhcp = opt224;
-	dhcp = split(dhcp, ':');
-	cloud.dhcp_server = dhcp[0];
-	cloud.dhcp_port = dhcp[1] ?? 15002;
-}
+let selected = select_controller(opt138, opt224, policy);
+if (selected)
+	for (let key, value in selected)
+		cloud[key] = value;
 fs.writefile('/tmp/cloud.json', cloud);
 
-if ((opt138 || opt224) && cmd == 'renew') {
+if (cmd == 'renew') {
 	let ubus = libubus.connect();
 	ubus.call('cloud', 'renew');
 }

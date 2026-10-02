@@ -209,7 +209,7 @@ function discover_dhcp() {
 			server: dhcp.dhcp_server,
 			port: dhcp.dhcp_port,
 			valid: false,
-			hostname_validate: dhcp.no_validation ? 0 : 1,
+			hostname_validate: 1,
 			cert: `/etc/ucentral/${fqdn}.pem`,
 			ca: `/etc/ucentral/${fqdn}.ca`
 		})) {

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cloud_discovery
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -16,6 +16,10 @@ define Package/cloud_discovery
 endef
 
 Build/Compile=
+
+define Package/cloud_discovery/conffiles
+/etc/ucentral/discovery-policy.json
+endef
 
 define Package/cloud_discovery/install
 	$(CP) ./files/* $(1)
