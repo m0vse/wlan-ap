@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "count": 4,
+  "cases": [
+    {
+      "case": "omitted",
+      "passed": true,
+      "config_and_shadow_preserved": true,
+      "active_symlink_and_document_preserved": true,
+      "identity_and_custom_gateway_ca_preserved": true,
+      "sysupgrade_explicit_archive_without_n": true
+    },
+    {
+      "case": "both-false",
+      "passed": true,
+      "config_and_shadow_preserved": true,
+      "active_symlink_and_document_preserved": true,
+      "identity_and_custom_gateway_ca_preserved": true,
+      "sysupgrade_explicit_archive_without_n": true
+    },
+    {
+      "case": "redirector-only",
+      "passed": true,
+      "config_and_shadow_preserved": true,
+      "active_symlink_and_document_preserved": true,
+      "identity_and_custom_gateway_ca_preserved": true,
+      "sysupgrade_explicit_archive_without_n": true
+    },
+    {
+      "case": "config-only",
+      "passed": true,
+      "config_and_shadow_preserved": true,
+      "active_symlink_and_document_preserved": true,
+      "identity_and_custom_gateway_ca_preserved": true,
+      "sysupgrade_explicit_archive_without_n": true
+    }
+  ],
+  "command_sha256": "e3db102971239f319ce0f4b9f58bd852c3ff4361421c7357732438a1b55b6c25",
+  "scope": "Actual frozen cmd_upgrade.uc archive and flag logic with filesystem literals redirected to private fixtures; actual tar only. Download/ubus validation/daemon-stop/network-stop/sysupgrade/reboot boundaries blocked. Actual firmware validation and A/B certificate/RAM closure are separate receipts; not physical upgrade proof."
+}

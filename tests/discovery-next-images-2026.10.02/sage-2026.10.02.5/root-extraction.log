@@ -1,0 +1,15 @@
+Parallel unsquashfs: Using 8 processors
+1832 inodes (1557 blocks) to write
+
+
+[============================================================| ] 3388/3389  99%
+
+created 1510 files
+created 167 directories
+created 321 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+
+create_inode: could not create character device /tmp/openwifi-sage-discovery-validation.mh1qojwo/root/dev/console, because you're not superuser!

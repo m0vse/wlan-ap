@@ -1,0 +1,53 @@
+{
+  "offline_verified": true,
+  "family": "sage",
+  "revision": "OpenWrt 25.12.3 r32912-6639b15f62 / TIP-sage-2026.10.02.5-a631587a",
+  "source_commit": "a631587a322f15f12dbacfba079be37acfaabf3f",
+  "image": "cambium-sage-sage-2026.10.02.5-sysupgrade.bin",
+  "image_bytes": 13865290,
+  "image_sha256": "ba2d2cecb681c3e5f0d28ddb1732f835f1ede791ff97603bf16f257dade25f01",
+  "published_model_aliases": [
+    "cambium_e410",
+    "cambium_e410b"
+  ],
+  "cloud_discovery_release": 6,
+  "actual_image_controls": {
+    "built-discovery-tests.json": 35,
+    "normal-outgoing-e410-validator-tests.json": 12,
+    "normal-outgoing-e410b-validator-tests.json": 12,
+    "outgoing-e410-retained-ram-tests.json": 4,
+    "outgoing-e410b-retained-ram-tests.json": 4,
+    "outgoing-managed-archive-tests.json": 4
+  },
+  "target_runtime_controls": 7,
+  "unchanged_kernel_fit_sha256": "dbbbd2f3f2f214105896d4664dacd26b83aa05bf08259ec63277d2a0e3b7702d",
+  "unchanged_kernel_modules": 129,
+  "retained_feature_files": {
+    "etc/init.d/cloud_discover": "13e05c850c232af9f2c0b2b2e0b989142ea4efe1bf8ee64ec7b0a88fceffed51",
+    "etc/init.d/ucentral": "2cfb403812fdb129e28bdc53969eb0ad9ebf2e465b95efbb932f1478345db37a",
+    "etc/uci-defaults/18_cambium_ab_guard": "3b908fdac15ee34ab971712a48bce1fceec046685798f8cfa9aed45c18dae67d",
+    "etc/uci-defaults/19_cambium_openwifi_identity": "575e527e58270b1b6e8410dc7d600a8acf6eeff425f447df07ea202923458882",
+    "lib/functions/cambium-ab.sh": "1fe1c8c74526a61bfe8a514ff286351300c5906aa69d22137f886cd6c1d794f7",
+    "lib/functions/cambium-sage.sh": "2bb109e9111abec52ff2acb72e981468d7c073ae410718626f479cc63b12491c",
+    "lib/preinit/75_certificates": "3c27e4c08b4faacf389e2ede3562051d55553b0fd32a8f68afec973ab3ed0368",
+    "lib/upgrade/cambium-ab-certificates.sh": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971",
+    "lib/upgrade/cambium-ab.sh": "c6c4857dd5f212ff0dad8c0dab0f374bd5dec62a167fb10691719a1170c475c9",
+    "lib/upgrade/platform.sh": "c418e4a343088ade1f51e4b5d027adeae7ae422ed735f0c0dfbd483d568c9e63",
+    "usr/share/ucentral/cmd_upgrade.uc": "e3db102971239f319ce0f4b9f58bd852c3ff4361421c7357732438a1b55b6c25",
+    "usr/share/ucentral/dfs_cac.uc": "d00367133b24ded6202ab26dd66ce01b3ca9c1c74c4ea4fe7427003e3286534a",
+    "usr/share/ucentral/health.uc": "e9da4cb55d8bfc3c5769be85c6124f1b6d2ef9479ad1d07f85c3ff1e2eb6b83e",
+    "usr/share/ucentral/state.uc": "dbb4c8f65768f55c017badc6aa1e872e2de02c9de1451d69b2ad833ca8958126"
+  },
+  "normal_outgoing_version": ".4",
+  "normal_route": "existing managed UI command; all four keep-flag combinations retain configuration, identity and custom trust through sysupgrade-f; no-n/no extra bridge",
+  "prerequisites": "qualified confirmed hardware, compat1.0, valid current durable credentials/store and existing protected layout/vault/capacity checks",
+  "source_only_crypto_and_boundary_evidence": "a631587a tests/discovery-renewal-r6 (9 real synthetic OpenSSL and11 EST persistence boundary controls; not reclassified as actual image network tests)",
+  "build": "clean base-files and cloud_discovery only then make-j4; no setup/rebase/upstream or profile changes",
+  "limitations": [
+    "No AP actions, physical RAM pivot, boot, rollback or power-loss acceptance",
+    "No live successful EST or private-PKI trust activation",
+    "Two per-file certificate renames not a multi-file power-loss transaction",
+    "Temporary per-AP discovery containment unchanged; only operator decides when to upgrade/enable"
+  ],
+  "publication": "ready for model-specific verified publication only; frozen prior images and FMS untouched"
+}

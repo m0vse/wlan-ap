@@ -1,0 +1,159 @@
+{
+  "passed": true,
+  "count": 35,
+  "daemon": {
+    "passed": true,
+    "count": 25,
+    "cases": [
+      {
+        "case": "fresh-certificate-90-day-window",
+        "passed": true
+      },
+      {
+        "case": "missing-leaf-even-with-ca-no-renewal",
+        "passed": true
+      },
+      {
+        "case": "malformed-leaf-not-expiry-event",
+        "passed": true
+      },
+      {
+        "case": "manual-bootstrap-not-auto-renewed",
+        "passed": true
+      },
+      {
+        "case": "failed-renewal-preserves-working-client-and-gateway",
+        "passed": true
+      },
+      {
+        "case": "successful-renewal-restarts-same-client-no-discovery",
+        "passed": true
+      },
+      {
+        "case": "discovery-state-keeps-working-gateway",
+        "passed": true
+      },
+      {
+        "case": "failed-dhcp-est-candidate-not-published",
+        "passed": true
+      },
+      {
+        "case": "successful-est-with-missing-credential-files-refused",
+        "passed": true
+      },
+      {
+        "case": "ready-unpinned-candidate-enters-validation",
+        "passed": true
+      },
+      {
+        "case": "validation-timeout-restores-last-working-gateway",
+        "passed": true
+      },
+      {
+        "case": "explicit-flash-pin-refuses-dhcp-est-override",
+        "passed": true
+      },
+      {
+        "case": "daemon-consumes-allowed-policy-not-arbitrary-hint",
+        "passed": true
+      },
+      {
+        "case": "ready-local-policy-identity-skips-public-est",
+        "passed": true
+      },
+      {
+        "case": "same-controller-hint-cannot-substitute-missing-cert-paths",
+        "passed": true
+      },
+      {
+        "case": "malformed-policy-fails-closed-no-public-est",
+        "passed": true
+      },
+      {
+        "case": "explicit-null-policy-not-unrestricted",
+        "passed": true
+      },
+      {
+        "case": "lease-loss-retains-destination-and-identity",
+        "passed": true
+      },
+      {
+        "case": "candidate-write-error-not-success",
+        "passed": true
+      },
+      {
+        "case": "production-renewal-window-is-90-days",
+        "passed": true
+      },
+      {
+        "case": "unready-clock-does-not-renew",
+        "passed": true
+      },
+      {
+        "case": "ubus-reenroll-propagates-error-preserving-gateway",
+        "passed": true
+      },
+      {
+        "case": "startup-missing-ca-not-ready",
+        "passed": true
+      },
+      {
+        "case": "incomplete-replacement-cannot-be-written",
+        "passed": true
+      },
+      {
+        "case": "demo-three-day-window-preserved",
+        "passed": true
+      }
+    ]
+  },
+  "est": {
+    "passed": true,
+    "count": 10,
+    "cases": [
+      {
+        "case": "absent-operational-candidate-is-error",
+        "passed": true
+      },
+      {
+        "case": "manual-bootstrap-prefix-not-renewable",
+        "passed": true
+      },
+      {
+        "case": "unsafe-prefix-is-error",
+        "passed": true
+      },
+      {
+        "case": "candidate-not-current-controller-identity-is-error",
+        "passed": true
+      },
+      {
+        "case": "est-error-no-persist-or-activation",
+        "passed": true
+      },
+      {
+        "case": "invalid-replacement-no-persist-or-activation",
+        "passed": true
+      },
+      {
+        "case": "persist-error-no-runtime-activation",
+        "passed": true
+      },
+      {
+        "case": "runtime-rename-error-not-success",
+        "passed": true
+      },
+      {
+        "case": "validated-persisted-replacement-only-success",
+        "passed": true
+      },
+      {
+        "case": "renew-configured-identity-not-transient-dhcp-prefix",
+        "passed": true
+      }
+    ]
+  },
+  "daemon_sha256": "393db5ddd8312e1db1d35949e85d44ffea1f2316184f6444f45ba922b242e41c",
+  "est_sha256": "dc6c5b2a6f9fdcf55a114798160253205328a2daf575dadc80ab7af8457c905a",
+  "scope": "Actual daemon functions/ubus methods and actual simplereenroll with filesystem, clock, EST/process/persistence boundaries private stubs; actual discovery policy module. No AP, network, service start, live trust or certificate modification."
+}

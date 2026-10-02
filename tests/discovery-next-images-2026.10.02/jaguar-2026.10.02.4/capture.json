@@ -1,0 +1,11 @@
+{
+  "family": "jaguar",
+  "revision": "2026.10.02.4",
+  "release": "/home/phil/openwifi-jaguar-build/release-jaguar-2026.10.02.4",
+  "work": "/tmp/openwifi-jaguar-discovery-validation.w4mk7ttm",
+  "root": "/tmp/openwifi-jaguar-discovery-validation.w4mk7ttm/root",
+  "package": "/tmp/openwifi-jaguar-discovery-validation.w4mk7ttm/package",
+  "image": "/home/phil/openwifi-jaguar-build/release-jaguar-2026.10.02.4/cambium-jaguar-jaguar-2026.10.02.4-sysupgrade.bin",
+  "image_sha256": "385d7a898e164bb88feafd9f49803d409e4356c72c502cb3ed3505e3fc748ed1",
+  "image_bytes": 21770647
+}

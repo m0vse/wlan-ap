@@ -1,0 +1,16 @@
+Parallel unsquashfs: Using 8 processors
+1947 inodes (1714 blocks) to write
+
+
+[======================================================/       ] 3266/3661  89%
+[============================================================/ ] 3660/3661  99%
+
+created 1606 files
+created 167 directories
+created 340 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+
+create_inode: could not create character device /tmp/openwifi-jaguar-discovery-validation.w4mk7ttm/root/dev/console, because you're not superuser!

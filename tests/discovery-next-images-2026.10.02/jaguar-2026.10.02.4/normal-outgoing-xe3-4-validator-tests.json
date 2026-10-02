@@ -1,0 +1,93 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "phase": "reviewed-outgoing",
+      "case": "matching-default",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "matching-explicit",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "major-fence",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "minor-mismatch-stock-reset-default",
+      "result": 0,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "actual-validator-minor-fence-SAVE_CONFIG1",
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "unqualified-model",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "platform-refusal",
+      "result": 1,
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "operator-preservation-compat-None",
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "operator-preservation-compat-1.0",
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "operator-preservation-compat-1.1",
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "operator-preservation-compat-2.0",
+      "passed": true
+    },
+    {
+      "phase": "reviewed-outgoing",
+      "case": "operator-preservation-compat-unknown",
+      "passed": true
+    }
+  ],
+  "count": 12,
+  "fixture": "/tmp/preserving-validator.amdsq86n",
+  "reviewed_source_sha256": {
+    "sbin/sysupgrade": "4e66514de633ab2eddf147ae8730ccd41084ce1db6b6939a4a163c49b8223d98",
+    "usr/libexec/validate_firmware_image": "344d0f57b3af9ee13bb1fb4e64eca931d431b3c5157076d693d72a585fc46d43",
+    "lib/upgrade/fwtool.sh": "fe7725a28877ebbeebb0fd593afb700e382b488100ebf4d8e5b5e69a515d523d",
+    "usr/share/libubox/jshn.sh": "89fb5871dc9f02e952168da2dd311286d5a2fdd4dd39558557611063129c4fec",
+    "usr/bin/fwtool": "7edb7555578275e703157dd4f10f973c72460d030ede070bd1b330da40bd69e7",
+    "usr/bin/jshn": "079390a2302e184df42a61b10f0c98d70804de8a0ca8e7c60e7bb4c7f98394a4",
+    "sbin/uci": "2f0963139b99c5e4e4ed41050db36845f1cccc9b694a5106c2818455b379fd80",
+    "usr/bin/est_client": "22f35215ec8e809dcbc18bc72458888b33f07869019e8234b3f53047a4b4c190"
+  },
+  "image_sha256": "385d7a898e164bb88feafd9f49803d409e4356c72c502cb3ed3505e3fc748ed1",
+  "image_compat_version": "1.0",
+  "no_qualification_config_write_required_for_default_or_1_0": true,
+  "source_paths_and_fixture_ash_interpreter_redirected_only": true,
+  "native_busybox_ash": "/home/phil/openwifi-cheetah-build/operator-r2/busybox-ash/busybox",
+  "actual_outgoing_arm_fwtool_jshn_uci": true,
+  "actual_est_fwtool_function_native_ucode_private_birth_fixture": true,
+  "est_enrollment_or_network_not_executed": true,
+  "platform_hardware_boundary_stubbed": true,
+  "full_device_sysupgrade_or_ram_pivot_acceptance": false
+}

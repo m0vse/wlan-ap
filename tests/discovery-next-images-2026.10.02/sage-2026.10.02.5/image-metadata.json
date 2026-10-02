@@ -1,0 +1,1 @@
+{  "metadata_version": "1.1", "compat_version": "1.0",   "supported_devices":["cambium,e410","cambiumnetworks,e410","cambiumnetworks,e410b"], "version": { "dist": "OpenWrt", "version": "25.12.3", "revision": "r32912-6639b15f62", "target": "ipq40xx/generic", "board": "cambium_e410" }, "est_supported": 1 }

@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "revision": "OpenWrt 25.12.3 r32912-6639b15f62 / TIP-jaguar-2026.10.02.4-6dbb803b",
+  "image_bytes": 21770647,
+  "image_sha256": "385d7a898e164bb88feafd9f49803d409e4356c72c502cb3ed3505e3fc748ed1",
+  "package": "cloud_discovery6",
+  "supported_devices": [
+    "cambiumnetworks,xv2-2",
+    "cambiumnetworks,xv2-2t0",
+    "cambiumnetworks,xv2-2t1",
+    "cambiumnetworks,xe3-4",
+    "cambiumnetworks,xe3-4tn"
+  ],
+  "model_aliases": [
+    "cambium_xv2-2",
+    "cambium_xv2-2t1",
+    "cambium_xe3-4"
+  ],
+  "unchanged_feature_files": {
+    "etc/init.d/cloud_discover": "13e05c850c232af9f2c0b2b2e0b989142ea4efe1bf8ee64ec7b0a88fceffed51",
+    "etc/init.d/ucentral": "2cfb403812fdb129e28bdc53969eb0ad9ebf2e465b95efbb932f1478345db37a",
+    "etc/uci-defaults/18_cambium_ab_guard": "3b908fdac15ee34ab971712a48bce1fceec046685798f8cfa9aed45c18dae67d",
+    "etc/uci-defaults/19_cambium_openwifi_identity": "45f1ab37144c1d1f7acac3cca665e2483f79ea916e8dc2ecb5724ab0ba63efd9",
+    "lib/functions/cambium-ab-jaguar.sh": "0d72ce8f4384eb90e2ebad7b635a1790861e687d953c5b2a87c40598521d6265",
+    "lib/functions/cambium-ab.sh": "9ad7dc91b5bf5481c9d3311b6f4c703923a6fb98b076627c2e92bf95cf1d636d",
+    "lib/preinit/75_certificates": "3c27e4c08b4faacf389e2ede3562051d55553b0fd32a8f68afec973ab3ed0368",
+    "lib/upgrade/cambium-ab-certificates.sh": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971",
+    "lib/upgrade/cambium-ab.sh": "b46173e21bd6fd0a6dc5682203844cc4a346516e826326e47b1f6f8dbf3dfc61",
+    "lib/upgrade/platform.sh": "19a02110eab3eed46e012d9e7872e080f918ad9667042da84886e1f9e0cdc54f",
+    "usr/share/ucentral/cmd_upgrade.uc": "e3db102971239f319ce0f4b9f58bd852c3ff4361421c7357732438a1b55b6c25",
+    "usr/share/ucentral/dfs_cac.uc": "d00367133b24ded6202ab26dd66ce01b3ca9c1c74c4ea4fe7427003e3286534a",
+    "usr/share/ucentral/health.uc": "e9da4cb55d8bfc3c5769be85c6124f1b6d2ef9479ad1d07f85c3ff1e2eb6b83e",
+    "usr/share/ucentral/state.uc": "dbb4c8f65768f55c017badc6aa1e872e2de02c9de1451d69b2ad833ca8958126"
+  },
+  "scope": "Actual extracted image/version/package/script/metadata and retained feature byte checks; no live controller/EST/AP or hardware acceptance."
+}
