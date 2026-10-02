@@ -22,8 +22,13 @@ helper = root / 'lib/upgrade/cambium-ab-certificates.sh'
 assignments = '\n'.join(line for line in platform.read_text().splitlines()
                         if line.startswith('RAMFS_COPY_'))
 # Successful bank-local export appends these; Sage already declares them.
-assignments += '\n' + next(line.strip() for line in helper.read_text().splitlines()
-                            if line.strip().startswith('RAMFS_COPY_BIN='))
+if helper.exists():
+    assignments += '\n' + next(line.strip() for line in helper.read_text().splitlines()
+                                if line.strip().startswith('RAMFS_COPY_BIN='))
+else:
+    # Frozen Sage .1 predates bank-local certificate export. Its shared store
+    # is not rewritten by the slot updater; test only its actual RAM list.
+    assert family == 'sage', 'Jaguar requires the canonical export helper'
 digest = hashlib.sha256(image.read_bytes()).hexdigest()
 driver = r'''
 command() {
@@ -48,7 +53,10 @@ env = dict(os.environ, IMAGE_ROOT=str(root), COPY_LIST=str(work / 'copy-list'),
 result = subprocess.run([ash, 'ash', '-c', driver], env=env, capture_output=True, text=True)
 assert result.returncode == 1 and (work / 'boundary').exists(), result.stderr
 names = {Path(p).name for p in (work / 'copy-list').read_text().splitlines()}
-assert {'tr', 'sha256sum', 'cmp', 'mktemp'} <= names, names
+required = {'tr', 'sha256sum'}
+if helper.exists():
+    required |= {'cmp', 'mktemp'}
+assert required <= names, names
 binpath = work / 'bin'
 binpath.mkdir()
 for name in names:
