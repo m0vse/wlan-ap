@@ -1,0 +1,199 @@
+--- a/system/health.uc
++++ b/system/health.uc
+@@ -8,6 +8,8 @@
+ let ubus = libubus.connect();
+ 
+ import * as fs from 'fs';
++let dfs_cac = require('dfs_cac');
++let cac_pending = { sections: {}, radios: {} };
+ 
+ // State object
+ let state = {
+@@ -269,6 +271,8 @@
+ 			/* Skip disabled, non-AP, or ssid-less ifaces */
+ 			if (!iface_section_enabled(iface_section, wifi_config))
+ 				continue;
++			if (cac_pending.sections[j])
++				continue;
+ 			if (iface_section.mode && iface_section.mode != 'ap')
+ 				continue;
+ 			if (!iface_section.ssid)
+@@ -411,7 +415,7 @@
+ 			continue;
+ 
+ 		// Check SSID availability
+-		if (find_ssid(wifi_iface.ssid, wifi_state))
++		if (find_ssid(wifi_iface.ssid, wifi_state) && !cac_pending.sections[k])
+ 			ssid[wifi_iface.ssid] = false;
+ 			
+ 		// Check RADIUS connectivity
+@@ -541,6 +545,14 @@
+ function main() {
+ 	// Load configurations
+ 	let configs = load_configs();
++	try {
++		cac_pending = dfs_cac.collect(configs.wifi_config, ubus.call('network.wireless', 'status'));
++	} catch (e) {
++		// Unavailable runtime evidence must retain normal failure detection.
++		cac_pending = { sections: {}, radios: {} };
++	}
++	if (length(cac_pending.radios))
++		state.dfs_cac = cac_pending.radios;
+ 	
+ 	// Perform all health checks
+ 	let interface_count = perform_interface_health_checks(configs);
+--- /dev/null
++++ b/system/dfs_cac.uc
+@@ -0,0 +1,152 @@
++// Fresh, read-only hostapd CAC evidence. Never infer CAC from channel numbers.
++import * as fs from 'fs';
++
++function parse_status(text) {
++	if (type(text) != 'string' || length(text) > 16384)
++		return null;
++	let fields = {};
++	for (let line in split(text, '\n')) {
++		let kv = match(line, /^([^=]+)=(.*)$/);
++		if (!kv)
++			continue;
++		if (kv[1] in fields)
++			return null;
++		fields[kv[1]] = kv[2];
++	}
++	if (fields.state != 'DFS' || !match(fields.phy || '', /^phy[0-9]+$/) ||
++	    !match(fields.cac_time_seconds || '', /^[0-9]+$/) ||
++	    !match(fields.cac_time_left_seconds || '', /^[0-9]+$/))
++		return null;
++	let duration = int(fields.cac_time_seconds);
++	let remaining = int(fields.cac_time_left_seconds);
++	// Numeric remaining is emitted only while cac_started is true. Expired,
++	// aborted (N/A), malformed and underflowed status must not mask a fault.
++	// STATUS emits duration using C %u; this is its wire type, not a
++	// regulatory-duration ceiling. Reject overflow rather than clamp it.
++	if (length(fields.cac_time_seconds) > 10 || duration > 4294967295 ||
++	    duration <= 0 || remaining <= 0 || remaining > duration)
++		return null;
++	return { fields, duration, remaining, phy: fields.phy };
++}
++
++function query_status(ifname) {
++	if (!match(ifname || '', /^[A-Za-z0-9_.:-]{1,15}$/))
++		return null;
++	// Initial CAC precedes BSS ubus registration. The global control socket
++	// routes STATUS to configured BSSes before they have started beaconing.
++	let p = fs.popen('/usr/libexec/timeout-coreutils -s KILL 2 /usr/sbin/hostapd_cli ' +
++		'-p /var/run/hostapd -i global raw IFNAME=' + ifname + ' STATUS 2>/dev/null', 'r');
++	if (!p)
++		return null;
++	let text = p.read(16385);
++	let rc = p.close();
++	return rc == 0 ? parse_status(text) : null;
++}
++
++function interface_phy(ifname) {
++	let path = fs.readlink('/sys/class/net/' + ifname + '/phy80211');
++	return path ? fs.basename(path) : null;
++}
++
++// Match hostapd's printf_encode() byte representation, including UTF-8 SSIDs.
++function encoded_ssid(ssid) {
++	if (type(ssid) != 'string' || !length(ssid) || length(ssid) > 32)
++		return null;
++	let result = '';
++	for (let i = 0; i < length(ssid); i++) {
++		let byte = ord(ssid, i);
++		if (byte == 34) result += '\\"';
++		else if (byte == 92) result += '\\\\';
++		else if (byte == 27) result += '\\e';
++		else if (byte == 10) result += '\\n';
++		else if (byte == 13) result += '\\r';
++		else if (byte == 9) result += '\\t';
++		else if (byte >= 32 && byte <= 126) result += substr(ssid, i, 1);
++		else result += sprintf('\\x%02x', byte);
++	}
++	return result;
++}
++
++function enabled(section, config) {
++	let radio = section ? config[section.device] : null;
++	return section?.['.type'] == 'wifi-iface' && section.disabled != '1' &&
++		(!section.mode || section.mode == 'ap') && section.ssid &&
++		radio?.['.type'] == 'wifi-device' && radio.disabled != '1';
++}
++
++function collect(config, runtime, query, phy_lookup) {
++	let pending = { sections: {}, radios: {} };
++	query ??= query_status;
++	phy_lookup ??= interface_phy;
++	for (let radio_name, radio in runtime || {}) {
++		let radio_status;
++		for (let iface in radio.interfaces || []) {
++			let section = config[iface.section];
++			if (!enabled(section, config) || section.device != radio_name ||
++			    iface.config?.ssid != section.ssid ||
++			    !match(iface.ifname || '', /^[A-Za-z0-9_.:-]{1,15}$/))
++				continue;
++			radio_status ??= query(iface.ifname);
++			let status = radio_status;
++			if (!status || status.phy != phy_lookup(iface.ifname))
++				continue;
++			let matched = false;
++			for (let key, value in status.fields) {
++				let bss = match(key, /^bss\[([0-9]+)\]$/);
++				if (bss && value == iface.ifname &&
++				    status.fields['ssid[' + bss[1] + ']'] == encoded_ssid(section.ssid))
++					matched = true;
++			}
++			if (!matched)
++				continue;
++			pending.sections[iface.section] = true;
++			pending.radios[radio_name] ??= {};
++			pending.radios[radio_name][section.ssid] = {
++				phy: status.phy, remaining: status.remaining, duration: status.duration
++			};
++		}
++	}
++	// A same-named SSID on another configured BSS is not automatically covered.
++	for (let key, section in config)
++		if (enabled(section, config) && !pending.sections[key] &&
++		    pending.radios[section.device]?.[section.ssid])
++			delete pending.radios[section.device][section.ssid];
++	for (let name, ssids in pending.radios)
++		if (!length(ssids))
++			delete pending.radios[name];
++	return pending;
++}
++
++function network_contains(network, name) {
++	return type(network) == 'array' ? index(network, name) >= 0 :
++		type(network) == 'string' && index(split(network, /\s+/), name) >= 0;
++}
++
++function interface_ssid_pending(name, ssid, config, pending) {
++	let found = false;
++	for (let key, section in config) {
++		if (!enabled(section, config) || section.ssid != ssid ||
++		    !network_contains(section.network, name))
++			continue;
++		found = true;
++		if (!pending.sections[key])
++			return false;
++	}
++	return found;
++}
++
++// The stock healer restarts the whole network. Suppress only failures whose
++// exact interface/SSID has positive current CAC evidence, never other faults.
++function has_wifi_failures(health, config, pending) {
++	for (let name, iface in health?.data?.interfaces || {})
++		for (let ssid in iface.ssids || {})
++			if (!interface_ssid_pending(name, ssid, config, pending))
++				return true;
++	for (let radio, issue in health?.data?.radios || {})
++		for (let ssid in issue.failed_ssids || {})
++			if (!pending.radios[radio]?.[ssid])
++				return true;
++	return false;
++}
++
++return { parse_status, encoded_ssid, collect, has_wifi_failures };

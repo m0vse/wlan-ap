@@ -1,0 +1,7 @@
+{
+  "passed": true,
+  "count": 23,
+  "scope": "Actual health matching and self-healing functions; filesystem/ubus/clock/process boundaries stubbed, actual positive-CAC helper injected. No AP, network restart or RADIUS traffic.",
+  "health_sha256": "e9da4cb55d8bfc3c5769be85c6124f1b6d2ef9479ad1d07f85c3ff1e2eb6b83e",
+  "healer_sha256": "cd4929126d7e22d8b093854b7f35399526512cb3ac1744b770a194687f6b2b11"
+}

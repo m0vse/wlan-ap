@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "count": 2,
+  "cases": [
+    {
+      "interface": "wlan0",
+      "passed": true
+    },
+    {
+      "interface": "nonexistent",
+      "passed": true
+    }
+  ],
+  "root": "/tmp/openwifi-sage-jaguar-2-validation.UixF5d/jaguar-root",
+  "requests": [
+    "IFNAME=wlan0 STATUS",
+    "IFNAME=nonexistent STATUS"
+  ],
+  "scope": "Actual archived target hostapd_cli/ELF loader through QEMU exchanges STATUS-only commands with a private fake Unix datagram global socket. Not a live/pre-BSS hostapd runtime acceptance test."
+}
