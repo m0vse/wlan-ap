@@ -1,0 +1,31 @@
+OFFLINE CANDIDATE -- NOT PUBLISHED OR APPROVED FOR AP EXECUTION
+
+Outgoing scope: exact existing OpenWiFi Sage Oct2.1, E410/E410B only.
+Source revision 3e83adc074c39c2f22ce5488e75f370f3b20a0f6.
+Pinned outgoing SHA256:
+83c62ef4a6a38700bb04044ca3f91a52f6469eeb1386e90cd9b1f2ce22421758
+Incoming: TIP-sage-2026.10.02.2-01605f87.
+
+This is NOT the converted stock-OpenWrt 2026.09.29.0 route. That separate
+clean migration deliberately discards DSA configuration with -n and must
+qualify shared-store clean initialization independently. This preserving
+bundle rejects configuration1.1; no compatibility UCI edit or force flag.
+
+Default sage-sysinstall.sh --check is preflight only. Explicit operator
+--install preserves the reviewed existing OpenWiFi configuration and
+identity, transactionally replaces six fixed outgoing updater files, then
+delegates to the normal metadata/signature/configuration-gated sysupgrade.
+An unknown source tuple or pending journal is refused before AP scripts
+are sourced. Explicit --recover may restore only approved journal content.
+
+Sage shares one certificates volume across both slots. No Jaguar-style
+20-LEB bank snapshot, mount, allocation, copy or erase is applied to it.
+Preflight requires the existing correctly mounted shared volume on the
+verified UBI device, at least20LEBs with exact LEB geometry, nonsymlink
+identity files, root-owned non-world-readable keys and matching persistent
+and runtime bootstrap credentials. A missing store, even with space for it,
+is a refused provisioning/persist prerequisite, not allocated automatically.
+
+File-only recovery fixtures and offline stock-validator checks do not
+prove hardware UBI behavior, physical power-loss safety or a real RAM pivot.
+Actual runtime mount/state and hardware acceptance remain required.

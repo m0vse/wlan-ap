@@ -1,0 +1,39 @@
+Sage existing OpenWiFi .1 -> .2 operator-r1, offline-qualified candidate.
+No publication, AP execution, bank/environment writes or reboot performed.
+
+Incoming exact image: TIP-sage-2026.10.02.2-01605f87, 13,855,050 bytes.
+SHA256 afa05459b20b8557ee07b39a89bcf41b77ce05d53b22d8551e742d8348a808ee
+Outgoing exact OpenWiFi .1 image SHA256:
+83c62ef4a6a38700bb04044ca3f91a52f6469eeb1386e90cd9b1f2ce22421758
+Qualified E410/E410B only; not stock OpenWrt migration support.
+
+Final Linux file-only transaction cases: 38 passed.
+Unknown-source/pending-journal recovery refusal cases: 14 passed.
+Actual frozen validator and read-only preservation compatibility cases: 24 passed.
+Shared-store prerequisites fixture: passed, shared store unchanged.
+Actual wrapper control flow: 9 passed; flash/preflight boundaries stubbed.
+Actual complete source gate: 8 passed; filesystem path redirects only.
+Actual image static RAM closure and target architecture/library audit: passed.
+Physical RAM pivot, target UBI mounts, power loss and hardware acceptance:
+NOT proven by these offline fixtures. Runtime prerequisite checks remain.
+
+Default --check never recovers a journal, replaces bridge files or arms a trial.
+Explicit --install preserves managed configuration and identity. Six fixed
+updater files are installed transactionally; complete approved source tuples
+and unexpected wildcard-loaded scripts are checked before AP script sourcing.
+Recovery refuses unknown extra scripts before restoring any fixed target.
+Read-only UCI compatibility guard prevents -T/default-SAVE_CONFIG0 from
+silently admitting a configuration-preserving minor/major mismatch.
+
+Sage shared certificates volume must already exist, be correctly mounted on
+the verified UBI device, have >=20 reserved LEBs with exact geometry, safe
+private identity files, matching runtime/store credentials and working crypto.
+No shared-store erase/allocation/mount/import occurs in this bundle.
+Stock clean migration is a distinct unfinished route: it must neither carry
+legacy identity/configuration nor clear shared storage that rollback relies on.
+
+Validator fixtures execute actual target fwtool/jshn/uci under QEMU and a
+filesystem-redirected frozen local EST capability function, using only newly
+generated fixture credentials. No EST enrollment/network/daemon startup.
+Optional private-PKI package is absent in the firmware. Production trust,
+controller/session state and active AP identities remain untouched.
