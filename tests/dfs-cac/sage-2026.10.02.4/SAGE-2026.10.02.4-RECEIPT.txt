@@ -1,0 +1,59 @@
+Sage .4: canonical DFS-CAC health fix, completed offline build qualification
+
+TIP-sage-2026.10.02.4-8f47beda
+13865290 bytes
+SHA256 654b1a383a01295d88d4c9a990fd8eb7e344b47ea1c9e2449db6e333cf41c008
+Image: cambium-sage-sage-2026.10.02.4-sysupgrade.bin
+Original source/tag: m0vse/wlan-ap 8f47beda / sage-2026.10.02.4.
+Canonical firmware change: e3ea012e; later commits are tests/installers only.
+Git author/tag history rewrite began after build; preserve this original
+build provenance and embedded version. Do not relabel or replace .3/.4 bytes.
+
+Incremental make-j4 on cnbeacon completed exit0. Cleaned only base-files,
+ucentral-schema and ucentral-state. Existing pinned coreutils feed registered
+for timeout. No feed refresh, setup.py, build.sh, upstream rebase, legacy
+source edits, kernel source changes or profile-override loss.
+
+Actual image metadata: compat1.0, metadata1.1, ipq40xx/generic, EST supported;
+supported aliases cambium,e410 / cambiumnetworks,e410 / cambiumnetworks,e410b.
+Qualification remains E410/E410B only; one family image, identical bytes.
+Kernel FIT, Sage family writer and common A/B writer byte-identical to .3.
+Shared-store allocator, mount/early-boot restore and managed-upgrade command
+also byte-identical to .3. No bridge/VLAN/PKI changes.
+
+Shipped schema 2026.08.26~d1e90a04-r14; state2;
+hostapd-utils 2025.08.26~ca266cc2-r1; coreutils-timeout9.9-r2.
+Canonical DFS module d00367133b24ded6202ab26dd66ce01b3ca9c1c74c4ea4fe7427003e3286534a
+Canonical health e9da4cb55d8bfc3c5769be85c6124f1b6d2ef9479ad1d07f85c3ff1e2eb6b83e
+Canonical healer cd4929126d7e22d8b093854b7f35399526512cb3ac1744b770a194687f6b2b11
+
+Fresh classifier42, real bounded subprocess5, actual health/healer23 PASS.
+Actual shipped ARM target global hostapd_cli private STATUS socket tests2 PASS.
+Actual built-image source/package/ELF/runtime tests8 PASS: health/state compile,
+dynamic require('dfs_cac') with exact production search path, shipped timeout
+kills command and child. Absolute production module directory is bound only
+inside private non-propagating mount namespace/tmpfs; no host path changes.
+Actual static retained-tool/ELF/library closure PASS. No backup init services.
+Unprivileged root extraction skipped only dev/console; regular files verified.
+
+Normal .3 -> .4 managed UI route: no special updater bridge required.
+Actual outgoing .3 archive command4 keep-option combinations PASS, including
+omitted/both-false: config, shadow baseline, active JSON, identity and custom
+CA retained with explicit sysupgrade-f, not-n. Actual outgoing .3 stock
+validator/signature/EST/minor cases12 per E410/E410B PASS against .4. These
+exercise reviewed-outgoing only, not an invented installed-bridge phase.
+Outgoing .3 retained-only RAM/FIT/capacity and target external-tr cases4 PASS.
+Fresh actual incoming shared-store allocator13 and prerequisite22 PASS;
+UBI/mount/identity boundaries are private fixtures, not AP operations.
+
+Route prerequisites: qualified confirmed .3 E410/E410B, compatibility1.0,
+unchanged reviewed updater/runtime, valid mounted shared store with current
+durable credentials/trust/policy and adequate kernel/root/data capacities.
+Prior human E410 .3 confirmed/reconnected receipt does not establish .4.
+Do not run the .1-only checker on .3 or install an unnecessary bridge.
+
+No publication, AP access/flash/restart, trust changes, physical RAM pivot,
+rollback or power-loss acceptance performed. After human-authorized .4 trial,
+require controller reconnect/config/identity/new-slot confirmation, and a
+real long DFS CAC not interrupted by missing-SSID self-healing followed by
+AP-ENABLED. Unknown/aborted CAC and independent failures remain detectable.

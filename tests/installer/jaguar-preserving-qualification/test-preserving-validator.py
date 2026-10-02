@@ -17,7 +17,8 @@ assert hashlib.sha256(image.read_bytes()).hexdigest()==image_sha
 paths=['sbin/sysupgrade','usr/libexec/validate_firmware_image','usr/share/libubox/jshn.sh','lib/functions.sh','lib/functions/system.sh']
 paths += [str(p.relative_to(old)) for p in (old/'lib/upgrade').glob('*.sh')]
 paths += [str(p.relative_to(old)) for p in (old/'lib/functions').glob('*.sh')]
-for phase in ('reviewed-outgoing','installed-bridge'):
+phases=('reviewed-outgoing',) if os.environ.get('OW_PRESERVE_NORMAL_UI_ONLY')=='1' else ('reviewed-outgoing','installed-bridge')
+for phase in phases:
  root=work/phase;root.mkdir();(root/'bin').mkdir();(root/'tmp/sysinfo').mkdir(parents=True);(root/'etc/config').mkdir(parents=True);(root/'tmp/.uci').mkdir()
  replacements={'lib/functions/cambium-ab.sh':'cambium-ab.sh','lib/upgrade/cambium-ab.sh':'cambium-ab-upgrade.sh','lib/upgrade/cambium-ab-certificates.sh':'cambium-ab-certificates.sh',f'lib/functions/cambium-ab-{family}.sh':f'modules/cambium-ab-{family}.sh'}
  actual_paths=paths+(['lib/upgrade/cambium-ab-certificates.sh'] if phase=='installed-bridge' else [])

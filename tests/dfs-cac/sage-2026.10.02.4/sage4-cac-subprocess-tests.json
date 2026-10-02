@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "count": 5,
+  "cases": [
+    {
+      "case": "normal-wlan0",
+      "passed": true,
+      "elapsed_seconds": 0.043
+    },
+    {
+      "case": "fail-wlan0",
+      "passed": true,
+      "elapsed_seconds": 0.045
+    },
+    {
+      "case": "oversize-wlan0",
+      "passed": true,
+      "elapsed_seconds": 0.047
+    },
+    {
+      "case": "sleep-wlan0",
+      "passed": true,
+      "elapsed_seconds": 2.007
+    },
+    {
+      "case": "normal-wlan0;touch unsafe",
+      "passed": true,
+      "elapsed_seconds": 0.006
+    }
+  ],
+  "source_sha256": "d00367133b24ded6202ab26dd66ce01b3ca9c1c74c4ea4fe7427003e3286534a",
+  "scope": "Actual query/parse/mapping logic; executable locations only redirected to native GNU timeout and a fake STATUS-only CLI. Real timeout/exit/oversize/input-refusal behavior. No AP/socket access."
+}

@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "count": 8,
+  "cases": [
+    {
+      "case": "exact-shipped-usr/share/ucentral/dfs_cac.uc",
+      "passed": true
+    },
+    {
+      "case": "exact-shipped-usr/share/ucentral/health.uc",
+      "passed": true
+    },
+    {
+      "case": "exact-shipped-usr/sbin/ucentral-state",
+      "passed": true
+    },
+    {
+      "case": "target-compile-usr/share/ucentral/health.uc",
+      "passed": true
+    },
+    {
+      "case": "target-compile-usr/sbin/ucentral-state",
+      "passed": true
+    },
+    {
+      "case": "target-dynamic-require-exact-production-search-path",
+      "passed": true
+    },
+    {
+      "case": "standard-package-and-timeout-ELF-closure",
+      "passed": true
+    },
+    {
+      "case": "actual-shipped-target-timeout-kills-command-and-child",
+      "passed": true,
+      "elapsed_seconds": 2.035
+    }
+  ],
+  "package_versions": {
+    "coreutils-timeout": "9.9-r2",
+    "hostapd-utils": "2025.08.26~ca266cc2-r1",
+    "ucentral-schema": "2026.08.26~d1e90a04-r14",
+    "ucentral-state": "2"
+  },
+  "image": "/tmp/openwifi-sage4-validation.MpnQnl/cambium-sage-sage-2026.10.02.4-sysupgrade.bin",
+  "image_size": 13865290,
+  "image_sha256": "654b1a383a01295d88d4c9a990fd8eb7e344b47ea1c9e2449db6e333cf41c008",
+  "tip_metadata": "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.3'\nDISTRIB_REVISION='r32912-6639b15f62'\nDISTRIB_TARGET='ipq40xx/generic'\nDISTRIB_ARCH='arm_cortex-a7_neon-vfpv4'\nDISTRIB_DESCRIPTION='OpenWrt 25.12.3 r32912-6639b15f62'\nDISTRIB_TAINTS='no-all override'\nDISTRIB_TIP='OpenWrt 25.12.3 r32912-6639b15f62 / TIP-sage-2026.10.02.4-8f47beda'\nDISTRIB_TIP_VERSION='sage-2026.10.02.4'\nDISTRIB_UCENTRAL_SCHEMA_REVISION='d1e90a0'\n",
+  "scope": "Actual extracted immutable image bytes, selected ARM target ucode compile/dynamic-require and target timeout through QEMU; private fake sleeping command only. No live AP, daemon start, ubus connection, network, flash or reboot."
+}

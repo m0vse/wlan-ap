@@ -1,0 +1,5 @@
+{
+	"passed": true,
+	"count": 42,
+	"scope": "Actual CAC classifier/mapping/healing filter, injected pre-BSS hostapd STATUS and netifd/sysfs fixtures; no AP or wireless operations."
+}

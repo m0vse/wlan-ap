@@ -6,7 +6,9 @@ root=pathlib.Path(os.environ['OW_DFS_TARGET_ROOT'])
 source=pathlib.Path(os.environ['OW_DFS_SOURCE'])
 image=pathlib.Path(os.environ['OW_DFS_IMAGE'])
 work=pathlib.Path(tempfile.mkdtemp(prefix='dfs-built-image-tests.'))
-qemu='/usr/bin/qemu-aarch64'
+qemu=os.environ.get('OW_DFS_QEMU','/usr/bin/qemu-aarch64')
+assert qemu in ('/usr/bin/qemu-aarch64','/usr/bin/qemu-arm')
+interpreter='/lib/ld-musl-armhf.so.1' if qemu.endswith('qemu-arm') else '/lib/ld-musl-aarch64.so.1'
 ucode=[qemu,'-L',str(root),str(root/'usr/bin/ucode'),'-L',str(root/'usr/lib/ucode')]
 cases=[]
 for installed,reviewed in [('usr/share/ucentral/dfs_cac.uc','system/dfs_cac.uc'),('usr/share/ucentral/health.uc','system/health.uc'),('usr/sbin/ucentral-state','ucentral-state')]:
@@ -32,8 +34,8 @@ timeout=root/'usr/libexec/timeout-coreutils'
 assert timeout.is_file() and timeout.stat().st_mode & 0o111
 elf=subprocess.run(['readelf','-l',str(timeout)],capture_output=True,text=True,check=True).stdout
 needed=subprocess.run(['readelf','-d',str(timeout)],capture_output=True,text=True,check=True).stdout
-assert '/lib/ld-musl-aarch64.so.1' in elf and '[libc.so]' in needed
-assert (root/'lib/ld-musl-aarch64.so.1').exists() and (root/'lib/libc.so').exists()
+assert interpreter in elf and '[libc.so]' in needed
+assert (root/interpreter.lstrip('/')).exists() and (root/'lib/libc.so').exists()
 cases.append({'case':'standard-package-and-timeout-ELF-closure','passed':True})
 fixture=work/'slow-child.py'
 fixture.write_text("import pathlib,subprocess,time,sys\np=subprocess.Popen(['/bin/sleep','30'])\npathlib.Path(sys.argv[1]).write_text(str(p.pid))\ntime.sleep(30)\n")
@@ -50,4 +52,4 @@ cases.append({'case':'actual-shipped-target-timeout-kills-command-and-child','pa
 print(json.dumps({'passed':True,'count':len(cases),'cases':cases,'package_versions':versions,
  'image':str(image),'image_size':image.stat().st_size,'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),
  'tip_metadata':(root/'etc/openwrt_release').read_text(),
- 'scope':'Actual extracted immutable image bytes, ARM64 target ucode compile/dynamic-require and target timeout through QEMU; private fake sleeping command only. No live AP, daemon start, ubus connection, network, flash or reboot.'},indent=2))
+ 'scope':'Actual extracted immutable image bytes, selected ARM target ucode compile/dynamic-require and target timeout through QEMU; private fake sleeping command only. No live AP, daemon start, ubus connection, network, flash or reboot.'},indent=2))
