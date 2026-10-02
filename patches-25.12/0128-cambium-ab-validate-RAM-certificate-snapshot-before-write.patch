@@ -1,0 +1,69 @@
+diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
+index b3d9241d67..ff90a6a1ff 100644
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-certificates.sh b/package/cambium/cambium-ab/files/cambium-ab-certificates.sh
+index 70da33a87e..e4a9ba57d5 100644
+--- a/package/cambium/cambium-ab/files/cambium-ab-certificates.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-certificates.sh
+@@ -67,6 +67,8 @@ ab_certificate_export() {
+ 		[ -f "$file" ] && [ ! -L "$file" ] && cp "$file" "$work/tree/" || return 1
+ 	done
+ 	if [ -f "$work/tree/key.pem" ] || [ -f "$work/tree/cert.pem" ]; then
++		command -v openssl >/dev/null 2>&1 ||
++			{ ab_fail 'openssl is required to validate outgoing credentials'; return 1; }
+ 		[ -f "$work/tree/key.pem" ] && [ -f "$work/tree/cert.pem" ] ||
+ 			{ ab_fail 'incomplete bootstrap credential pair'; return 1; }
+ 		# Verify key match without exposing private material in output/logs.
+@@ -95,8 +97,8 @@ ab_certificate_export() {
+ 	rm -rf "$work"
+ }
+ 
+-ab_certificate_restore() {
+-	local hash expected binding work rc=0
++ab_certificate_validate_snapshot() {
++	local hash expected binding
+ 	[ "$(ab_certificate_lebs)" = 20 ] || return 0
+ 	[ "$AB_LAYOUT" = banks ] || return 0
+ 	ab_certificate_private_file "$AB_CERTIFICATE_ARCHIVE" &&
+@@ -114,6 +116,13 @@ ab_certificate_restore() {
+ 		/^\// || /(^|\/)\.\.(\/|$)/ || /[^A-Za-z0-9_.\/-]/ { bad=1 }
+ 		END { exit bad }' || return 1
+ 	tar tvf "$AB_CERTIFICATE_ARCHIVE" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" { bad=1 } END { exit bad }' || return 1
++}
++
++ab_certificate_restore() {
++	local work rc=0
++	[ "$(ab_certificate_lebs)" = 20 ] || return 0
++	[ "$AB_LAYOUT" = banks ] || return 0
++	ab_certificate_validate_snapshot || return 1
+ 	[ "$(cat "${AB_UBI_SYS:-/sys/class/ubi}/$AB_TARGET_UBI/mtd_num")" = "$AB_TARGET_MTD" ] &&
+ 		[ "$AB_TARGET_MTD" != "$AB_ACTIVE_MTD" ] || return 1
+ 	umask 077
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+index 081bf960de..d912345f6c 100644
+--- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -216,6 +216,13 @@ cambium_ab_do_upgrade() {
+ 	ab_upgrade_preflight || return 1
+ 	ab_image_extract "$1" || return 1
+ 
++	# stage2 must prove the private snapshot survived the RAM copy BEFORE
++	# recording writes or erasing any inactive-bank data.
++	if [ "$(ab_certificate_lebs)" = 20 ] && [ "$AB_LAYOUT" = banks ]; then
++		type ab_certificate_validate_snapshot >/dev/null 2>&1 && ab_certificate_validate_snapshot ||
++			{ ab_fail 'RAM-stage certificate snapshot validation failed; no bank was written'; return 1; }
++	fi
++
+ 	# Record the write before touching the bank. bootcmd still boots the
+ 	# running bank first, so an interrupted write never loses it.
+ 	printf "${AB_ENV}_ab_state writing\n${AB_ENV}_ab_target %s\n" "$AB_TARGET" > "$batch"
