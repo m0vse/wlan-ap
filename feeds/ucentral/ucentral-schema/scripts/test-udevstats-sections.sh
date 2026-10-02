@@ -12,6 +12,9 @@ mkdir "$work/config" "$work/state"
 sed -n '/function normalize_section_name(port) {/,/^\t}/p' \
     "$schema/renderer/templates/interface/bridge-vlan.uc" > "$work/names.uc"
 grep -q 'function normalize_section_name' "$work/names.uc"
+sed -n '/function normalize_port_name(port) {/,/^\t}/p' \
+    "$schema/renderer/templates/interface/ieee8021x.uc" >> "$work/names.uc"
+grep -Fq "let nport = 'dev_' + hexenc(port);" "$schema/renderer/templates/ethernet.uc"
 cat >> "$work/names.uc" <<'UCODE'
 let seen = {};
 for (let port in ['lan-multigig', 'lan.1', 'lan_1', 'lan-1', 'lan1', 'eth0', 'dev_65746830']) {
@@ -19,6 +22,8 @@ for (let port in ['lan-multigig', 'lan.1', 'lan_1', 'lan-1', 'lan1', 'eth0', 'de
     if (!match(section, /^[A-Za-z0-9_]+$/) || seen[section])
         die('invalid or colliding section ID');
     seen[section] = true;
+    if (normalize_port_name(port) != section)
+        die('Ethernet authentication and statistics IDs disagree');
     print(`set udevstats.${section}=device\n`);
     print(`set udevstats.${section}.name='${port}'\n`);
     print(`add_list udevstats.${section}.vlan='0'\n`);
