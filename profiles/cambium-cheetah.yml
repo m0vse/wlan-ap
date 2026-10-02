@@ -6,3 +6,7 @@ description: Build OpenWiFi for qualified Cheetah XV2-21X
 image: bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-cambiumnetworks_cheetah-persistent-squashfs-sysupgrade.bin
 include:
   - ucentral-ap
+diffconfig: |
+  CONFIG_BUSYBOX_CUSTOM=y
+  CONFIG_BUSYBOX_CONFIG_STAT=y
+  CONFIG_BUSYBOX_CONFIG_FEATURE_STAT_FORMAT=y
