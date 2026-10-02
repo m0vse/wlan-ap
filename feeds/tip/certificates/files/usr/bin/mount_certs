@@ -6,8 +6,6 @@ check_certificates() {
 	exit 0
 }
 
-check_certificates 1
-
 # Read the currently-active cert partition. store_certs writes to the
 # alternate partition and then advances cert_part to point at it, so the
 # reader must return that same partition and must NOT flip cert_part
@@ -32,6 +30,24 @@ tar_part_lookup() {
 
 . /lib/functions.sh
 mkdir -p /certificates /etc/ucentral/
+# Cambium OpenWiFi banks must never read the other bank's stale identity.
+# Bind the mount to the core's validated active MTD/UBI mapping, not ubi0/ubi1.
+if [ -f /lib/functions/cambium-ab.sh ]; then
+	. /lib/functions/cambium-ab.sh
+	if ab_family && [ "${AB_CERTIFICATE_LEBS:-0}" = 20 ] && [ "$AB_LAYOUT" = banks ]; then
+		ab_identity || exit 1
+		cert_volume=$(ab_ubi_volume "$AB_ACTIVE_UBI" certificates) || exit 1
+		if awk '$2=="/certificates" { found=1 } END { exit !found }' /proc/mounts; then
+			awk -v dev="/dev/$cert_volume" -v named="$AB_ACTIVE_UBI:certificates" \
+				'$2=="/certificates" && ($1==dev || $1==named) { good=1 } END { exit !good }' /proc/mounts || exit 1
+		else
+			mount -t ubifs "/dev/$cert_volume" /certificates || exit 1
+		fi
+		check_certificates
+		exit 1
+	fi
+fi
+check_certificates 1
 case "$(board_name)" in
 cig,wf660a)
 	mmc_dev=$(echo $(find_mmc_part "0:ETHPHYFW") | sed 's/^.\{5\}//')
