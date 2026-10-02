@@ -1,0 +1,4 @@
+FROM python:3.13-slim@sha256:8296499feed1c18bd8064c279d45e2a1b4b6be586f8b9e16dcf2aaf843480d88
+RUN pip install --no-cache-dir 'cryptography==50.0.2' 'cffi==2.1.1' 'pycparser==3.0'
+WORKDIR /work
+ENTRYPOINT ["python", "/work/private-pki-prototype.py"]
