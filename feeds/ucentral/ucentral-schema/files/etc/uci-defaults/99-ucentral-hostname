@@ -1,8 +1,14 @@
-#!/bin.sh
-
-hname=$(cat /etc/board.json  | jsonfilter -e '@.system.label_macaddr')
-[ -z "$hname" ] && hname=$(cat /sys/class/net/eth0/address)
-uci set system.@system[-1].mac=$hname
-hname=$(echo $hname | tr -d : | awk '{print tolower($0)}')
-uci set system.@system[-1].hostname=$hname
-uci set ucentral.config.serial=$hname
+#!/bin/sh
+set -eu
+. /lib/functions/system.sh
+hname=$(get_mac_label)
+[ -n "$hname" ] || {
+ logger -t ucentral 'Factory label MAC unavailable; refusing an empty device serial'
+ exit 1
+}
+serial=$(printf '%s' "$hname" | tr -d : | tr '[:upper:]' '[:lower:]')
+[ "${#serial}" = 12 ] || exit 1
+case "$serial" in *[!0-9a-f]*) exit 1 ;; esac
+uci set "system.@system[-1].mac=$hname"
+uci set "system.@system[-1].hostname=$serial"
+uci set "ucentral.config.serial=$serial"
