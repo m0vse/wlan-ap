@@ -1,0 +1,13 @@
+--- a/renderer/templates/interface/bridge-vlan.uc
++++ b/renderer/templates/interface/bridge-vlan.uc
+@@ -69,6 +69,9 @@
+ 	// normalize_ functions - data transformation
+ 	function normalize_section_name(port) {
+-		return replace(port, '.', '_');
++		// UCI section IDs allow only alphanumerics and underscores. Encode
++		// every byte so lan-1, lan.1 and lan_1 cannot collide. The actual
++		// netdev stays unchanged in the device section's name option.
++		return 'dev_' + hexenc(port);
+ 	}
+ 
+ 	function normalize_vlan_range() {
