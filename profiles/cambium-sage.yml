@@ -10,3 +10,6 @@ packages:
 include:
   - ucentral-ap
   - target-ipq40xx
+diffconfig: |
+  CONFIG_BUSYBOX_DEFAULT_STAT=y
+  CONFIG_BUSYBOX_DEFAULT_FEATURE_STAT_FORMAT=y
