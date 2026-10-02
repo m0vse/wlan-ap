@@ -2,7 +2,10 @@
 profile: cambiumnetworks_jaguar-persistent
 target: qualcommax
 subtarget: ipq60xx
-description: Build the OpenWiFi image for qualified Cambium Jaguar access points
+description: Build OpenWiFi for qualified Jaguar XV2-2, XV2-2T1 and XE3-4 models
 image: bin/targets/qualcommax/ipq60xx/openwrt-qualcommax-ipq60xx-cambiumnetworks_jaguar-persistent-squashfs-sysupgrade.bin
+packages:
+  # Required by the canonical A/B certificate-retention preflight.
+  - openssl-util
 include:
   - ucentral-ap
