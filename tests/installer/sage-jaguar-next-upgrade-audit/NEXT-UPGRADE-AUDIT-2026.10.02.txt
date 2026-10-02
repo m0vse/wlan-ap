@@ -1,0 +1,46 @@
+Sage/Jaguar next-upgrade audit, 2026-10-02
+
+Audited actual extracted incoming images, not operator replacement platforms:
+Jaguar .2: 3957cab679b6a01e928d4f755ed05e733aba3659c980de66c6ec7af7befbd3ba
+Sage .2: afa05459b20b8557ee07b39a89bcf41b77ce05d53b22d8551e742d8348a808ee
+Sage .3: 2f86a4dd48bcc66912422fef411a4133c582c792b278b35ac5565444a92b495a
+
+All three actual platform RAMFS_COPY_BIN lists retain tr and sha256sum.
+Jaguar's certificate export appends cmp/mktemp/sha256sum; Sage already
+retains those commands because its shared-store export is a no-op.
+Strengthened static checker now verifies required commands are retained,
+executable, present, and have resolving target ELF interpreter/library closure.
+All three pass. Runtime-generated fw_env.config is still a device prerequisite.
+
+Exact incoming switch_to_ramfs copy loop tested in native fixture ash with
+actual executable inventory and recording install_bin/install_file boundaries.
+supivot is stubbed to stop before pivot. Actual incoming image extraction runs
+in host POSIX sh with copy-list-derived tool PATH, target BusyBox hexdump/tr
+via QEMU, and actual FIT/capacity checks. Sage capacity uses file-only UBI
+geometry. Extraction succeeds for all three immutable images; deliberate
+removal of tr refuses before writes. Actual target ARM/ARM64 ash executes tr
+when retained and returns 127 without it. Four assertions per image pass.
+This does not prove physical install_bin/library copying or RAM pivot.
+
+Actual early_boot for all three skips mount_certs when runtime key.pem and
+operational.pem both exist; bootstrap-only runtime invokes restore. This can
+leave /certificates unmounted without losing active runtime identity.
+Jaguar actual certificate helper passes canonical file-level retention tests:
+unmounted UBIFS uses temporary read-only mount, runtime policy wins, restore
+retains key, private modes and source protection; corrupt archives, bad bank/
+boot binding, unsafe source and wrong mount refuse. All mounts and UBI identity
+are stubs; only synthetic local test credentials are generated.
+Sage declares zero per-bank certificate LEBs; export/restore return without
+mounting or copying the shared volume. Shared-store preservation is by leaving
+that volume untouched, not by Jaguar's bank snapshot mechanism. The separately
+qualified Sage preserving installer still requires an already verified mounted
+store and may safely refuse an unmounted store; this audit does not broaden it.
+
+Frozen .1 Sage and Jaguar platform lists were additionally read and both
+already contain tr. Full dynamic tests in this receipt cover .2/.3 only.
+
+No firmware/helper/installer changes, build, publication, AP access, mount,
+flash or reboot performed for this audit. Firmware bytes unchanged. Findings
+do not establish hardware second-upgrade success or cause of Cheetah failure.
+Installer nounset fixes are a separate unfinished qualification, not a fix
+to frozen incoming firmware. No new installer revision is sealed by this audit.

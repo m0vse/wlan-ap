@@ -1,0 +1,414 @@
+[
+  {
+    "passed": true,
+    "root": "/tmp/openwifi-sage-jaguar-2-validation.UixF5d/jaguar-root",
+    "required_commands": [
+      "awk",
+      "busybox",
+      "chmod",
+      "cmp",
+      "cp",
+      "find",
+      "fw_printenv",
+      "fw_setenv",
+      "head",
+      "ls",
+      "mkdir",
+      "mktemp",
+      "mount",
+      "mv",
+      "rm",
+      "rmdir",
+      "sed",
+      "sh",
+      "sha256sum",
+      "tar",
+      "tr",
+      "ubiattach",
+      "ubidetach",
+      "ubiformat",
+      "ubimkvol",
+      "ubirmvol",
+      "ubirsvol",
+      "ubiupdatevol",
+      "umount",
+      "wc"
+    ],
+    "retained_command_names": [
+      "[",
+      "ash",
+      "awk",
+      "basename",
+      "busybox",
+      "cat",
+      "chmod",
+      "cmp",
+      "cp",
+      "cut",
+      "date",
+      "dd",
+      "find",
+      "flash_erase",
+      "fw_printenv",
+      "fw_setenv",
+      "fwtool",
+      "grep",
+      "gzip",
+      "head",
+      "hexdump",
+      "kill",
+      "logger",
+      "losetup",
+      "ls",
+      "md5sum",
+      "mkdir",
+      "mkfs.ext4",
+      "mknod",
+      "mktemp",
+      "mount",
+      "mount_root",
+      "mtd",
+      "mv",
+      "nandwrite",
+      "partx",
+      "pivot_root",
+      "printf",
+      "reboot",
+      "rm",
+      "rmdir",
+      "sed",
+      "seq",
+      "sh",
+      "sha256sum",
+      "sleep",
+      "snapshot",
+      "snapshot_tool",
+      "sort",
+      "sync",
+      "tail",
+      "tar",
+      "touch",
+      "tr",
+      "ubiattach",
+      "ubiblock",
+      "ubidetach",
+      "ubiformat",
+      "ubimkvol",
+      "ubirmvol",
+      "ubirsvol",
+      "ubiupdatevol",
+      "umount",
+      "wc",
+      "zcat"
+    ],
+    "runtime_inputs": [
+      "/etc/fw_env.config: generated at first boot; actual device contents/permissions remain runtime acceptance prerequisites"
+    ],
+    "executables_and_libraries": {
+      "bin/busybox": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "lib/libc.so": {
+        "needed": [],
+        "interpreter": null
+      },
+      "lib/libgcc_s.so.1": {
+        "needed": [
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/sbin/fw_printenv": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/bin/fwtool": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubimkvol": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubirmvol": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubirsvol": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubidetach": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubiformat": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubiblock": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubiattach": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/ubiupdatevol": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/sbin/mke2fs": {
+        "needed": [
+          "libext2fs.so.2",
+          "libcom_err.so.0",
+          "libblkid.so.1",
+          "libuuid.so.1",
+          "libe2p.so.2",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/lib/libe2p.so.2.3": {
+        "needed": [
+          "libuuid.so.1",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/lib/libuuid.so.1.3.0": {
+        "needed": [
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/lib/libblkid.so.1.1.0": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/lib/libcom_err.so.0.0": {
+        "needed": [
+          "libuuid.so.1",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/lib/libext2fs.so.2.4": {
+        "needed": [
+          "libuuid.so.1",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "usr/sbin/losetup": {
+        "needed": [
+          "libsmartcols.so.1",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "usr/lib/libsmartcols.so.1.1.0": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "sbin/mtd": {
+        "needed": [
+          "libubox.so.20260213",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "lib/libubox.so.20260213": {
+        "needed": [
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      },
+      "sbin/mount_root": {
+        "needed": [
+          "libfstools.so",
+          "libubox.so.20260213",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": "/lib/ld-musl-aarch64.so.1"
+      },
+      "lib/libfstools.so": {
+        "needed": [
+          "libubox.so.20260213",
+          "libgcc_s.so.1",
+          "libc.so"
+        ],
+        "interpreter": null
+      }
+    },
+    "scope": "Static actual extracted stage2 helper/script/ELF dependency closure only; no target commands executed, no physical RAM pivot or hardware flash proof"
+  },
+  {
+    "passed": true,
+    "family": "jaguar",
+    "image_sha256": "3957cab679b6a01e928d4f755ed05e733aba3659c980de66c6ec7af7befbd3ba",
+    "platform_sha256": "19a02110eab3eed46e012d9e7872e080f918ad9667042da84886e1f9e0cdc54f",
+    "stage2_sha256": "c494d3cc230b30da3f5b44f6d5d97f2e05d5a4abb87259111375df69fb2c668c",
+    "retained_commands": [
+      "[",
+      "ash",
+      "awk",
+      "basename",
+      "busybox",
+      "cat",
+      "chmod",
+      "cmp",
+      "cp",
+      "cut",
+      "date",
+      "dd",
+      "find",
+      "fw_printenv",
+      "fw_setenv",
+      "fwtool",
+      "grep",
+      "gzip",
+      "head",
+      "hexdump",
+      "kill",
+      "logger",
+      "losetup",
+      "ls",
+      "md5sum",
+      "mkdir",
+      "mkfs.ext4",
+      "mknod",
+      "mktemp",
+      "mount",
+      "mount_root",
+      "mtd",
+      "mv",
+      "pivot_root",
+      "printf",
+      "reboot",
+      "rm",
+      "rmdir",
+      "sed",
+      "seq",
+      "sh",
+      "sha256sum",
+      "sleep",
+      "sort",
+      "sync",
+      "tail",
+      "tar",
+      "touch",
+      "tr",
+      "ubiattach",
+      "ubiblock",
+      "ubidetach",
+      "ubiformat",
+      "ubimkvol",
+      "ubirmvol",
+      "ubirsvol",
+      "ubiupdatevol",
+      "umount",
+      "wc",
+      "zcat"
+    ],
+    "cases": [
+      {
+        "case": "retained",
+        "extract_exit": 0,
+        "passed": true
+      },
+      {
+        "case": "retained",
+        "target_ash_tr_exit": 0,
+        "passed": true
+      },
+      {
+        "case": "negative-no-tr",
+        "extract_exit": 1,
+        "passed": true
+      },
+      {
+        "case": "negative-no-tr",
+        "target_ash_tr_exit": 127,
+        "passed": true
+      }
+    ],
+    "fixture": "/tmp/sage-jaguar-incoming-ram.xipbru4e",
+    "scope": "Exact incoming switch_to_ramfs copy loop in native fixture ash, executable inventory and blocked pivot; actual incoming extractor in host POSIX sh and immutable image using retained-only host tools plus target BusyBox hexdump/tr via QEMU; target ash external-tr contract; real family FIT/capacity checks with file-only Sage UBI geometry. No physical install_bin/library copy, mounts, flash, reboot or AP access."
+  },
+  {
+    "passed": true,
+    "family": "jaguar",
+    "cases": [
+      {
+        "case": "provisioned",
+        "startup_skips_mount": true,
+        "passed": true
+      },
+      {
+        "case": "bootstrap-only",
+        "startup_skips_mount": false,
+        "passed": true
+      },
+      {
+        "case": "unmounted-UBIFS-export-runtime-policy-precedence-restore-and-refusals",
+        "passed": true,
+        "result": "Certificate file-level retention, policy precedence, privacy, source protection and failure cases passed; fixtures: /tmp/cambium-ab-certificates-test.Q0y69M"
+      }
+    ],
+    "source_sha256": {
+      "etc/init.d/early_boot": "cacc0fcb9df311e4b992a9fcad6c1eee28d2a94a4f369f0f4e1203983595bede",
+      "lib/upgrade/cambium-ab-certificates.sh": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971"
+    },
+    "fixture": "/tmp/sage-jaguar-incoming-cert.pxb9jbai",
+    "scope": "Actual frozen scripts, file-only startup and canonical retention tests with synthetic locally generated credentials and mount/UBI identity stubs. No production key/cert access, actual mounts, AP access, flash or reboot."
+  }
+]
