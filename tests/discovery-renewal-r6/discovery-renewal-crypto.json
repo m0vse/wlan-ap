@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "count": 9,
+  "cases": [
+    {
+      "case": "valid",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "wrong-key",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-subject",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "untrusted",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "expired",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "malformed",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "absent-ca",
+      "passed": true
+    },
+    {
+      "case": "unsafe-ca-path",
+      "passed": true
+    },
+    {
+      "case": "fresh-one-year-leaf-renews-not-immediately-at-90-days",
+      "passed": true
+    }
+  ],
+  "source_sha256": "dc6c5b2a6f9fdcf55a114798160253205328a2daf575dadc80ab7af8457c905a",
+  "scope": "Actual validation function/native OpenSSL with synthetic CA/keys/leaves; filesystem and command literals mapped into private fixture. No EST, AP identity, trust activation, credential persistence or service operations."
+}

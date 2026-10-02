@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "count": 11,
+  "cases": [
+    {
+      "case": "unknown-issuer-no-implicit-public-est",
+      "passed": true
+    },
+    {
+      "case": "existing-explicit-est-override-retained",
+      "passed": true
+    },
+    {
+      "case": "stock-production-issuer-selection-preserved",
+      "passed": true
+    },
+    {
+      "case": "stock-demo-issuer-selection-preserved",
+      "passed": true
+    },
+    {
+      "case": "issuer-reader-error-not-est-success",
+      "passed": true
+    },
+    {
+      "case": "mount-failure-refuses-persistence",
+      "passed": true
+    },
+    {
+      "case": "stage-copy-failure-refuses-persistence",
+      "passed": true
+    },
+    {
+      "case": "durable-rename-failure-is-error",
+      "passed": true
+    },
+    {
+      "case": "durable-sync-failure-is-error",
+      "passed": true
+    },
+    {
+      "case": "unsafe-store-target-refused-before-command",
+      "passed": true
+    },
+    {
+      "case": "durable-single-file-success-propagated",
+      "passed": true
+    }
+  ],
+  "scope": "Actual EST selection/persistence functions; file/process boundaries stubbed, no network or live credential operations."
+}

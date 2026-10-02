@@ -1,0 +1,4 @@
+#!/bin/sh
+# Isolated fixture only: opt-in ownership guard refuses stock discovery.
+test "$1" = cloud-guard
+exit 1

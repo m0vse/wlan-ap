@@ -1,0 +1,61 @@
+Shared cloud_discovery renewal/discovery fix, package release 6.
+Source-only fix for each family's NEXT DISTINCT firmware; no live deployment.
+
+Failure chain addressed: one-year threshold renewed a fresh one-year leaf;
+missing DHCP-derived certificate returned success; daemon stopped the client,
+deleted its gateway and wrote nonexistent replacement credential paths.
+
+Normal operational renewal begins at 90 days remaining, preserving the stock
+Demo three-day window. No automatic renewal before the NTP readiness marker,
+on missing/unparseable leaves or on manual/bootstrap cert.pem. Hourly timer
+retained: failures return an error, do not stop/restart the working client,
+do not enter discovery and do not erase its gateway. ubus propagates failure.
+Renewal uses the configured gateway certificate, not a transient DHCP prefix.
+
+Replacement operational leaves require current trusted CA verification,
+validity, matching existing key public material and matching full subject.
+Runtime staging and explicit durable certificate persistence failures propagate
+before runtime activation; each final rename is atomic. Keys, CA, endpoint and
+unrelated certificate files are not recopied on successful reenroll.
+
+Daemon consumes the existing allowed-controller policy, honors a ready flash
+or locally pinned identity, and never publishes incomplete credential paths.
+Candidate timeout restores the previous working gateway within that daemon
+session. Failed discovery leaves the working destination in place. Bootstrap
+and private/manual issuers without configured EST do not implicitly fall back
+to public OpenLAN EST. Existing explicit EST_SERVER setting is honored.
+
+Final source test results:
+35 actual daemon/reenroll function and ubus/policy cases (private boundaries).
+9 real OpenSSL synthetic key/CA/certificate cases, including fresh one-year
+leaf versus 90-day window, wrong key/device, expired/untrusted/malformed leaf.
+11 actual EST selection/durable persistence failure cases (boundaries stubbed).
+Existing package policy26, actual DHCP helper11 and lease-state4 cases PASS.
+Sage ARM and Jaguar AArch64: each four complete compilation/import controls,
+actual full est_client missing-leaf exit1, and actual full EST/daemon private
+ownership guard exit1. Fourteen target controls PASS in private mount namespaces.
+
+Actual target roots: extracted immutable Sage .4 and Jaguar .3 runtimes;
+final target fixtures /tmp/discovery-target-runtime-final.bMW1Z7 on cnbeacon.
+Source and fixtures only, no package/firmware build, version allocation, AP,
+listener, service configuration, PKI activation or frozen image modification.
+
+Limitations: no live EST/physical UBI persistence or end-to-end successful
+controller reauthentication tested. Candidate CA uses the existing configured
+CA file; this does not implement private-EST trust provisioning/activation.
+Two per-file renames are NOT a multi-file power-loss transaction. Previous
+gateway rollback is in-memory, not a daemon-crash/power-loss recovery journal.
+Stock enrollment/redirector TLS protocol flags are not redesigned by this fix.
+Existing ucentral-private-pki cloud-guard and init private-mode opt-out remain
+unchanged; tests prove refusal only, not permission to activate private EST.
+
+Integration: apply this commit/patch to the shared feeds/tip/cloud_discovery
+package in each next family build. Do NOT relabel/overwrite published images.
+Incremental package rebuild is sufficient for this source change; do not run
+setup.py --rebase or force unrelated userspace rebuilds. Clear cached package
+release if necessary, verify shipped PKG_RELEASE6, script hashes and policy
+module presence on the new root, then allocate a distinct family revision.
+Hardware acceptance after authorised deployment: original controller/identity
+remain intact, hourly expiry check causes no disconnect, failed EST preserves
+client, and a separately authorised valid renewal updates only the intended
+leaf and reauthenticates. Private EST activation remains a separate decision.
