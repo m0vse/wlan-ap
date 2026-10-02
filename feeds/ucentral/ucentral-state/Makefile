@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-state
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
 PKG_LICENSE:=BSD-3-Clause
@@ -12,6 +12,7 @@ define Package/ucentral-state
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=uCentral state monitoring daemon
+  DEPENDS:=+ucentral-schema
 endef
 
 define Build/Compile

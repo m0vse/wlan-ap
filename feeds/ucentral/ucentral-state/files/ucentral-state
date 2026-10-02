@@ -1,6 +1,7 @@
 #!/usr/bin/ucode
 
 'use strict';
+REQUIRE_SEARCH_PATH = [ '/usr/share/ucentral/*.uc', ...REQUIRE_SEARCH_PATH ];
 
 import * as libubus from 'ubus';
 import * as libuci from 'uci';
@@ -27,6 +28,19 @@ function self_healing() {
 	let health_stat = json(fs.readfile('/tmp/ucentral.health'));
 	let last_nw_restart_ts = int(fs.readfile('/tmp/ucentral.nw_restart_ts')) || 0;
 	let time_passed_since_nw_restart = time() - last_nw_restart_ts;
+	let cac_pending = { sections: {}, radios: {} };
+	let wifi_config = {};
+	let dfs_cac;
+	try {
+		dfs_cac = require('dfs_cac');
+		uci.load('wireless');
+		wifi_config = uci.get_all('wireless') || {};
+		cac_pending = dfs_cac.collect(wifi_config, ubus.call('network.wireless', 'status'));
+	} catch (e) {
+		// Never suppress failure recovery when fresh CAC evidence is unavailable.
+		cac_pending = { sections: {}, radios: {} };
+		dfs_cac = null;
+	}
 
 	if (health_stat) {
 		if (health_stat.data.rrm_chanutil == false) {
@@ -83,6 +97,10 @@ function self_healing() {
 	}
 
 	// keep a gap of at least 5 minutes between network restarts
+	if (heal_wifi && dfs_cac && !dfs_cac.has_wifi_failures(health_stat, wifi_config, cac_pending)) {
+		ulog(LOG_INFO, 'SSID failure recovery deferred for positively active DFS CAC\n');
+		heal_wifi = false;
+	}
 	if (heal_wifi && time_passed_since_nw_restart > 300) {
 		ulog(LOG_INFO, 'Restarting network \n');
 		// update network restart timestamp
