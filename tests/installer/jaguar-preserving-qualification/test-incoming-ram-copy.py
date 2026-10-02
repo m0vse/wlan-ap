@@ -82,7 +82,9 @@ if family == 'sage':
         path.mkdir(parents=True)
         for key, value in (('name', name), ('reserved_ebs', lebs), ('usable_eb_size', 126976)):
             (path / key).write_text(str(value) + '\n')
-    board = 'ab_sage_legacy_b() { return 1; }; ab_sage_board cambiumnetworks,e410\nAB_ACTIVE_UBI=ubi0; AB_TARGET=1'
+    target_board=os.environ.get('OW_RAM_TEST_BOARD','cambiumnetworks,e410')
+    assert target_board in ('cambiumnetworks,e410','cambiumnetworks,e410b')
+    board = 'ab_sage_legacy_b() { return 1; }; ab_sage_board '+target_board+'\nAB_ACTIVE_UBI=ubi0; AB_TARGET=1'
 else:
     target_board=os.environ.get('OW_RAM_TEST_BOARD','cambiumnetworks,xv2-2t1')
     assert target_board in ('cambiumnetworks,xv2-2','cambiumnetworks,xv2-2t1')
