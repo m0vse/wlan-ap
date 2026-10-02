@@ -35,14 +35,20 @@ OpenSSL and the firmware's native ucode available on PATH):
   python3 tests/private-pki/test_boot_materialize.py
 This validates the experimental shell materializer against real OpenSSL/ucode,
 including key/chain/CN/permissions/path rejection and ignoring pending generations.
-It is NOT installed or enabled in firmware. Commit proof in this fixture is a
+It is packaged only by the optional default-disabled ucentral-private-pki
+package; no existing family profile selects it. Commit proof in this fixture is a
 stub, not controller acceptance; the separate TLS tests use loopback only.
 
 Deployment gates still open:
 - Protected production issuer loading/restart, administration, rate limiting,
   audit retention and fleet revocation distribution are not implemented here.
-- Renewal policy is not a running AP scheduler; no procd/early-boot integration.
-- Expiry recovery is a refusal/requirement, not a completed recovery workflow.
+- The optional package has early-boot committed identity restoration and a
+  renewal-readiness scheduler, NOT an enrollment/activation scheduler. Opted-in
+  discovery/client hooks prevent stock EST/gateway races and insecure overrides.
+  Due renewal reports activation blocked; no identity changes are attempted.
+- Isolated wire expiry recovery now requires a NEW pinned-operator grant bound
+  to the approved serial and AP-local same-key CSR; expired AP mTLS is rejected.
+  AP recovery orchestration and production issuance are not enabled/implemented.
 - No real OWGW handshake/config acceptance proves a candidate identity.
 - No hardware boot, A/B RAM pivot, interrupted flash or power-loss filesystem
   proof. Directory fsync plus atomic replacement is not a hardware guarantee.
@@ -53,3 +59,59 @@ Deployment gates still open:
 Do not publish this as an operational CA or flash new identities onto an AP.
 Do not use DHCP/MAC possession as authorization, disable TLS verification,
 replace production listeners or manipulate live system clocks to test expiry.
+
+DISABLED INTEGRATION SOURCE
+
+feeds/tip/ucentral-private-pki is an optional package, not selected in existing
+family profiles. Its root-owned private-pki.json defaults to enabled:false.
+When explicitly opted in, S17 restores a validated committed generation and
+procd supervises a renewal-readiness monitor. The client repeats validation
+before startup; competing stock EST/cloud entry points are blocked. Invalid
+policy/store or insecure overrides fail closed. With the package absent or
+policy disabled, stock discovery/client behavior is retained. Scheduler disables
+itself when policy is switched off. No certificate request/commit occurs.
+Expiry of any certificate in the approved trust bundle conservatively reports
+renewal due; exact selected-chain root scheduling still needs integration.
+
+Test startup hooks:
+  python3 tests/private-pki/test_startup_hooks.py
+This uses redirected filesystem and procd/config/jsonfilter stubs; it is not
+service runtime proof. Actual packaged AArch64 OpenSSL3.5.6 and ucode/fs module
+passed materialization/dispatcher fixtures under QEMU on cnbeacon. The guarded
+ucode entry points compile with that packaged interpreter. Full OpenWrt package
+compile and hardware service ordering are not yet established.
+
+APPLICATION ACCEPTANCE BARRIER
+
+Pinned client cb48fe27 main.c marks WebSocket established then calls
+proto.c connect_send, a JSON-RPC connect notification without request ID/ack.
+Ordinary proto_handle executes side-effecting commands. Neither TLS completion
+nor sending that notification proves OWGW accepted the candidate serial/leaf.
+Do not start a second ordinary client beside a live identity. Required future
+probe contract: isolated candidate key/cert/CA paths, no ubus/config side effects,
+verified host/private trust, and an OWGW response binding serial, candidate leaf
+fingerprint and fresh challenge. Timeout/rejection preserves current.json.
+No invented controller endpoint or TLS-only fallback is provided here.
+
+PROTECTED ISSUER DEPLOYMENT PLAN (NOT EXECUTED)
+
+1. Keep production root signing key offline/protected. Online service loads only
+   public root bundle plus separately protected device issuing cert/key; server
+   issuing identity remains separate. Dedicated service uid, private0700 state
+   directory and0600 key/database files; never firmware overlays/build artifacts.
+2. Loader must verify issuer chain/signature/CA constraints/dates, key match,
+   bounded issuance purpose and cap leaves to issuer/root expiry. It must not
+   generate replacement authorities on restart. Persist grants/cached replies,
+   audit and revocations; stable issuer fingerprint preserves retry binding.
+3. Keep inventory administration local/protected (private Unix socket or explicit
+   pinned operator mTLS), separate from AP bootstrap. No requester-created
+   inventory, bare MAC authorization, global enrollment token or shared AP key.
+   Add rate limits, bounded request sizes, audit retention and issuance metrics.
+4. Deploy isolated service first with synthetic issuer keys and restart/renewal/
+   recovery tests. Then obtain production authority and endpoint change approval.
+   Stage public dual-trust bundles for ALL AP-facing consumers before switching
+   issuers/listeners; public UI/API WebPKI stays separate. Offline fleet coverage
+   and authenticated reissuance gate retiring prior trust.
+5. Complete application proof and AP orchestration before enabling package or
+   publishing distinct future family candidates. Keep all frozen image bytes,
+   production listeners, APs and current identity pointers unchanged meanwhile.

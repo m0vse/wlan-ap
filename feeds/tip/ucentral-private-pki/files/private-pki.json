@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "store": "/certificates/private-pki",
+  "trust": "/etc/ucentral/private-trust.pem",
+  "server": "openwifi.shinesystems.co.uk",
+  "port": 15002
+}

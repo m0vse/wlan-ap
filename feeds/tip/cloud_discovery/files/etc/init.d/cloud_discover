@@ -13,6 +13,11 @@ reload_service() {
 }
 
 start_service() {
+	if [ -x /usr/libexec/ucentral-private-pki ]; then
+		local identity_mode
+		identity_mode=$(/usr/libexec/ucentral-private-pki mode) || return 1
+		[ "$identity_mode" != private ] || return 0
+	fi
 	[ -e /tmp/ucentral-network.ready ] || return 1
 	[ -f /etc/ucentral/capabilities.json ] || {
 		mkdir -p /etc/ucentral/

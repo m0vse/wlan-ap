@@ -1,0 +1,18 @@
+#!/bin/sh
+# Readiness scheduler only; cannot enroll, rotate or commit an identity.
+set -u
+failures=0
+while :; do
+ mode=$(/usr/libexec/ucentral-private-pki mode) || exit 2
+ [ "$mode" = private ] || exit 0
+ if /usr/libexec/ucentral-private-pki renewal-status; then
+  failures=0
+  delay=3600
+ else
+  failures=$((failures + 1))
+  [ "$failures" -le 5 ] || failures=5
+  delay=$((900 << (failures - 1)))
+  [ "$delay" -le 21600 ] || delay=21600
+ fi
+ sleep "$delay"
+done

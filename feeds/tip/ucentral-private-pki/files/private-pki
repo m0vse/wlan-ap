@@ -1,0 +1,46 @@
+#!/bin/sh
+# Default-disabled identity integration. No EST request or pointer commit.
+set -eu
+command=${1:?mode|cloud-guard|restore|renewal-status}
+policy=/etc/ucentral/private-pki.json
+die() { logger -t private-pki "$*"; echo "$*" >&2; exit 2; }
+[ -f "$policy" ] && [ ! -L "$policy" ] || die 'missing/unsafe private PKI policy'
+LC_ALL=C ls -ldn "$policy" | awk '$3==0 && ($1=="-rw-------" || $1=="-rw-r--r--") { ok=1 } END { exit !ok }' || die 'unsafe private PKI policy owner/mode'
+mode=$(ucode -e 'import * as fs from "fs"; let p=json(fs.readfile(ARGV[0])); if(type(p.enabled)!="bool") die("invalid private PKI mode"); print(p.enabled ? "private" : "stock");' "$policy") || die 'invalid private PKI policy'
+case "$command" in
+ mode) printf '%s\n' "$mode"; exit 0 ;;
+ cloud-guard) [ "$mode" = stock ]; exit $? ;;
+ restore|renewal-status) [ "$mode" = private ] || exit 0 ;;
+ *) die 'unknown private PKI operation' ;;
+esac
+# Values are separately extracted and never evaluated as shell code.
+get() { ucode -e 'import * as fs from "fs"; let p=json(fs.readfile(ARGV[0])); if(type(p[ARGV[1]])!="string") die("invalid policy field"); print(p[ARGV[1]]);' "$policy" "$1"; }
+store=$(get store); trust=$(get trust); server=$(get server)
+# Only canonical persistent paths are permitted in this initial integration.
+[ "$store" = /certificates/private-pki ] && [ "$trust" = /etc/ucentral/private-trust.pem ] || die 'unsupported private identity paths'
+port=$(ucode -e 'import * as fs from "fs"; let p=json(fs.readfile(ARGV[0])); if(type(p.port)!="int" || p.port<1 || p.port>65535) die("invalid port"); print(p.port);' "$policy") || die 'invalid controller port'
+serial=$(uci -q get ucentral.config.serial) || die 'missing AP identity'
+operation=validate
+[ "$command" != restore ] || operation=restore
+/usr/libexec/ucentral-private-pki-materialize "$store" /etc/ucentral "$trust" "$serial" "$server" "$port" "$operation" || die 'committed private identity refused (expiry requires authenticated recovery)'
+[ "$command" = renewal-status ] || exit 0
+generation=$(ucode -e 'import * as fs from "fs"; print(json(fs.readfile(ARGV[0])).generation);' "$store/current.json")
+work=$(mktemp -d /tmp/private-pki-renewal.XXXXXX)
+trap 'rm -rf "$work"' 0 HUP INT TERM
+umask 077
+# Inspect every issuing certificate as well as the leaf, so a shorter-lived
+# issuer/root can trigger renewal earlier. Never change the system clock.
+awk -v dir="$work" '/-----BEGIN CERTIFICATE-----/ { n++; out=dir "/cert-" n ".pem" } out { print > out } /-----END CERTIFICATE-----/ { close(out); out="" }' "$store/$generation/cert.pem" "$trust"
+due=0
+for cert in "$work"/cert-*.pem; do
+ [ -f "$cert" ] || die 'missing certificate chain'
+ openssl x509 -in "$cert" -noout -checkend 7776000 >/dev/null || due=1
+done
+if [ "$due" = 1 ]; then
+ # A serial-bound OWGW application acceptance proof is required before a
+ # renewal/activation adapter may be installed. No TLS-only fallback exists.
+ logger -t private-pki 'renewal due: authenticated application-session adapter not installed; committed identity unchanged'
+ printf '%s\n' 'renewal-due-activation-blocked'
+else
+ printf '%s\n' 'identity-current'
+fi

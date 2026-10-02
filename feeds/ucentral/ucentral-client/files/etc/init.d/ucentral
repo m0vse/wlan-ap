@@ -18,6 +18,10 @@ stop_service() {
 }
 
 start_service() {
+	local identity_mode=stock
+	if [ -x /usr/libexec/ucentral-private-pki ]; then
+		identity_mode=$(/usr/libexec/ucentral-private-pki mode) || return 1
+	fi
 	[ -e /tmp/ucentral-network.ready ] || return 1
 	[ -s /etc/ucentral/capabilities.json ] || rm -f /etc/ucentral/capabilities.json
 	if [ ! -f /etc/ucentral/capabilities.json ]; then
@@ -63,6 +67,10 @@ start_service() {
 	#config_get server 'config' 'server'
 	#config_get port 'config' 'port'
 	config_get debug 'config' 'debug' 0
+	if [ "$identity_mode" = private ]; then
+		/usr/libexec/ucentral-private-pki restore || return 1
+	fi
+	if [ "$identity_mode" = stock ]; then
 	insecure=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["allow-self-signed"]')
 	[ "$insecure" = "true" ] && insecure=1 || insecure=0
 	config_get insecure 'config' 'insecure' $insecure
@@ -71,11 +79,21 @@ start_service() {
 		selfsigned=$(cat /etc/ucentral/restrictions.json | jsonfilter -e '@["allow-self-signed"]')
 		[ "${selfsigned}" == "true" ] && insecure=1
 	fi
-
 	if [ -f /etc/ucentral/cert.pem ]; then
 		case "$(openssl x509 -in /etc/ucentral/cert.pem -noout -issuer 2>/dev/null)" in
 			*"OpenLAN Demo"*) insecure=1 ;;
-	esac
+		esac
+	fi
+	else
+		insecure=0
+		config_get private_insecure 'config' 'insecure' 0
+		[ "$private_insecure" = 0 ] || return 1
+		for policy_file in /etc/ucentral/gateway.json /etc/ucentral/restrictions.json; do
+			[ ! -f "$policy_file" ] || {
+				private_insecure=$(jsonfilter -i "$policy_file" -e '@["allow-self-signed"]')
+				[ "$private_insecure" != true ] || return 1
+			}
+		done
 	fi
 
 	server=
@@ -105,6 +123,7 @@ start_service() {
 	[ "$insecure" -eq 0 ] || procd_append_param command -i
 	[ -n "$cert" -a -n "$ca" ] && procd_append_param command -c $cert -C $ca
 	hostname_validate=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["hostname_validate"]')
+	[ "$identity_mode" != private ] || hostname_validate=1
 	[ "$hostname_validate" = "0" ] || procd_append_param command -h
 	[ -z "$(mount | grep 'tmpfs on / type tmpfs')" ] || procd_append_param command -r
 	procd_append_param command -b "$boot_cause"

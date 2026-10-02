@@ -10,6 +10,8 @@ from pathlib import Path
 import ssl
 import tempfile
 import threading
+from datetime import timedelta
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 from cryptography import x509
@@ -103,6 +105,20 @@ def run_tests():
             device = ssl.create_default_context(cafile=str(root / "root.pem"))
             device.load_cert_chain(root / "device.pem", root / "device.key")
             refused(lambda: authorization(device))  # AP identity is not an operator.
+            # Expired AP credentials cannot perform ordinary mTLS renewal.
+            # Recovery is a new explicit operator authorization, bound to this
+            # AP's same-key CSR, over independently verified server TLS.
+            with patch.object(pki, "now", return_value=pki.now() - timedelta(days=367)):
+                expired = authority.issue(serial, csr)
+            pki.write(root / "expired.pem", pki.pem(expired) + pki.pem(authority.device))
+            expired_client = ssl.create_default_context(cafile=str(root / "root.pem"))
+            expired_client.load_cert_chain(root / "expired.pem", root / "device.key")
+            refused(lambda: bootstrap(token, tls=expired_client))
+            recovery_token = authorization()
+            recovered = bootstrap(recovery_token)
+            pki.validate(recovered, key, serial, authority)
+            assert recovered.serial_number != issued.serial_number
+            assert bootstrap(recovery_token).serial_number == recovered.serial_number
             expiring_token = authorization()
             authority.store = EnrollmentStore(root / "state" / "grants.sqlite", lambda: pki.now().timestamp() + 601)
             refused(lambda: bootstrap(expiring_token))
@@ -114,8 +130,9 @@ def run_tests():
             forged = pki.certificate(pki.name(serial), key, impostor_key, authority.device, 1)
             refused(lambda: authority.enroll(forged, csr))
             with authority.store.connect() as db:
-                assert db.execute("SELECT count(*) FROM audit WHERE event='grant-issued'").fetchone()[0] == 1
+                assert db.execute("SELECT count(*) FROM audit WHERE event='grant-issued'").fetchone()[0] == 2
             print("PASS: pinned operator mTLS + inventory authorization, durable wire retry, CSR substitution/expiry/revoked operator/AP-as-operator/issuer-spoof refusal")
+            print("PASS: expired AP TLS refuses; explicit pinned-operator same-CSR recovery over verified server TLS issues one new leaf with idempotent retry")
             print("TEST ONLY: no production issuer/service, rate limit, AP installer or real controller activation")
         finally:
             server.shutdown()

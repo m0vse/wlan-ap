@@ -6,6 +6,10 @@ import { ulog_open, ulog, ULOG_SYSLOG, ULOG_STDIO, LOG_DAEMON, LOG_INFO } from '
 import * as fs from 'fs';
 import * as libuci from 'uci';
 
+if (fs.stat('/usr/libexec/ucentral-private-pki') &&
+    system('/usr/libexec/ucentral-private-pki cloud-guard'))
+	exit(1);
+
 let store_operational_pem = false;
 let store_operational_ca = false;
 let est_server = 'est.certificates.open-lan.org';

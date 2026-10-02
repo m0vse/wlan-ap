@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+# Disabled policy by default; no change to stock mode or published images.
+START=17
+USE_PROCD=1
+
+start_service() {
+ local mode
+ mode=$(/usr/libexec/ucentral-private-pki mode) || return 1
+ [ "$mode" = private ] || return 0
+ /usr/libexec/ucentral-private-pki restore || return 1
+ procd_open_instance
+ procd_set_param command /usr/libexec/ucentral-private-pki-scheduler
+ procd_set_param respawn 3600 5 0
+ procd_close_instance
+}
