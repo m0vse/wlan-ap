@@ -1,0 +1,54 @@
+Jaguar .1 -> .3 preserving outgoing route, revision r2 offline qualification
+
+Outgoing TIP-jaguar-2026.10.02.1-ae745dd0:
+frozen image SHA256 49d51833349f76dfcf318f2a8d9ff230965fa7efea631f47c7cbfe2c883b34af
+release metadata SHA256 f6d30a1de1b7933b9df09ab8efef2e9030b7e0b300d480aae8d28d702fb7417c
+Minimum qualified label: jaguar-2026.10.02.1, exact code/runtime identity.
+Only XV2-2/XV2-2T1 preserving source models; no stock-clean migration here.
+
+Incoming TIP-jaguar-2026.10.02.3-e3ea012e:
+21770647 bytes; image SHA256
+9237bac70039fbdaffbb013018dd9c6c9328830e0a4f8f4babe375fd4044821d
+Actual compat1.0 / qualcommax-ipq60xx / aarch64_cortex-a53 metadata.
+
+Retained actual outgoing .1 -> .3 firmware validator/minor tests: 24 per model
+(XV2-2T1 and XV2-2). Hardware preflight boundary is isolated; real fwtool,
+jshn, UCI, signature/device validation and EST metadata function execute.
+Retained combined metadata/source/runtime tests: 18, including modified code,
+BusyBox, ELF library, ucode plugin, OpenSSL config, custom musl search path,
+mode/link drift, lower/wrong-family/malformed labels and wildcard injection.
+Fresh r2 wrapper sequence/real private config archive tests: 9.
+Fresh r2 legacy-source/runtime/canonical-snapshot tests: 33. Actual frozen
+ARM64 OpenSSL and hexdump run via QEMU against synthetic credentials.
+Accept mounted/named mounts, unmounted valid UBIFS, erased/absent old stores,
+valid smaller/larger source stores, and runtime identity overriding old data.
+Refuse corrupt UBIFS, failed read-only mount, wrong bank/type/geometry,
+duplicate mounts, unsafe links, absent/malformed/mismatched runtime identity,
+unsafe private key ownership/mode and changed boot/bank snapshot binding.
+Every case verifies no source/runtime edits or allocation, resize, format,
+environment or target-bank writes. Mount boundaries are private stubs.
+The prior 13-case mounted-only receipt is historical, not r2 qualification.
+Retained authenticated recovery/refusal tests: 21. Recovery preserves release
+metadata, refuses unknown originals/current/staged bytes and ownership/mode
+drift; malformed/below-floor labels permit only authenticated code repair.
+
+The existing .1 transaction fault suite (32) is retained explicitly, not
+misrepresented as a new run. Its actual helper hash is unchanged:
+3d0462bc01a57af0e3d4aba599f43a3f534ffb612061ea88a811067e15b6902c
+The bridge, source checker, generator and release policy are unchanged from
+that tested .1 candidate. Relative to published from.1-r1, only source-store
+preflight, mandatory runtime-pair validation and their preparer invocations
+change executable behavior; the bridge/updater/canonical helper and source/
+runtime contracts, firmware and installation sequencing remain unchanged.
+Retained 21-case recovery suite
+uses its authenticated file-only transaction fixture. Runtime gate is stubbed
+only in fault-mechanics suites; actual full-root runtime gate is tested above.
+
+Canonical outgoing certificate helper is byte-identical to actual .3:
+22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971
+Actual .3 static RAM closure, retained-only FIT/capacity extraction for both
+bank profiles, target ELF/interpreter/module lookup, and canonical synthetic
+key/cert export/restore/startup tests pass (included image evidence).
+No physical RAM pivot, real UBI mount, AP write, reboot or upgrade performed.
+An actual AP --check and operator trial/reconnect/config/identity/confirmation
+receipt are still required before calling the .1 hardware upgrade confirmed.

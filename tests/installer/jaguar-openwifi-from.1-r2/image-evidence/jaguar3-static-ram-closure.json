@@ -1,0 +1,292 @@
+{
+  "passed": true,
+  "root": "/tmp/openwifi-jaguar3-validation.WcB5nJ/root",
+  "required_commands": [
+    "awk",
+    "busybox",
+    "chmod",
+    "cmp",
+    "cp",
+    "find",
+    "fw_printenv",
+    "fw_setenv",
+    "head",
+    "ls",
+    "mkdir",
+    "mktemp",
+    "mount",
+    "mv",
+    "rm",
+    "rmdir",
+    "sed",
+    "sh",
+    "sha256sum",
+    "tar",
+    "tr",
+    "ubiattach",
+    "ubidetach",
+    "ubiformat",
+    "ubimkvol",
+    "ubirmvol",
+    "ubirsvol",
+    "ubiupdatevol",
+    "umount",
+    "wc"
+  ],
+  "retained_command_names": [
+    "[",
+    "ash",
+    "awk",
+    "basename",
+    "busybox",
+    "cat",
+    "chmod",
+    "cmp",
+    "cp",
+    "cut",
+    "date",
+    "dd",
+    "find",
+    "flash_erase",
+    "fw_printenv",
+    "fw_setenv",
+    "fwtool",
+    "grep",
+    "gzip",
+    "head",
+    "hexdump",
+    "kill",
+    "logger",
+    "losetup",
+    "ls",
+    "md5sum",
+    "mkdir",
+    "mkfs.ext4",
+    "mknod",
+    "mktemp",
+    "mount",
+    "mount_root",
+    "mtd",
+    "mv",
+    "nandwrite",
+    "partx",
+    "pivot_root",
+    "printf",
+    "reboot",
+    "rm",
+    "rmdir",
+    "sed",
+    "seq",
+    "sh",
+    "sha256sum",
+    "sleep",
+    "snapshot",
+    "snapshot_tool",
+    "sort",
+    "sync",
+    "tail",
+    "tar",
+    "touch",
+    "tr",
+    "ubiattach",
+    "ubiblock",
+    "ubidetach",
+    "ubiformat",
+    "ubimkvol",
+    "ubirmvol",
+    "ubirsvol",
+    "ubiupdatevol",
+    "umount",
+    "wc",
+    "zcat"
+  ],
+  "runtime_inputs": [
+    "/etc/fw_env.config: generated at first boot; actual device contents/permissions remain runtime acceptance prerequisites"
+  ],
+  "executables_and_libraries": {
+    "bin/busybox": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "lib/libc.so": {
+      "needed": [],
+      "interpreter": null
+    },
+    "lib/libgcc_s.so.1": {
+      "needed": [
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/sbin/fw_printenv": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/bin/fwtool": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubimkvol": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubirmvol": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubirsvol": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubidetach": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubiformat": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubiblock": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubiattach": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/ubiupdatevol": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/sbin/mke2fs": {
+      "needed": [
+        "libext2fs.so.2",
+        "libcom_err.so.0",
+        "libblkid.so.1",
+        "libuuid.so.1",
+        "libe2p.so.2",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/lib/libe2p.so.2.3": {
+      "needed": [
+        "libuuid.so.1",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/lib/libuuid.so.1.3.0": {
+      "needed": [
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/lib/libblkid.so.1.1.0": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/lib/libcom_err.so.0.0": {
+      "needed": [
+        "libuuid.so.1",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/lib/libext2fs.so.2.4": {
+      "needed": [
+        "libuuid.so.1",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "usr/sbin/losetup": {
+      "needed": [
+        "libsmartcols.so.1",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "usr/lib/libsmartcols.so.1.1.0": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "sbin/mtd": {
+      "needed": [
+        "libubox.so.20260213",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "lib/libubox.so.20260213": {
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    },
+    "sbin/mount_root": {
+      "needed": [
+        "libfstools.so",
+        "libubox.so.20260213",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": "/lib/ld-musl-aarch64.so.1"
+    },
+    "lib/libfstools.so": {
+      "needed": [
+        "libubox.so.20260213",
+        "libgcc_s.so.1",
+        "libc.so"
+      ],
+      "interpreter": null
+    }
+  },
+  "scope": "Static actual extracted stage2 helper/script/ELF dependency closure only; no target commands executed, no physical RAM pivot or hardware flash proof"
+}

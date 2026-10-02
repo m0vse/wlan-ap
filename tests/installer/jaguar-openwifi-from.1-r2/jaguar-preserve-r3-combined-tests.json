@@ -1,0 +1,99 @@
+{
+  "passed": true,
+  "count": 18,
+  "cases": [
+    {
+      "case": "actual-frozen-source",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "newer-same-implementation",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "below-minimum",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "malformed-calendar",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-family",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-architecture",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "mixed-stock-namespace",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "metadata-path-injection",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "new-wildcard-script",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "newer-label-modified-updater",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "modified-busybox",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "modified-crypto-library",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "modified-ucode-fs-import",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "modified-openssl-configuration",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "injected-musl-search-path",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "runtime-executable-mode-drift",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "runtime-alias-drift",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "restored-known-source",
+      "passed": true,
+      "accepted": true
+    }
+  ],
+  "fixture": "/tmp/preserve-combined-gates.kxvz26v_",
+  "prepare_sha256": "9c96fb79dc956da11666e9e19de7776edd7b4a4107c29d1e78bcf8e90037ff77",
+  "scope": "Actual metadata/runtime/source gate functions with filesystem paths redirected only. No AP libraries, hardware helpers, network or upgrade executed."
+}

@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "count": 13,
+  "cases": [
+    {
+      "case": "valid-mounted",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "named-mounted",
+      "passed": true,
+      "accepted": true
+    },
+    {
+      "case": "wrong-layout",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-mtd",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "missing-volume",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "short-volume",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-device",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "wrong-type",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "duplicate-mount",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "unmounted",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "symlink-store",
+      "passed": true,
+      "accepted": false
+    },
+    {
+      "case": "symlink-content",
+      "passed": true,
+      "accepted": false
+    }
+  ],
+  "helper_sha256": "5f2d7adeaaef62159f633256313b667faf4ff3452a8d4f582cb295f43bf9ac8b",
+  "scope": "Actual preserving-store preflight with private sysfs/mount-table/filesystem fixtures. No AP, mount, UBI, bank or environment operations."
+}

@@ -1,0 +1,33 @@
+OFFLINE-QUALIFIED REVISED INSTALLER: Jaguar OpenWiFi .1 -> .3.
+Revision r2 corrects the legitimate unmounted/absent old-store refusal in r1.
+Physical upgrade acceptance has not yet been performed.
+Only qualified XV2-2/XV2-2T1, authentic reviewed .1 updater/runtime tuple,
+configuration compatibility 1.0, confirmed converted A/B banks, valid vault
+and a validated matching runtime key/certificate pair are accepted.
+The old certificate volume may be mounted, unmounted UBIFS, erased or absent.
+Existing source volumes must have valid bounded geometry; UBIFS is read only.
+Corrupt stores, wrong-bank mounts, unsafe links or invalid credentials refuse.
+No manual mount workaround, source allocation, resize or formatting is needed.
+The incoming bank uses the canonical 20-LEB durable certificate reservation.
+Do not use this route on stock OpenWrt or the different .2 updater tuple.
+Newer version labels alone do not approve different updater/runtime code.
+
+Default/check commands perform preflight only; explicit --install authorizes
+the preserving A/B trial. Configuration, full shadow baseline, uCentral
+documents and bank-local identity are retained, without keep-redirector UI
+selection. No -n, force or generic NAND fallback. Current bank remains the
+rollback bank. Private transaction/config backups are kept under /root or
+/tmp; do not publish their production contents.
+
+After verifying the published bundle checksum, unpack to a private /tmp
+directory on the AP and run:
+  sh ./jaguar-sysinstall.sh --check
+Only after PASS and explicit operator authorization:
+  sh ./jaguar-sysinstall.sh --install
+On refusal, stop and retain the output; do not bypass a gate or force flash.
+An interrupted updater transaction requires authenticated --recover; the
+install wrapper already requests this before proceeding.
+
+This upgrades to TIP-jaguar-2026.10.02.3-e3ea012e. SHA256 is pinned in
+FINAL-RECEIPT.txt and SHA256SUMS. Radio/DFS fix remains subject to physical
+CAC/SSID/self-healing acceptance. No additional model qualification implied.

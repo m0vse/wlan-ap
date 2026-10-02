@@ -1,0 +1,240 @@
+{
+  "passed": true,
+  "count": 33,
+  "cases": [
+    {
+      "case": "mounted-valid",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "named-mounted-valid",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "unmounted-ubifs",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "unmounted-erased",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-volume",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-volume-and-directory",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "smaller-old-volume",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "larger-old-volume",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "runtime-overrides-old-store",
+      "passed": true,
+      "accepted": true,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-active-mtd",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-target-policy",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-geometry",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "invalid-volume-number",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "zero-volume",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "oversized-volume",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "unmounted-corrupt-magic",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "read-only-mount-refusal",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-mounted-bank",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "duplicate-mount",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-mounted-type",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-volume-but-mounted",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "symlink-store",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "unsafe-store-entry",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-runtime-key",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-runtime-cert",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "symlink-runtime-key",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "symlink-runtime-cert",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "malformed-runtime-cert",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "mismatched-runtime-pair",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "world-readable-runtime-key",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "wrong-runtime-owner",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "missing-both-runtime",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    },
+    {
+      "case": "snapshot-binding-tamper",
+      "passed": true,
+      "accepted": false,
+      "source_store_and_runtime_unchanged": true,
+      "no_allocation_resize_format_env_or_target_write": true
+    }
+  ],
+  "source_check_sha256": "a1d84a7b229e9338b102cbfc7078de71d5fc5081b7c019948738dca88b859abd",
+  "canonical_helper_sha256": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971",
+  "scope": "Actual revised source/runtime checks and unchanged canonical export/boot-bank snapshot validation, actual frozen ARM64 OpenSSL/hexdump via QEMU, synthetic credentials, read-only active-volume mount/identity stubs. No AP credentials, actual mount, allocation, resize, target bank, flash or reboot."
+}
