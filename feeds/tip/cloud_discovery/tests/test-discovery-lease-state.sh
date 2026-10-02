@@ -10,7 +10,7 @@ cat > "$work/test.uc" <<'UCODE'
 const DISCOVER=0, VALIDATING=1, ONLINE=2, OFFLINE=3, ORPHAN=4;
 const LOG_INFO=0;
 let state, offline_time, orphan_time, validate_time;
-let discovery_block_list=[], discovery_method=0;
+let discovery_block_list=[], discovery_method=0, gateway_before_validation=null;
 let fs={unlink: function() { die('persistent/transient state deleted on lease loss'); }};
 function ulog() {};
 function gateway_write() { die('gateway changed on lease loss'); };

@@ -9,6 +9,13 @@ import * as uloop from 'uloop';
 import * as libuci from 'uci';
 import * as math from 'math';
 import * as fs from 'fs';
+import { select_controller } from '/usr/share/ucentral/discovery_policy.uc';
+
+// Opted-in private identity owns gateway state; even direct invocation must
+// not run stock discovery/EST against its committed generation.
+if (fs.stat('/usr/libexec/ucentral-private-pki') &&
+    system('/usr/libexec/ucentral-private-pki cloud-guard'))
+	exit(1);
 
 const DISCOVER = 0;
 const VALIDATING = 1;
@@ -29,6 +36,7 @@ let uci = libuci.cursor();
 let state = DISCOVER;
 let discovery_method = "";
 let discovery_block_list = [];
+let gateway_before_validation = null;
 let validate_time;
 let offline_time;
 let orphan_time;
@@ -39,7 +47,7 @@ let timeouts = {
 	'orphan': 2 * 60 * 60,
 	interval: 10000,
 	expiry_interval: 60 * 60 * 1000,
-	expiry_threshold: 1 * 365 * 24 * 60 * 60,
+	expiry_threshold: 90 * 24 * 60 * 60,
 };
 
 ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, "cloud_discover");
@@ -68,9 +76,42 @@ function detect_certificate_type() {
 
 function readjsonfile(path) {
 	let file = fs.readfile(path);
-	if (file)
-		file = json(file);
-	return file;
+	if (!file)
+		return null;
+	try { return json(file); }
+	catch (e) { return null; }
+}
+
+function discovery_policy() {
+	let raw = fs.readfile('/etc/ucentral/discovery-policy.json');
+	if (raw == null)
+		return null;
+	try { return json(raw) ?? {}; }
+	catch (e) { return {}; }
+}
+
+function controller_allowed(server, port) {
+	let selected = select_controller(null, `${server}:${port}`, discovery_policy());
+	return selected && selected.dhcp_server == server && selected.dhcp_port == +port;
+}
+
+function gateway_credentials_ready(gateway) {
+	return gateway && controller_allowed(gateway.server, gateway.port) &&
+		fs.stat(gateway.cert ?? '/etc/ucentral/operational.pem')?.type == 'file' &&
+		fs.stat(gateway.ca ?? '/etc/ucentral/operational.ca')?.type == 'file';
+}
+
+function pinned_gateway() {
+	// Flash is explicit provisioning, not a hint. Local default/allowed policy
+	// also owns a ready configured identity; DHCP cannot replace its files.
+	let flash = readjsonfile('/etc/ucentral/gateway.flash');
+	if (gateway_credentials_ready(flash))
+		return flash;
+	let gateway = readjsonfile('/etc/ucentral/gateway.json');
+	if ((discovery_policy() != null || gateway?.cert == '/etc/ucentral/cert.pem') &&
+	    gateway_credentials_ready(gateway))
+		return gateway;
+	return null;
 }
 
 function timeouts_load(){
@@ -131,8 +172,19 @@ function gateway_write(data) {
 		if (new[key] != gateway[key])
 			changed = true;
 	}
+	if (!controller_allowed(new.server, new.port))
+		return false;
+	if (!gateway_credentials_ready(new))
+		return false;
+	let pinned = pinned_gateway();
+	if (pinned && (new.server != pinned.server || +new.port != +pinned.port ||
+	    new.cert != pinned.cert || new.ca != pinned.ca))
+		return false;
 	if (changed) {
-		fs.writefile('/etc/ucentral/gateway.json', new);
+		if (!fs.writefile('/etc/ucentral/gateway.json', new))
+			return false;
+		if (gateway.valid && gateway_credentials_ready(gateway) && !new.valid)
+			gateway_before_validation = gateway;
 		system('sync');
 	}
 	return changed;
@@ -140,9 +192,7 @@ function gateway_write(data) {
 
 function gateway_available() {
 	let gateway = gateway_load();
-	if (!gateway || !gateway.server || !gateway.port)
-		return false;
-	return true;
+	return !!gateway_credentials_ready(gateway);
 }
 
 function dnsmasq_rebind_allow(fqdn) {
@@ -166,8 +216,8 @@ function set_state(set) {
 	case DISCOVER:
 		ulog(LOG_INFO, 'Setting cloud to undiscovered\n');
 		fs.unlink('/tmp/cloud.json');
-		fs.unlink('/etc/ucentral/gateway.json');
-		gateway_write({ valid: false });
+		// Keep the last working destination and credentials until a complete
+		// replacement is ready. Discovery/EST failure is not identity removal.
 		dhcp_restart();
 		break;
 
@@ -185,6 +235,7 @@ function set_state(set) {
 			gateway_write({ valid: true });
 			discovery_state_write();
 			discovery_block_list = [];
+			gateway_before_validation = null;
 		}
 		break;
 
@@ -203,20 +254,26 @@ function set_state(set) {
 function discover_dhcp() {
 	let dhcp = readjsonfile('/tmp/cloud.json');
 	if (dhcp?.dhcp_server && dhcp?.dhcp_port) {
+		if (!controller_allowed(dhcp.dhcp_server, dhcp.dhcp_port) || pinned_gateway())
+			return false;
 		let fqdn = split(dhcp.dhcp_server, ':')[0];
-		dnsmasq_rebind_allow(fqdn);
-		if (gateway_write({
+		let candidate = {
 			server: dhcp.dhcp_server,
 			port: dhcp.dhcp_port,
 			valid: false,
 			hostname_validate: 1,
 			cert: `/etc/ucentral/${fqdn}.pem`,
 			ca: `/etc/ucentral/${fqdn}.ca`
-		})) {
+		};
+		// EST uses the DHCP hint, not gateway.json. Do not publish incomplete
+		// credential paths or stop a working client before enrollment succeeds.
+		fs.writefile('/tmp/discovery.method', DISCOVER_DHCP);
+		if (system('/usr/bin/est_client enroll') || !gateway_credentials_ready(candidate))
+			return false;
+		if (gateway_write(candidate)) {
+			dnsmasq_rebind_allow(fqdn);
 			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - trying EST\n`);
 			fs.writefile('/tmp/discovery.method', DISCOVER_DHCP);
-			if (system('/usr/bin/est_client enroll'))
-	                        return false;
 			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - starting client\n`);
 			client_start();
 			set_state(VALIDATING);
@@ -227,6 +284,8 @@ function discover_dhcp() {
 }
 
 function redirector_lookup() {
+	if (discovery_policy() != null || pinned_gateway())
+		return;
 	const path = '/tmp/ucentral.redirector';
 	ulog(LOG_INFO, 'Contact redirector service\n');
 	let serial = uci.get('system', '@system[-1]', 'mac');
@@ -257,10 +316,11 @@ function redirector_lookup() {
 }
 
 function discover_flash() {
-	if (!fs.stat('/etc/ucentral/gateway.flash'))
+	let candidate = readjsonfile('/etc/ucentral/gateway.flash');
+	if (!gateway_credentials_ready(candidate))
 		return 1;
 	ulog(LOG_INFO, 'Using pre-populated cloud information\n');
-	fs.writefile('/etc/ucentral/gateway.json', fs.readfile('/etc/ucentral/gateway.flash'));
+	gateway_write(candidate);
 	fs.writefile('/tmp/discovery.method', DISCOVER_FLASH);
 	client_start();
 	set_state(VALIDATING);
@@ -268,6 +328,8 @@ function discover_flash() {
 }
 
 function discover_standard_fqdn() {
+	if (!controller_allowed(STANDARD_FQDN, STANDARD_FQDN_PORT) || pinned_gateway())
+		return false;
 	ulog(LOG_INFO, `Trying standard FQDN: ${STANDARD_FQDN}\n`);
 
 	let result = query([STANDARD_FQDN], { type: ['A'] });
@@ -279,16 +341,18 @@ function discover_standard_fqdn() {
 	let address = result[STANDARD_FQDN].A[0];
 	ulog(LOG_INFO, `Resolved ${STANDARD_FQDN} to ${address}\n`);
 
-	dnsmasq_rebind_allow(STANDARD_FQDN);
-
-	if (gateway_write({
+	let candidate = {
 		server: STANDARD_FQDN,
 		port: STANDARD_FQDN_PORT,
 		valid: false,
 		hostname_validate: 1,
 		cert: `/etc/ucentral/${STANDARD_FQDN}.pem`,
 		ca: `/etc/ucentral/${STANDARD_FQDN}.ca`
-	})) {
+	};
+	if (!gateway_credentials_ready(candidate))
+		return false;
+	if (gateway_write(candidate)) {
+		dnsmasq_rebind_allow(STANDARD_FQDN);
 		ulog(LOG_INFO, `Discovered cloud via standard FQDN ${STANDARD_FQDN}\n`);
 		fs.writefile('/tmp/discovery.method', DISCOVER_FQDN);
 		client_start();
@@ -343,15 +407,29 @@ function interval_handler() {
 		if (!time_is_valid())
 			return;
 
+		let pinned = pinned_gateway();
+		if (pinned) {
+			gateway_write(pinned);
+			if (ubus.call('ucentral', 'status')?.connected)
+				set_state(ONLINE);
+			else {
+				client_start();
+				set_state(VALIDATING);
+			}
+			return;
+		}
+
 		discovery_method = DISCOVER_DHCP;
 		if (!is_discover_method_blacked() && discover_dhcp())
 			return;
 
-		if (system('/usr/bin/est_client enroll'))
-			return;
-
 		discovery_method = DISCOVER_FLASH;
 		if (!is_discover_method_blacked() && !discover_flash())
+			return;
+
+		// A restrictive local policy never authorizes the stock public EST or
+		// redirector fallback merely because its configured files are absent.
+		if (discovery_policy() != null || system('/usr/bin/est_client enroll'))
 			return;
 
 		discovery_method = DISCOVER_FQDN;
@@ -368,6 +446,16 @@ function interval_handler() {
 		if (time() - validate_time <= timeouts.validate)		
 			break;
 		ulog(LOG_INFO, 'validation failed, restarting discovery process\n');
+		if (gateway_before_validation && gateway_credentials_ready(gateway_before_validation)) {
+			// A candidate timeout must not strand an already provisioned AP.
+			if (!fs.writefile('/etc/ucentral/gateway.json', gateway_before_validation))
+				return;
+			system('sync');
+			gateway_before_validation = null;
+			client_start();
+			set_state(OFFLINE);
+			return;
+		}
 		set_state(DISCOVER);
 		break;
 
@@ -385,22 +473,30 @@ function trigger_reenroll() {
 
 	if (system('/usr/bin/est_client reenroll')) {
 		ulog(LOG_INFO, 'reenroll failed\n');
-		return;
+		return 1;
 	}
 	
 	ulog(LOG_INFO, 'reenroll succeeded\n');
-	ulog(LOG_INFO, 'stopping client\n');
-	
-	system('/etc/init.d/ucentral stop');
-	set_state(DISCOVER);
+	// Renewal changes a certificate, not controller ownership. Restart only
+	// after success; never erase the working gateway or re-enter discovery.
+	client_start();
+	return 0;
 }
 
 function expiry_handler() {
-	let stat = fs.stat('/etc/ucentral/operational.ca');
-	if (!stat)
+	if (!fs.stat('/tmp/ntp.set'))
 		return;
-
-	let ret = system(`openssl x509 -checkend ${timeouts.expiry_threshold} -noout -in /etc/ucentral/operational.pem`);
+	let gateway = gateway_load();
+	let cert = gateway?.cert ?? '/etc/ucentral/operational.pem';
+	// Bootstrap/manual cert.pem is not an EST operational renewal candidate.
+	if (cert == '/etc/ucentral/cert.pem' ||
+	    !match(cert, /^\/etc\/ucentral\/[A-Za-z0-9_.-]+\.pem$/) ||
+	    fs.stat(cert)?.type != 'file')
+		return;
+	// Parse failure is not an expiry event. Never renew on unreadable input.
+	if (system(`openssl x509 -noout -in ${cert}`))
+		return;
+	let ret = system(`openssl x509 -checkend ${timeouts.expiry_threshold} -noout -in ${cert}`);
 	if (!ret) {
 		ulog(LOG_INFO, 'checked certificate expiry - all ok\n');
 		return;
@@ -493,8 +589,7 @@ let ubus_methods = {
 	},
 	reenroll: {
 		call: function(req) {
-			trigger_reenroll();
-			return 0;
+			return trigger_reenroll();
 		},
 		args: {},
 	},

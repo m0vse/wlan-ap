@@ -6,10 +6,15 @@ import { ulog_open, ulog, ULOG_SYSLOG, ULOG_STDIO, LOG_DAEMON, LOG_INFO } from '
 import * as fs from 'fs';
 import * as libuci from 'uci';
 
+if (fs.stat('/usr/libexec/ucentral-private-pki') &&
+    system('/usr/libexec/ucentral-private-pki cloud-guard'))
+	exit(1);
+
 let store_operational_pem = false;
 let store_operational_ca = false;
 let est_server = 'est.certificates.open-lan.org';
 let cert_prefix = 'operational';
+let est_server_override = getenv('EST_SERVER');
 
 function cert_prefix_determine() {
 	let cloud_config = fs.readfile('/tmp/cloud.json');
@@ -67,17 +72,22 @@ function discover_est_server_via_caa() {
 }
 
 function set_est_server() {
+	if (est_server_override) {
+		est_server = est_server_override;
+		return 0;
+	}
 	let discovered_server = discover_est_server_via_caa();
 	if (discovered_server) {
 		est_server = discovered_server;
-		return;
+		return 0;
 	}
 
 	ulog(LOG_INFO, 'No EST server found via CAA, using certificate issuer-based selection\n');
 
 	let pipe = fs.popen(`openssl x509 -in /etc/ucentral/cert.pem -noout -issuer`);
 	let issuer = pipe.read("all");
-	pipe.close();
+	if (pipe.close() || !issuer)
+		return 1;
 
 	if (match(issuer, /OpenLAN Demo Birth CA/)) {
 		ulog(LOG_INFO, 'Certificate type is "Demo" \n');
@@ -85,8 +95,13 @@ function set_est_server() {
 	} else if (match(issuer, /OpenLAN Birth Issuing CA/)) {
 		ulog(LOG_INFO, 'Certificate type is "Production"\n');
 	} else {
-		ulog(LOG_INFO, 'Certificate type is "TIP"\n');
+		// A manually provisioned/private identity is not enrolled in public
+		// OpenLAN EST. Absence of a private EST configuration is a refusal,
+		// not permission to send that identity to the public default.
+		ulog(LOG_INFO, 'No EST service configured for this certificate issuer\n');
+		return 1;
 	}
+	return 0;
 }
 
 if (getenv('EST_SERVER'))
@@ -129,10 +144,40 @@ function generate_csr(cert) {
 }
 
 function store_operational_cert(path, target) {
-	system('mount_certs');
-	system(`cp ${path} /certificates/${target}`);
+	if (!match(target, /^[A-Za-z0-9_.-]+\.(pem|ca)$/))
+		return 1;
+	let staged = `/certificates/${target}.new`;
+	if (system('mount_certs') || system(`cp ${path} ${staged} && chmod 0440 ${staged}`) ||
+	    !fs.rename(staged, `/certificates/${target}`) || system('sync')) {
+		ulog(LOG_INFO, `Failed to persist ${target}\n`);
+		return 1;
+	}
 
 	ulog(LOG_INFO, `Persistently stored ${target}\n`);
+	return 0;
+}
+
+function valid_renewal_candidate(path, previous, ca) {
+	if (!match(ca ?? '', /^\/etc\/ucentral\/[A-Za-z0-9_.-]+\.(pem|ca)$/) ||
+	    fs.stat(ca)?.type != 'file')
+		return false;
+	if (system(`openssl x509 -checkend 0 -noout -in ${path} && openssl verify -CAfile ${ca} ${path} && openssl pkey -in /etc/ucentral/key.pem -noout`))
+		return false;
+	let candidate = fs.popen(`openssl x509 -in ${path} -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum`);
+	let key = fs.popen('openssl pkey -in /etc/ucentral/key.pem -pubout -outform DER | sha256sum');
+	let candidate_hash = candidate.read('all');
+	let key_hash = key.read('all');
+	let candidate_status = candidate.close();
+	let key_status = key.close();
+	if (candidate_status || key_status || !candidate_hash || candidate_hash != key_hash)
+		return false;
+	let new_subject = fs.popen(`openssl x509 -in ${path} -subject -noout -nameopt RFC2253`);
+	let old_subject = fs.popen(`openssl x509 -in ${previous} -subject -noout -nameopt RFC2253`);
+	let next = new_subject.read('all');
+	let old = old_subject.read('all');
+	let new_status = new_subject.close();
+	let old_status = old_subject.close();
+	return !new_status && !old_status && next && next == old;
 }
 
 function p7_too_pem(src, dst) {
@@ -157,7 +202,8 @@ function call_est_server(path, cert, target) {
 	if (generate_csr(cert))
 		return 1;
 
-	set_est_server();
+	if (set_est_server())
+		return 1;
 
 	let curl_cmd = 'curl -m 10 -X POST https://' + est_server + '/.well-known/est/' + path + ' -d @/tmp/csr.nohdr.p10 -H "Content-Type: application/pkcs10" --cert ' + cert + ' --key /etc/ucentral/key.pem --cacert /etc/ucentral/insta.pem -o /tmp/operational.nohdr.p7';
 	ulog(LOG_INFO, `Executing: ${curl_cmd}\n`);
@@ -191,21 +237,46 @@ function simpleenroll() {
 }
 
 function simplereenroll() {
-	cert_prefix = cert_prefix_determine();
+	let gateway = null;
+	try { gateway = json(fs.readfile('/etc/ucentral/gateway.json')); }
+	catch (e) {}
+	// Renew the configured identity, never a transient DHCP-derived prefix.
+	if (gateway?.cert) {
+		if (!match(gateway.cert, /^\/etc\/ucentral\/[A-Za-z0-9][A-Za-z0-9_.-]*\.pem$/))
+			return 1;
+		cert_prefix = replace(replace(gateway.cert, '/etc/ucentral/', ''), /\.pem$/, '');
+	} else
+		cert_prefix = cert_prefix_determine();
+	if (!match(cert_prefix ?? '', /^[A-Za-z0-9][A-Za-z0-9_.-]*$/) || cert_prefix == 'cert' || cert_prefix == 'key')
+		return 1;
 
 	if (!fs.stat('/etc/ucentral/' + cert_prefix + '.pem')) {
 		ulog(LOG_INFO, 'Operational certificate was not found\n');
-		return 0;
+		return 1;
+	}
+	if (gateway?.cert && gateway.cert != '/etc/ucentral/' + cert_prefix + '.pem') {
+		ulog(LOG_INFO, 'Renewal candidate is not the configured controller identity\n');
+		return 1;
 	}
 
 	if (call_est_server('simplereenroll', '/etc/ucentral/' + cert_prefix + '.pem', '/tmp/' + cert_prefix + '.pem'))
 		return 1;
+	let current = '/etc/ucentral/' + cert_prefix + '.pem';
+	let staged = '/tmp/' + cert_prefix + '.pem';
+	if (!valid_renewal_candidate(staged, current, gateway?.ca ?? '/etc/ucentral/' + cert_prefix + '.ca')) {
+		ulog(LOG_INFO, 'Renewal candidate failed identity, expiry or trust validation\n');
+		return 1;
+	}
+
+	// Prepare runtime replacement before committing the durable candidate.
+	// Both replacements are individually atomic; this is not a multi-file
+	// power-loss transaction. No unrelated keys/CA/gateway files are copied.
+	if (system(`cp ${staged} ${current}.new && chmod 0440 ${current}.new`) ||
+	    store_operational_cert(staged, cert_prefix + '.pem') ||
+	    !fs.rename(current + '.new', current))
+		return 1;
 
 	ulog(LOG_INFO, 'Operational cert updated\n');
-	store_operational_cert('/tmp/' + cert_prefix + '.pem', cert_prefix + '.pem');
-	system('cp /tmp/' + cert_prefix + '.pem /etc/ucentral/');
-	system('store_certs');
-
 	return 0;
 }
 
@@ -217,7 +288,8 @@ function load_operational_ca() {
 		return 0;
 	}
 
-	set_est_server();
+	if (set_est_server())
+		return 1;
 
 	let curl_cmd = 'curl -m 10 -X GET https://' + est_server + '/.well-known/est/cacerts --cert /etc/ucentral/' + cert_prefix + '.pem --key /etc/ucentral/key.pem --cacert /etc/ucentral/insta.pem -o /tmp/' + cert_prefix + '.ca.nohdr.p7';
 	ulog(LOG_INFO, `Executing: ${curl_cmd}\n`);
@@ -282,11 +354,14 @@ case 'enroll':
 	if (!ret)
 		ret = load_operational_ca();
 	if (store_operational_pem)
-		store_operational_cert('/etc/ucentral/' + cert_prefix + '.pem', cert_prefix + '.pem');
+		if (!ret)
+			ret = store_operational_cert('/etc/ucentral/' + cert_prefix + '.pem', cert_prefix + '.pem');
 	if (store_operational_ca)
-		store_operational_cert('/etc/ucentral/' + cert_prefix + '.ca', cert_prefix + '.ca');
+		if (!ret)
+			ret = store_operational_cert('/etc/ucentral/' + cert_prefix + '.ca', cert_prefix + '.ca');
 	if (store_operational_pem || store_operational_ca)
-		system('store_certs');
+		if (!ret)
+			ret = system('store_certs');
 
 	exit(ret);
 
