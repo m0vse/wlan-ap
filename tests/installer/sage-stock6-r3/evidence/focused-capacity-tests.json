@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "case": "stock-free1",
+      "passed": true,
+      "calls": [
+        "clear -t /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/stock-free1/dev/ubi0_3",
+        "resize /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/stock-free1/dev/ubi0 -n 3 -s 36188160"
+      ]
+    },
+    {
+      "case": "reverse-bank",
+      "passed": true,
+      "calls": [
+        "clear -t /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/reverse-bank/dev/ubi0_1",
+        "resize /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/reverse-bank/dev/ubi0 -n 1 -s 36188160"
+      ]
+    },
+    {
+      "case": "floor285-free20",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "insufficient",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "same-bank",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "mounted-target",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "block-target",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "wrong-id",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "wrong-type",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "short-overlay",
+      "passed": true,
+      "calls": []
+    },
+    {
+      "case": "clear-fails",
+      "passed": true,
+      "calls": [
+        "clear -t /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/clear-fails/dev/ubi0_3"
+      ]
+    },
+    {
+      "case": "resize-fails",
+      "passed": true,
+      "calls": [
+        "clear -t /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/resize-fails/dev/ubi0_3",
+        "resize /var/folders/r0/8k3d9t2d7tn3rnq81w1d6nrh0000gn/T/sage-capacity.u8z9pwoy/resize-fails/dev/ubi0 -n 3 -s 36188160"
+      ]
+    }
+  ],
+  "scope": "Actual capacity and inactive prepare functions; synthetic UBI commands. No hardware trial."
+}

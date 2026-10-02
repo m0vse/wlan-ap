@@ -1,0 +1,9 @@
+{
+  "archive": "/home/phil/openwifi-sage-build/release-sage-2026.10.02.6/operator-sage-stock-2026.10.02.6-r3.tar.gz",
+  "bytes": 13886774,
+  "sha256": "60fa80a330f40720efe1c22bc52936f3c7fe07e36f8af5b5b168e86a3be80998",
+  "manifest_sha256": "5a572a31ca00125757cb5370174751daae05919778cfa981b44bbadfd35c2baf",
+  "manifest_entries": 56,
+  "image_sha256": "c6c90c009824ef9cc97bf8b855854749455241ed06e5f019421afe61876bd616",
+  "hardware_trial": false
+}

@@ -1,0 +1,14 @@
+{
+  "image": "/home/phil/openwifi-sage-build/release-sage-2026.10.02.6/cambium-sage-sage-2026.10.02.6-sysupgrade.bin",
+  "root": "/tmp/sage6-capacity-image.q024c5e1/root",
+  "release": "/home/phil/openwifi-sage-build/release-sage-2026.10.02.6",
+  "version": "TIP-sage-2026.10.02.6-9fe7f73a",
+  "bytes": 13865290,
+  "sha256": "c6c90c009824ef9cc97bf8b855854749455241ed06e5f019421afe61876bd616",
+  "root_bytes": 11110400,
+  "root_capacity": 36188160,
+  "kernel_sha256": "dbbbd2f3f2f214105896d4664dacd26b83aa05bf08259ec63277d2a0e3b7702d",
+  "unchanged_modules": 129,
+  "unchanged_existing_features": true,
+  "hardware_trial": false
+}

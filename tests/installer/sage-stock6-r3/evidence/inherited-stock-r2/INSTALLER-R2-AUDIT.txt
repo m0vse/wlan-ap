@@ -1,0 +1,47 @@
+Sage stock .3 operator-stock-r2: installer-only nounset qualification, 2026-10-02.
+
+Changed only preparer shell contract/dependency checks, documentation and test
+receipts. Prior operator-stock-r1 and all firmware bytes remain immutable.
+After complete authenticated outgoing/installed source gate (including
+/lib/config/uci.sh), set +u restores stock optional-variable semantics before
+sourcing /lib/functions/system.sh. set -e, recovery gating, source checks,
+route qualification, signature/device/FIT/capacity/store refusals remain.
+No AP library is sourced by --recover. Explicit tr dependency must resolve
+and be executable. tr was already retained by the platform RAMFS list;
+this is not a missing-tr firmware fix.
+
+Fresh tests for this exact preparer:
+11 shell/dependency assertions PASS: native fixture ash and actual outgoing
+target ash reproduce unset IPKG_INSTROOT and empty-IPKG-only failures; fixed
+stock contract succeeds; tampered UCI is refused before sourcing/execution;
+missing and nonexecutable tr refuse, executable tr accepts.
+8 actual complete source-gate cases PASS, root redirects only: reviewed
+outgoing/installed tuples accept; changed/missing/mixed/symlink and extra
+wildcard-loaded upgrade/function scripts refuse without AP execution.
+9 actual wrapper cases PASS: default/check does not recover/install/flash;
+all tested refusals stop the workflow; route-specific -n or -f preservation
+flow remains exact. Preflight/sysupgrade hardware boundaries are stubs.
+Fresh route test: 14 exact shared-store checker/platform-hook refusals PASS.
+Byte-comparison receipt proves all six installed bridge targets,
+transaction/recovery code, wrapper, 39-path source manifests, store/
+compatibility guards and firmware are unchanged from operator-stock-r1.
+
+Inherited, NOT rerun for this preparer-only revision: 38 earlier opaque-draft transaction-mechanics cases (unchanged bridge function), 2 exact final-payload transaction cases, 14 final recovery-refusal, 18 actual stock-validator, 13 incoming allocator cases PASS,
+plus prior frozen image static RAM/architecture/library evidence. Exact
+scope/limits and original fixture receipts are retained in FINAL-RECEIPT.txt
+and original evidence files. No claim that inherited counts are fresh runs.
+The earlier 38 Sage stock mechanics tests were draft opaque payload tests,
+not 38 exact final payload tests; the exact final pair of tests stays distinct.
+
+Default is --check; explicit --install is required for bridge writes and
+normal sysupgrade. Stock-clean routes discard old config/identity with -n;
+Sage existing-OpenWiFi route preserves config/shadow/ucentral with -f and
+requires verified mounted private matching shared store. No force flag,
+UCI fence change, qualification expansion, old trust import on clean routes,
+shared-store clear/mount/resize or destructive fallback was added.
+Unique authorised provisioning and runtime prerequisites still apply.
+
+No AP access/action, flash, reboot, production trust change or publication.
+Offline native/target QEMU and file fixtures do not establish physical RAM
+pivot, UBIFS behavior, power-loss safety, AP boot or live controller acceptance.
+Publication/deployment remains subject to coordinator/operator authorization.

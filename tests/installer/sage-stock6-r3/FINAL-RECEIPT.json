@@ -1,0 +1,30 @@
+{
+  "scope": "Stock2026.09.29.0 clean migration, E410/E410B; observed AP E410B; first hardware trial pending",
+  "image": {
+    "image": "/home/phil/openwifi-sage-build/release-sage-2026.10.02.6/cambium-sage-sage-2026.10.02.6-sysupgrade.bin",
+    "root": "/tmp/sage6-capacity-image.q024c5e1/root",
+    "release": "/home/phil/openwifi-sage-build/release-sage-2026.10.02.6",
+    "version": "TIP-sage-2026.10.02.6-9fe7f73a",
+    "bytes": 13865290,
+    "sha256": "c6c90c009824ef9cc97bf8b855854749455241ed06e5f019421afe61876bd616",
+    "root_bytes": 11110400,
+    "root_capacity": 36188160,
+    "kernel_sha256": "dbbbd2f3f2f214105896d4664dacd26b83aa05bf08259ec63277d2a0e3b7702d",
+    "unchanged_modules": 129,
+    "unchanged_existing_features": true,
+    "hardware_trial": false
+  },
+  "legacy_source": "1dd0433",
+  "release_source": "9fe7f73a",
+  "fresh_counts": {
+    "capacity_and_inactive_sequence": 12,
+    "actual_stock_validator": 20,
+    "wrapper": 9,
+    "e410_fit_ram": 4,
+    "e410b_fit_ram": 4
+  },
+  "existing_transactions": "unchanged bridge functions; historical evidence retained, not rerun",
+  "no_AP_action": true,
+  "no_nvram_or_running_pair_resize": true,
+  "no_private_trust_activation": true
+}
