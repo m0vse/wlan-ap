@@ -1,0 +1,73 @@
+DEFAULT-DISABLED PRIVATE IDENTITY: ISOLATED PACKAGE RECEIPT
+
+Source baseline wlan-ap294900be; follow-up explicitly declares UCI dependency,
+package release2, isolated builder, payload audit and readiness init tests.
+No family profile selects this package; no frozen image was rebuilt.
+
+Artifact cnbeacon:
+/tmp/private-pki-package-build.zImUt4/artifacts/ucentral-private-pki-2.apk
+aarch64_cortex-a53;4552bytes
+SHA25686466485a439fa796854ac64bdc74bb8ad1d3de1c1a06955e71b8545c9cbbff9
+
+Existing Thor OpenWrt25.12 package Makefile compile target succeeded inside
+private mount/network namespaces and copy-on-write overlay. /home/phil was
+bind-remounted read-only INSIDE namespace. Only loopback enabled for fakeroot
+IPC; no external interfaces. Writes/logs/artifacts only under the temporary
+workspace above. No setup.py/build.sh/rebase/profile change.
+Initial top-level attempt rebuilt unrelated APK host tool and failed on endian
+helpers; direct package target reused existing tools. First packaging retry
+needed loopback for fakeroot IPC. Final package target succeeded. This proves
+this script-only package compilation/packaging, NOT a full top-level build.
+
+Payload audit PASS: five installed source files byte-identical; scripts/init
+0755, policy0600; enabled:false; declared conffile; exactly eight files including
+three APK metadata files; no key/cert payload. ADB metadata owner/group root.
+Extracted only, no installation or postinst execution.
+Dependencies in APK: libc,openssl-util,uci,ucode,ucode-mod-fs. Target OpenSSL,
+ucode/fs,UCI,BusyBox present. Packaged AArch64 OpenSSL3.5.6 +ucode/fs passed
+materializer/dispatcher fixtures under QEMU. Dependency presence/use evidence,
+NOT fresh solver transaction on AP.
+Startup fixtures PASS: stock/demo path preserved; private validated restore and
+hostname validation; malformed policy/failed restore/insecure overrides refuse;
+competing cloud/EST entry points blocked; readiness service stock-off/private-on/
+failed-restore paths verified. procd/config/jsonfilter stubbed, paths redirected.
+Monitor is READINESS ONLY, NOT renewal scheduler: due reports activation-blocked
+and preserves pointer/runtime gateway. No enroll/commit/insecure expiry fallback.
+
+Original Thor config unchanged SHA256:
+4b9889b96c38be073f3a32fe5867a083171a14b2b36825eb8e357e5180e0d6ba
+Frozen Thor.8 image unchanged SHA256:
+f3a625a12c5970f3bb87243b8b029174a4f3e5ae8ef1bec8b6c17c4789c10b99
+
+OWGW consulted via server task01a0bbeb-5080-7940-bba4-90550cb146dd.
+Deployed4.2.2(3)-f0babfd, image
+sha256:10b8e41f8266a561daf5b50a012dc0bf050381877673c554f1551c0d82308b98.
+Repository Telecominfraproject/wlan-cloud-ucentralgw, commit
+f0babfd601d30733c9f614fb30fde29e49988a1f; inspected src/
+AP_WS_Process_connect.cpp, AP_WS_Server.cpp, AP_WS_Connection.cpp,
+AP_WS_Process_ping.cpp. Example pinned source:
+https://github.com/Telecominfraproject/wlan-cloud-ucentralgw/blob/f0babfd601d30733c9f614fb30fde29e49988a1f/src/AP_WS_Process_connect.cpp
+Stock connect clears command queue/replaces serial session/writes device data/
+may provision before final CN validation. Ping has no application acknowledgement.
+Ordinary parallel client can displace live management; transport PONG insufficient.
+
+PRECISE PROPOSED PATCH PLAN, NOT IMPLEMENTED ENDPOINT:
+1. Dedicated early probe route shares real TLS trust/inventory/revocation policy,
+   bypassing StartSession, device/command/provisioning writes and all disconnect/
+   RADIUS/session cleanup effects.
+2. Derive leafSHA256 from TLS peer, not requester; exact canonical serial==CN and
+   approved inventory. Return version/id-bound accepted:true, serial, derived
+   fingerprint, fresh challenge and short expiry over authenticated TLS. Enforce
+   message/rate/lifetime/replay limits; fail closed on mismatch/revocation.
+3. Isolated client uses explicit candidate key/cert/CA paths, strict hostname,
+   private trust, no ubus/config effects. Test replay/substitution/trust/identity/
+   expiry/disconnect/timeout cases against isolated gateway. Never temporarily
+   replace active key or run a duplicate real-serial management client.
+4. Probe is candidate authorization, NOT normal management acceptance. Final
+   transactional activation must observe real post-switch management acceptance
+   with previous generation retention and durable interruption/timeout rollback.
+
+Pending: actual gateway/probe implementation/tests; full future firmware build;
+hardware service/mount/A-B proof; renewal/activation orchestration; protected
+production issuer loading/restart/admin/rate/revocation integration. Deployment
+plan in PKI-TEST-RUNBOOK.txt. Production keys/listeners/trust/APs untouched.

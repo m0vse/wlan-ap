@@ -78,8 +78,9 @@ Test startup hooks:
 This uses redirected filesystem and procd/config/jsonfilter stubs; it is not
 service runtime proof. Actual packaged AArch64 OpenSSL3.5.6 and ucode/fs module
 passed materialization/dispatcher fixtures under QEMU on cnbeacon. The guarded
-ucode entry points compile with that packaged interpreter. Full OpenWrt package
-compile and hardware service ordering are not yet established.
+ucode entry points compile with that packaged interpreter. Optional package
+compile/payload audit established (PKI-INTEGRATION-RECEIPT.txt); full firmware
+build and hardware service ordering are not yet established.
 
 APPLICATION ACCEPTANCE BARRIER
 

@@ -87,6 +87,14 @@ procd_close_instance() { echo close >> "$TEST_RECORD"; }
         assert code == 0 and "est" in events and "open" in events
         code, events = execute(cloud, "invalid")
         assert code != 0 and "est" not in events and "open" not in events
+        readiness = "feeds/tip/ucentral-private-pki/files/private-pki.init"
+        code, events = execute(readiness, "stock")
+        assert code == 0 and "restore" not in events and "open" not in events
+        code, events = execute(readiness, "private")
+        assert code == 0 and "restore" in events and "open" in events
+        assert "ucentral-private-pki-scheduler" in events
+        code, events = execute(readiness, "private", True)
+        assert code != 0 and "open" not in events
         # Source guard must precede any stock EST/discovery state mutation.
         for name in ("cloud_discovery", "est_client"):
             source = (repo / f"feeds/tip/cloud_discovery/files/usr/bin/{name}").read_text()

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-private-pki
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=BSD-3-Clause
 
 include $(INCLUDE_DIR)/package.mk
@@ -10,7 +10,7 @@ define Package/ucentral-private-pki
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=Opt-in committed private identity integration (experimental)
-  DEPENDS:=+ucode +ucode-mod-fs +openssl-util
+  DEPENDS:=+ucode +ucode-mod-fs +openssl-util +uci
 endef
 
 Build/Compile=
