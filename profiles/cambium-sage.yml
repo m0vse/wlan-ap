@@ -2,11 +2,13 @@
 profile: cambium-sage
 target: ipq40xx
 subtarget: generic
-description: Build the OpenWiFi image for qualified Cambium Sage access points
+description: Build OpenWiFi for qualified Sage E410 and E410B models
 image: bin/targets/ipq40xx/generic/openwrt-ipq40xx-generic-cambium-sage-squashfs-sysupgrade.bin
 packages:
   - ipq40xx
   - iwinfo
+  # Required by the canonical A/B certificate-retention preflight.
+  - openssl-util
 include:
   - ucentral-ap
   - target-ipq40xx
