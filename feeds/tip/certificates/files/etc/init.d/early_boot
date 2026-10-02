@@ -7,9 +7,10 @@ copy_certificates() {
 
 	cp /certificates/*.pem /certificates/*.ca /etc/ucentral/ 2>/dev/null || true
 	chown root.network /etc/ucentral/*.pem /etc/ucentral/*.ca
-	chmod 0440 root.network /etc/ucentral/*.pem /etc/ucentral/*.ca
+	chmod 0440 /etc/ucentral/*.pem /etc/ucentral/*.ca
 	[ -f /certificates/gateway.json ] && cp /certificates/gateway.json /etc/ucentral/gateway.flash
 	[ -f /certificates/restrictions.json ] && cp /certificates/restrictions.json /etc/ucentral/
+	[ -f /certificates/discovery-policy.json ] && cp /certificates/discovery-policy.json /etc/ucentral/
 	[ -f /certificates/sign_pubkey.pem ] && cp /certificates/sign_pubkey.pem /etc/ucentral/
 	country=`cat /certificates/ucentral.defaults | jsonfilter -e '@.country'`
 	[ -z "$country" -a -f /etc/uci-defaults/30_uboot-envtools ] && {
