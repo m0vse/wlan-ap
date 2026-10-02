@@ -1,0 +1,55 @@
+PRIVATE PKI LIFECYCLE: ISOLATED PROTOTYPE ONLY
+
+Build the pinned Dockerfile.private-pki-test image, then run from repository root:
+
+docker run --rm --network none --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,mode=0700 \
+  --mount type=bind,source="$(pwd)/tests/private-pki",target=/work,readonly \
+  --entrypoint /bin/sh IMAGE /work/run-isolated-tests.sh
+
+IMAGE must be the locally built/pinned test image. No listener is published.
+All generated keys and identities are synthetic and temporary. Do not mount
+production signing keys or AP credentials into this test container.
+
+Coverage:
+- Approved inventory plus pinned operator mTLS authorizes a short-lived grant
+  bound to serial, CSR digest and issuer fingerprint. SQLite stores token hashes,
+  issuance responses and revocation state with private permissions.
+- Concurrent redemption issues once; identical wire retry returns the same leaf
+  after store reopen. Invalid CSR/serial/issuer, expired authorization and
+  unapproved/revoked operator requests fail closed.
+- TLS loopback EST subset verifies client identity and same-key reenrollment.
+  Explicit trusted issuer signatures reject same-name issuer impersonation.
+- Leaves last at most one year, capped by issuer expiry; root lasts ten years.
+  Pure renewal policy triggers at 90 days or earlier issuer expiry, bounds outage
+  backoff, and requires separately authenticated recovery after expiry.
+- Explicit dual-root overlap permits isolated root/server transition and device
+  reissuance. Old-only trust fails against the new server.
+- Candidate files and directories are flushed before atomic pointer publication.
+  Failed proof, proof outage and injected pre-pointer interruption retain the
+  prior committed identity. Expired leaf/root refuse activation; successful
+  retry commits a new generation and retains the previous generation.
+
+Separate stock-tool boot fixture (Linux host with Python cryptography,
+OpenSSL and the firmware's native ucode available on PATH):
+  python3 tests/private-pki/test_boot_materialize.py
+This validates the experimental shell materializer against real OpenSSL/ucode,
+including key/chain/CN/permissions/path rejection and ignoring pending generations.
+It is NOT installed or enabled in firmware. Commit proof in this fixture is a
+stub, not controller acceptance; the separate TLS tests use loopback only.
+
+Deployment gates still open:
+- Protected production issuer loading/restart, administration, rate limiting,
+  audit retention and fleet revocation distribution are not implemented here.
+- Renewal policy is not a running AP scheduler; no procd/early-boot integration.
+- Expiry recovery is a refusal/requirement, not a completed recovery workflow.
+- No real OWGW handshake/config acceptance proves a candidate identity.
+- No hardware boot, A/B RAM pivot, interrupted flash or power-loss filesystem
+  proof. Directory fsync plus atomic replacement is not a hardware guarantee.
+- Production private trust rollout to gateway/EST/rtty/download/discovery,
+  HTTPS hostname verification, inventory authorization and offline fleet
+  root-transition acceptance need independent deployment validation.
+
+Do not publish this as an operational CA or flash new identities onto an AP.
+Do not use DHCP/MAC possession as authorization, disable TLS verification,
+replace production listeners or manipulate live system clocks to test expiry.

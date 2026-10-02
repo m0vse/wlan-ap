@@ -1,7 +1,8 @@
 """ISOLATED TEST ONLY: constrained issuance + RFC7030 wire subset.
 
-Not a production CA/EST service. No durable enrollment database, revocation
-distribution, rate limiting, operator API or real OWGW activation is provided.
+Not a production CA/EST service. Durable grants and an isolated pinned-mTLS
+operator endpoint are tested; no revocation distribution, rate limiting,
+production issuer loading or real OWGW activation is provided.
 All keys/identities are created inside temporary private test directories.
 """
 import base64
@@ -20,10 +21,12 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from enrollment_store import EnrollmentStore
 
 ROOT_DAYS = 3650
 LEAF_DAYS = 365
@@ -80,7 +83,7 @@ def certificate(subject, key, signer_key, issuer, days, ca=False, server=False):
 
 
 class Authority:
-    def __init__(self):
+    def __init__(self, store=None):
         self.root_key = ec.generate_private_key(ec.SECP384R1())
         self.root = certificate(name("ISOLATED TEST ROOT - NOT FLEET TRUST"), self.root_key, self.root_key, None, ROOT_DAYS, True)
         self.device_key = ec.generate_private_key(ec.SECP256R1())
@@ -89,10 +92,20 @@ class Authority:
         self.server = certificate(name("ISOLATED TEST SERVER ISSUER"), self.server_key, self.root_key, self.root, 1825, True)
         self.authorizations = {}
         self.revoked = set()
+        self.store = store
+        self.operator_fingerprints = set()
+        self.trusted_device_issuers = [self.device]
+
+    def peer_revoked(self, serial):
+        return serial in self.revoked or (self.store is not None and self.store.is_revoked(serial))
 
     def authorize(self, serial, csr):
         # Trusted local operator method, NOT an unauthenticated HTTP API.
         self.check_csr(serial, csr)
+        if self.store is not None:
+            return self.store.authorize(serial,
+                hashlib.sha256(csr.public_bytes(serialization.Encoding.DER)).digest(),
+                self.device.fingerprint(hashes.SHA256()).hex())
         token = secrets.token_urlsafe(32)
         self.authorizations[hashlib.sha256(token.encode()).digest()] = {
             "serial": serial, "digest": hashlib.sha256(csr.public_bytes(serialization.Encoding.DER)).digest(),
@@ -115,6 +128,12 @@ class Authority:
         return certificate(name(serial), key_proxy, self.device_key, self.device, LEAF_DAYS)
 
     def bootstrap(self, serial, token, csr):
+        self.check_csr(serial, csr)
+        if self.store is not None:
+            result = self.store.redeem(serial, token,
+                hashlib.sha256(csr.public_bytes(serialization.Encoding.DER)).digest(),
+                self.device.fingerprint(hashes.SHA256()).hex(), lambda: pem(self.issue(serial, csr)))
+            return x509.load_pem_x509_certificate(result)
         grant = self.authorizations.get(hashlib.sha256(token.encode()).digest())
         digest = hashlib.sha256(csr.public_bytes(serialization.Encoding.DER)).digest()
         if not grant or grant["serial"] != serial or not secrets.compare_digest(grant["digest"], digest) or grant["expires"] <= now():
@@ -124,13 +143,24 @@ class Authority:
         # Same authorized CSR retry is idempotent, never a second issuance.
         return grant["response"]
 
-    def enroll(self, peer, csr):
-        serial = peer.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
-        self.check_csr(serial, csr)
-        if peer.serial_number in self.revoked or peer.issuer != self.device.subject:
+    def check_peer(self, peer):
+        if self.peer_revoked(peer.serial_number) or not peer.not_valid_before_utc <= now() < peer.not_valid_after_utc:
             raise ValueError("client identity rejected")
+        for issuer in self.trusted_device_issuers:
+            try:
+                peer.verify_directly_issued_by(issuer)
+                break
+            except (ValueError, InvalidSignature):
+                continue
+        else:
+            raise ValueError("client issuer rejected")
         if ExtendedKeyUsageOID.CLIENT_AUTH not in peer.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value:
             raise ValueError("client purpose rejected")
+
+    def enroll(self, peer, csr):
+        self.check_peer(peer)
+        serial = peer.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        self.check_csr(serial, csr)
         if public(peer.public_key()) != public(csr.public_key()):
             raise ValueError("CSR is not bound to authenticated client key")
         return self.issue(serial, csr)
@@ -148,7 +178,8 @@ def handler(authority):
         def reply(self, status, body, kind="application/pkcs7-mime; smime-type=certs-only"):
             self.send_response(status)
             self.send_header("Content-Type", kind)
-            self.send_header("Content-Transfer-Encoding", "base64")
+            if kind.startswith("application/pkcs7-mime"):
+                self.send_header("Content-Transfer-Encoding", "base64")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -162,7 +193,9 @@ def handler(authority):
                     self.reply(403, b"")
                     return
                 peer = x509.load_der_x509_certificate(der)
-                if peer.issuer != authority.device.subject or peer.serial_number in authority.revoked:
+                try:
+                    authority.check_peer(peer)
+                except (ValueError, x509.ExtensionNotFound):
                     self.reply(403, b"")
                     return
                 serial = peer.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -173,9 +206,28 @@ def handler(authority):
         def do_POST(self):
             try:
                 size = int(self.headers.get("Content-Length", "0"))
-                if size < 1 or size > 65536 or self.headers.get("Content-Type") != "application/pkcs10":
+                if size < 1 or size > 65536:
                     raise ValueError("request format rejected")
-                csr = x509.load_der_x509_csr(base64.b64decode(b"".join(self.rfile.read(size).split()), validate=True))
+                body = self.rfile.read(size)
+                if self.path == "/operator/enrollment-authorizations":
+                    if authority.store is None or self.headers.get("Content-Type") != "application/json":
+                        raise ValueError("operator request rejected")
+                    der = self.connection.getpeercert(binary_form=True)
+                    if not der:
+                        raise ValueError("operator mTLS required")
+                    peer = x509.load_der_x509_certificate(der)
+                    if peer.fingerprint(hashes.SHA256()).hex() not in authority.operator_fingerprints or \
+                            authority.peer_revoked(peer.serial_number) or \
+                            ExtendedKeyUsageOID.CLIENT_AUTH not in peer.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value:
+                        raise ValueError("operator identity rejected")
+                    request = json.loads(body)
+                    csr = x509.load_der_x509_csr(base64.b64decode(request["csr"], validate=True))
+                    token = authority.authorize(request["serial"], csr)
+                    self.reply(200, json.dumps({"authorization": token, "expires_in": 600}).encode(), "application/json")
+                    return
+                if self.headers.get("Content-Type") != "application/pkcs10":
+                    raise ValueError("request format rejected")
+                csr = x509.load_der_x509_csr(base64.b64decode(b"".join(body.split()), validate=True))
                 if self.path == "/bootstrap":
                     auth = self.headers.get("Authorization", "")
                     if not auth.startswith("Basic "):
@@ -191,13 +243,13 @@ def handler(authority):
                     self.reply(404, b"")
                     return
                 self.reply(200, response([cert, authority.device]))
-            except (ValueError, TypeError, IndexError, KeyError):
+            except (ValueError, TypeError, IndexError, KeyError, x509.ExtensionNotFound):
                 self.reply(403, b"")
     return Handler
 
 
 def validate(cert, key, serial, authority):
-    if cert.serial_number in authority.revoked:
+    if authority.peer_revoked(cert.serial_number):
         raise ValueError("candidate is revoked")
     cert.verify_directly_issued_by(authority.device)
     authority.device.verify_directly_issued_by(authority.root)
@@ -221,6 +273,13 @@ def activate(store, cert, key, serial, authority, proof):
     generation.mkdir(mode=0o700)
     write(generation / "cert.pem", pem(cert) + pem(authority.device))
     write(generation / "key.pem", private(key))
+    # Persist both directory entries before publishing a pointer to them.
+    for directory in (generation, store):
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     if not proof(generation):
         raise ValueError("candidate authentication proof failed; previous generation unchanged")
     pointer = store / ("pointer-" + secrets.token_hex(8))
@@ -322,6 +381,9 @@ def run_tests():
             # Root replacement is a separate trust transition, never a clock
             # manipulation or replacement of any production listener.
             replacement = Authority()
+            # Explicit issuer overlap, not an issuer-CN comparison or implicit
+            # permission granted merely by loading another root into TLS.
+            replacement.trusted_device_issuers.append(authority.device)
             replacement_tls_key = ec.generate_private_key(ec.SECP256R1())
             replacement_tls_cert = certificate(name("localhost"), replacement_tls_key, replacement.server_key,
                                                replacement.server, LEAF_DAYS, server=True)
@@ -356,7 +418,7 @@ def run_tests():
             assert operational.not_valid_after_utc - now() > timedelta(days=RENEW_DAYS)
             print("PASS: loopback TLS, CSR-bound bootstrap/idempotent retry, mTLS EST enroll/reenroll, wrong-key/trust/revocation refusal, validated generation commit/failed-proof rollback")
             print("PASS: isolated root/server transition refuses old-only trust; explicit dual-root overlap permits authenticated AP reissuance and new identity")
-            print("TEST ONLY: no production root, AP enrollment, real OWGW proof, durable issuance DB or complete EST conformance")
+            print("TEST ONLY: no production issuer/service, AP enrollment, real OWGW proof or complete EST conformance")
         finally:
             server.shutdown()
             server.server_close()
