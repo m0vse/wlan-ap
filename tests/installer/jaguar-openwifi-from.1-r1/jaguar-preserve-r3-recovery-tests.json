@@ -1,0 +1,155 @@
+{
+  "passed": true,
+  "count": 21,
+  "cases": [
+    {
+      "case": "valid-recovery",
+      "passed": true,
+      "accepted": true,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": false
+    },
+    {
+      "case": "initializing-without-pid",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "live-owner",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "symlink-pid",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "unsafe-journal-mode",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "corrupt-original",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "unrelated-source-drift",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "unapproved-source-set",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "symlink-original",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "changed-original-mode",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "symlink-source-set",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "symlink-state",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "invalid-state",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "extra-upgrade-script",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "extra-function-script",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "unknown-fixed-target",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "fixed-target-mode-drift",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "staged-target-corrupt",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "runtime-refusal",
+      "passed": true,
+      "accepted": false,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": true
+    },
+    {
+      "case": "lower-metadata-repair",
+      "passed": true,
+      "accepted": true,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": false
+    },
+    {
+      "case": "malformed-metadata-repair",
+      "passed": true,
+      "accepted": true,
+      "metadata_unchanged": true,
+      "refusal_live_source_unchanged": false
+    }
+  ],
+  "helper_sha256": "3d0462bc01a57af0e3d4aba599f43a3f534ffb612061ea88a811067e15b6902c",
+  "scope": "Actual recovery functions and source tuple checker with private file/ownership fixtures. Runtime gate is an injected refusal boundary; actual runtime implementation gate is covered separately. No AP library sourced, mount, bank, environment, flash or reboot."
+}

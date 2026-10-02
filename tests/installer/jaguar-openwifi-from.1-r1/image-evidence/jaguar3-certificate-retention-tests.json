@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "family": "jaguar",
+  "cases": [
+    {
+      "case": "provisioned",
+      "startup_skips_mount": true,
+      "passed": true
+    },
+    {
+      "case": "bootstrap-only",
+      "startup_skips_mount": false,
+      "passed": true
+    },
+    {
+      "case": "unmounted-UBIFS-export-runtime-policy-precedence-restore-and-refusals",
+      "passed": true,
+      "result": "Certificate file-level retention, policy precedence, privacy, source protection and failure cases passed; fixtures: /tmp/cambium-ab-certificates-test.lh9nVi"
+    }
+  ],
+  "source_sha256": {
+    "etc/init.d/early_boot": "cacc0fcb9df311e4b992a9fcad6c1eee28d2a94a4f369f0f4e1203983595bede",
+    "lib/upgrade/cambium-ab-certificates.sh": "22762c5a3f0c6e4453c12d07f7fac56dd54c4445668f2ef52419d73a08b5b971"
+  },
+  "fixture": "/tmp/sage-jaguar-incoming-cert.nkd5jkzh",
+  "scope": "Actual frozen scripts, file-only startup and canonical retention tests with synthetic locally generated credentials and mount/UBI identity stubs. No production key/cert access, actual mounts, AP access, flash or reboot."
+}

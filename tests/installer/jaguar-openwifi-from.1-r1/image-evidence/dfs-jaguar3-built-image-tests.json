@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "count": 8,
+  "cases": [
+    {
+      "case": "exact-shipped-usr/share/ucentral/dfs_cac.uc",
+      "passed": true
+    },
+    {
+      "case": "exact-shipped-usr/share/ucentral/health.uc",
+      "passed": true
+    },
+    {
+      "case": "exact-shipped-usr/sbin/ucentral-state",
+      "passed": true
+    },
+    {
+      "case": "target-compile-usr/share/ucentral/health.uc",
+      "passed": true
+    },
+    {
+      "case": "target-compile-usr/sbin/ucentral-state",
+      "passed": true
+    },
+    {
+      "case": "target-dynamic-require-exact-production-search-path",
+      "passed": true
+    },
+    {
+      "case": "standard-package-and-timeout-ELF-closure",
+      "passed": true
+    },
+    {
+      "case": "actual-shipped-target-timeout-kills-command-and-child",
+      "passed": true,
+      "elapsed_seconds": 2.034
+    }
+  ],
+  "package_versions": {
+    "coreutils-timeout": "9.9-r2",
+    "hostapd-utils": "2025.08.26~ca266cc2-r1",
+    "ucentral-schema": "2026.08.26~d1e90a04-r14",
+    "ucentral-state": "2"
+  },
+  "image": "/home/phil/openwifi-jaguar-build/wlan-ap/openwrt/bin/targets/qualcommax/ipq60xx/openwrt-qualcommax-ipq60xx-cambiumnetworks_jaguar-persistent-squashfs-sysupgrade.bin",
+  "image_size": 21770647,
+  "image_sha256": "9237bac70039fbdaffbb013018dd9c6c9328830e0a4f8f4babe375fd4044821d",
+  "tip_metadata": "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='25.12.3'\nDISTRIB_REVISION='r32912-6639b15f62'\nDISTRIB_TARGET='qualcommax/ipq60xx'\nDISTRIB_ARCH='aarch64_cortex-a53'\nDISTRIB_DESCRIPTION='OpenWrt 25.12.3 r32912-6639b15f62'\nDISTRIB_TAINTS='no-all override'\nDISTRIB_TIP='OpenWrt 25.12.3 r32912-6639b15f62 / TIP-jaguar-2026.10.02.3-e3ea012e'\nDISTRIB_TIP_VERSION='jaguar-2026.10.02.3'\nDISTRIB_UCENTRAL_SCHEMA_REVISION='d1e90a0'\n",
+  "scope": "Actual extracted immutable image bytes, ARM64 target ucode compile/dynamic-require and target timeout through QEMU; private fake sleeping command only. No live AP, daemon start, ubus connection, network, flash or reboot."
+}

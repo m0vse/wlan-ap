@@ -1,0 +1,27 @@
+OFFLINE-QUALIFIED PRESERVING ROUTE: Jaguar OpenWiFi .1 -> .3.
+Physical upgrade acceptance has not yet been performed.
+Only qualified XV2-2/XV2-2T1, authentic reviewed .1 updater/runtime tuple,
+configuration compatibility 1.0, confirmed converted A/B banks, valid vault
+and verified mounted 20-LEB active certificate store are accepted.
+Do not use this route on stock OpenWrt or the different .2 updater tuple.
+Newer version labels alone do not approve different updater/runtime code.
+
+Default/check commands perform preflight only; explicit --install authorizes
+the preserving A/B trial. Configuration, full shadow baseline, uCentral
+documents and bank-local identity are retained, without keep-redirector UI
+selection. No -n, force or generic NAND fallback. Current bank remains the
+rollback bank. Private transaction/config backups are kept under /root or
+/tmp; do not publish their production contents.
+
+After verifying the published bundle checksum, unpack to a private /tmp
+directory on the AP and run:
+  sh ./jaguar-sysinstall.sh --check
+Only after PASS and explicit operator authorization:
+  sh ./jaguar-sysinstall.sh --install
+On refusal, stop and retain the output; do not bypass a gate or force flash.
+An interrupted updater transaction requires authenticated --recover; the
+install wrapper already requests this before proceeding.
+
+This upgrades to TIP-jaguar-2026.10.02.3-e3ea012e. SHA256 is pinned in
+FINAL-RECEIPT.txt and SHA256SUMS. Radio/DFS fix remains subject to physical
+CAC/SSID/self-healing acceptance. No additional model qualification implied.

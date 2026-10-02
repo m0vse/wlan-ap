@@ -1,0 +1,59 @@
+Jaguar DFS CAC test firmware, 2026-10-02
+
+TIP-jaguar-2026.10.02.3-e3ea012e
+Source: m0vse/wlan-ap e3ea012e, tag jaguar-2026.10.02.3 (pushed)
+OpenWrt 25.12.3 r32912-6639b15f62, qualcommax/ipq60xx,
+aarch64_cortex-a53; kernel 6.12.85, kmod-ath11k 6.12.85.6.18.7-r1.
+
+Immutable image: cambium_xv2-2t1-jaguar-2026.10.02.3-sysupgrade.bin
+Bytes: 21770647
+SHA256: 9237bac70039fbdaffbb013018dd9c6c9328830e0a4f8f4babe375fd4044821d
+Built on cnbeacon, incremental make (no setup.py/build.sh/rebase).
+Build output:
+/home/phil/openwifi-jaguar-build/wlan-ap/openwrt/bin/targets/qualcommax/ipq60xx/openwrt-qualcommax-ipq60xx-cambiumnetworks_jaguar-persistent-squashfs-sysupgrade.bin
+
+Actual image metadata: compat_version 1.0, metadata_version 1.1,
+est_supported 1, target qualcommax/ipq60xx, board cambiumnetworks_jaguar.
+Firmware FMS models: cambium_xv2-2, cambium_xv2-2t1, cambium_xe3-4.
+Do not broaden A/B qualification to XV2-2T0 or XE3-4TN merely because the
+family metadata includes their hardware aliases. Preserving installer routes
+are separately restricted to qualified XV2-2 and XV2-2T1 outgoing tuples.
+
+Shipped packages: ucentral-schema 2026.08.26~d1e90a04-r14,
+ucentral-state 2, hostapd-utils 2025.08.26~ca266cc2-r1,
+coreutils-timeout 9.9-r2, cambium-ab 16, cambium-board-data 4.
+No kernel source, bridge topology, VLAN policy or identity policy changes.
+
+Actual shipped bytes equal reviewed sources:
+dfs_cac.uc d00367133b24ded6202ab26dd66ce01b3ca9c1c74c4ea4fe7427003e3286534a
+health.uc e9da4cb55d8bfc3c5769be85c6124f1b6d2ef9479ad1d07f85c3ff1e2eb6b83e
+ucentral-state cd4929126d7e22d8b093854b7f35399526512cb3ac1744b770a194687f6b2b11
+
+Offline receipts: 74 classifier/process/health/archived CLI assertions;
+8 actual built-image target compile/dynamic-module/timeout/ELF assertions.
+Target dynamic require('dfs_cac') uses the exact production search path;
+not merely a static import. Target timeout kills its command and child.
+Actual image contains no executable init/rc backup services.
+Static RAM closure and actual retained-only FIT/capacity extraction pass for
+both the 96 MiB XV2-2T1 and smaller 52 MiB XV2-2 bank profiles. Canonical
+file-level certificate export/restore and startup tests pass using synthetic
+credentials and mount/UBI stubs. No actual RAM pivot, UBI mount or AP write.
+
+NORMAL .2 -> .3 MANAGED UPGRADE:
+Actual .2 cmd_upgrade.uc unconditionally archives rendered config, full
+config-shadow, credentials, selected gateway CA and active controller JSON,
+then invokes sysupgrade -f /upgrade.tgz independently of both UI keep flags.
+Actual command archive/flag tests (4 flag combinations) pass. Actual .2
+sysupgrade/validator/minor checks against .3 pass 24 assertions per XV2-2T1
+and XV2-2. .2 includes canonical pre-RAM certificate export/restore, 20-LEB
+reservation and the checked RAM closure. A replacement bridge is not required
+merely to use the normal OpenWiFi UI from unmodified, confirmed .2 with config
+compatibility 1.0 and its valid vault/identity store. Standard controller
+download, signature and hardware preflight still apply and may safely refuse.
+
+.1 IS DIFFERENT: its canonical certificate helper and pre-RAM export hook
+are absent. Do not use a direct .1 controller upgrade until its separately
+qualified preserving outgoing bridge has been installed and verified.
+
+Physical DFS CAC/SSID/self-healing acceptance and actual preserving upgrades
+remain operator acceptance, not proven by these offline receipts.
