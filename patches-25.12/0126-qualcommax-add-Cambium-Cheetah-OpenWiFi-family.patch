@@ -243,7 +243,7 @@ index 0000000000..d0af3947f5
 +#include "ipq5018-cheetah-persistent.dtsi"
 diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-xv2-21x.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-xv2-21x.dts
 new file mode 100644
-index 0000000000..503f3514b0
+index 0000000000..e9f128d10b
 --- /dev/null
 +++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-xv2-21x.dts
 @@ -0,0 +1,376 @@
@@ -933,7 +933,7 @@ index d4a913b9cc..5155a37dcc 100644
  		;;
  	yuncore,ax850)
 diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
-index c6e8d0fb0d..0c9b91762f 100644
+index c6e8d0fb0d..a80f2a0af8 100644
 --- a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
 @@ -4,7 +4,7 @@ PART_NAME=firmware
@@ -945,12 +945,11 @@ index c6e8d0fb0d..0c9b91762f 100644
  
  xiaomi_initramfs_prepare() {
  	# Wipe UBI if running initramfs
-@@ -166,6 +166,12 @@ linksys_mx_pre_upgrade() {
+@@ -166,6 +166,11 @@ linksys_mx_pre_upgrade() {
  }
  
  platform_check_image() {
-+	if [ -f /lib/upgrade/cambium-ab.sh ] && grep -q cambium-platform /sys/firmware/devicetree/base/cambium-platform/compatible 2>/dev/null; then
-+		. /lib/upgrade/cambium-ab.sh
++	if command -v ab_family >/dev/null && ab_family; then
 +		cambium_ab_check_image "$1"
 +		return $?
 +	fi
@@ -958,12 +957,11 @@ index c6e8d0fb0d..0c9b91762f 100644
  	return 0;
  }
  
-@@ -178,6 +184,12 @@ platform_pre_upgrade() {
+@@ -178,6 +183,11 @@ platform_pre_upgrade() {
  }
  
  platform_do_upgrade() {
-+	if [ -f /lib/upgrade/cambium-ab.sh ] && grep -q cambium-platform /sys/firmware/devicetree/base/cambium-platform/compatible 2>/dev/null; then
-+		. /lib/upgrade/cambium-ab.sh
++	if command -v ab_family >/dev/null && ab_family; then
 +		cambium_ab_do_upgrade "$1"
 +		return $?
 +	fi
