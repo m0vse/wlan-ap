@@ -421,13 +421,20 @@ let ubus_methods = {
 	},
 	renew: {
 		call: function(req) {
+			let cloud = readjsonfile('/tmp/cloud.json');
+			if (cloud?.lease == false) {
+				// Preserve the validated gateway and credentials through a
+				// carrier/DHCP outage; only the transient lease is invalid.
+				if (state == ONLINE || state == VALIDATING)
+					set_state(OFFLINE);
+				return 0;
+			}
 			if (state != ONLINE)
 				return;
 
 			ulog(LOG_INFO, 'Validate cloud due to DHCP renew event\n');
 
 			let gateway = gateway_load();
-			let cloud = readjsonfile('/tmp/cloud.json');
 			if (!cloud?.dhcp_server || !cloud?.dhcp_port)
 				return 0;
 

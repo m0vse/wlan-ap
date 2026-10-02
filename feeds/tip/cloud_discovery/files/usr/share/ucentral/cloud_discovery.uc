@@ -6,6 +6,23 @@ import { select_controller } from './discovery_policy.uc';
 
 let cmd = ARGV[0];
 let ifname = getenv("interface");
+
+if (cmd == 'deconfig' || cmd == 'release') {
+	let previous = null;
+	try { previous = json(fs.readfile('/tmp/cloud.json')); }
+	catch (e) {}
+	// A secondary DHCP client must not clear the selected lease's state.
+	if (previous?.lease_interface && previous.lease_interface != ifname)
+		exit(0);
+	fs.writefile('/tmp/cloud.json', { lease: false, lease_interface: ifname });
+	fs.unlink('/tmp/dhcp-option-138');
+	fs.unlink('/tmp/dhcp-option-224');
+	let ubus = libubus.connect();
+	if (ubus)
+		ubus.call('cloud', 'renew');
+	exit(0);
+}
+
 let opt138 = fs.readfile('/tmp/dhcp-option-138');
 let opt224 = fs.readfile('/tmp/dhcp-option-224');
 
@@ -22,6 +39,7 @@ if (file.server && file.port && file.valid)
 
 let cloud = {
 	lease: true,
+	lease_interface: ifname,
 };
 let policy_file = fs.readfile('/etc/ucentral/discovery-policy.json');
 let policy = null;
@@ -39,7 +57,8 @@ fs.writefile('/tmp/cloud.json', cloud);
 
 if (cmd == 'renew') {
 	let ubus = libubus.connect();
-	ubus.call('cloud', 'renew');
+	if (ubus)
+		ubus.call('cloud', 'renew');
 }
 
 exit(0);
