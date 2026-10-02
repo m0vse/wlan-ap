@@ -618,7 +618,7 @@ index 0000000000..503f3514b0
 +
 +&switch {
 +	status = "okay";
-+	switch_mac_mode = <MAC_MODE_DISABLED>;
++	switch_mac_mode = <MAC_MODE_SGMII_CHANNEL0>;
 +	qcom,port_phyinfo {
 +		port@0 { port_id = <1>; mdiobus = <&mdio0>; phy_address = <7>; };
 +	};
