@@ -1,0 +1,9 @@
+{
+  "release": "2026.09.29.0",
+  "source_commit": "aff0cccda079fea3fbbe6b1b305fd5d2f3a7abf0",
+  "image_sha256": "789898961a903aaca149c093cdbf30877e37bd00dd74066299f6e8beb70f7072",
+  "image_size": 10527580,
+  "route": "stock-clean",
+  "qualified_models": ["E410", "E410B"],
+  "provenance": "Offline SHA-verified frozen stock release, not AP-derived source approval"
+}

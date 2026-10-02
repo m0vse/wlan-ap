@@ -1,0 +1,50 @@
+Sage stock clean migration .3, operator-stock-r1.
+Offline qualified; not published/deployed. No AP operations or production PKI.
+
+Incoming TIP-sage-2026.10.02.3-0d3e14c4,13,855,050bytes.
+SHA256 2f86a4dd48bcc66912422fef411a4133c582c792b278b35ac5565444a92b495a
+certificates4,cambium-ab16. Frozen .2 unchanged.
+Outgoing stock2026.09.29.0 sourceaff0cccda079fea3fbbe6b1b305fd5d2f3a7abf0.
+Outgoing SHA256 789898961a903aaca149c093cdbf30877e37bd00dd74066299f6e8beb70f7072
+Qualified E410/E410B only, complete approved source tuple39paths.
+
+Clean -n only: no configuration archive/-f, force, UCI compatibility edit,
+old key/cert/gateway/trust import or outgoing OpenSSL prerequisite. Valid
+stock image/device/signature/platform checks remain. Six fixed updater files
+are installed transactionally. Default check never recovers journals,
+replaces sources, arms trials, mounts storage or writes flash/environment.
+Explicit recovery refuses unknown wildcard scripts before fixed-target writes.
+
+Shared-store guard accepts verified mounted empty storage or genuinely absent
+volume with >=20freeLEBs only. Nonempty and unmounted existing volumes refuse;
+no raw-header emptiness assumption. No volume clear/mount/resize/delete.
+Actual platform pre-upgrade hook checks again after services stop; late
+identity files and configuration-preserving execution refuse before writes.
+Incoming preinit allocator validates canonical identity/pair/qualification,
+same sharedMTD, exact UBI binding and geometry/free capacity. Existing stores
+are untouched; missing-store allocation failure has no destructive fallback.
+
+Tests:
+ 38 bridge-mechanics fault/retry cases on earlier opaque draft payload PASS.
+ Bridge transaction function source is unchanged by later guard tightening.
+ 2 exact final-payload cases (normal,kill at last target then recovery) PASS.
+ 14 final-payload unsafe/unknown journal recovery refusals PASS.
+ 18 actual outgoing/installed stock validator cases under target QEMU ARM PASS.
+ 9 exact wrapper control-flow cases, hardware/preflight boundary stubs PASS.
+ 8 exact complete source gate cases, filesystem-root redirect only PASS.
+ 14 actual final shared-store checker+platform hook cases PASS.
+ 13 actual incoming extracted .3 allocator cases PASS.
+ Actual incoming image architecture/tool/library static RAM closure PASS.
+
+Proof limits:
+ Transaction tests execute actual bridge functions against file fixtures,
+ not real flash/UBI/power loss. Store tests stub identity/sysfs/mount table;
+ allocator tests stub canonical identity and UBI commands. Validator uses
+ actual target fwtool/jshn/uci and reviewed shell, isolates hardware hook.
+ No target RAM pivot, physical preinit timing, UBIFS mount/boot/rollback or
+ live controller acceptance is established. Source bytes match extracted
+ image; unprivileged extraction skipped special device inodes.
+ Unique provisioning remains required; no shared key/testCA/TLS bypass.
+
+Publication is held during E400 recovery. This bundle does not authorise
+AP execution, live gateway integration or production trust activation.
