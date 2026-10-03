@@ -1,0 +1,42 @@
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -107,6 +107,9 @@
+ 	}
+ }
+ 
++// Persist intent BEFORE taking the outgoing managed archive, so the next bank
++// receives the request and local history. Failed archive creation cancels it.
++include('reboot_cause.uc', { reason: 'upgrade' });
+ let archive_cmdline = [
+ 	'tar', 'czf', '/upgrade.tgz'
+ ];
+@@ -117,6 +120,7 @@
+  * before DHCP.  Explicit factory reset is the supported deprovision path. */
+ let files = [
+ 	"/etc/config", "/etc/config-shadow",
++	"/etc/ucentral/boot-reporting",
+ 	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+ 	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
+ 	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
+@@ -160,11 +164,11 @@
+ let rc = system(archive_cmdline);
+ 
+ if (rc != 0) {
++	system(['/usr/libexec/ucentral-boot-report', 'cancel', 'upgrade']);
+ 	result(2, "Archive command %s exited with non-zero code %d", archive_cmdline, rc);
+ 
+ 	return;
+ }
+ 
+-include('reboot_cause.uc', { reason: 'upgrade' });
+ result(0, "Triggering FW upgrade");
+ sleep(2000);
+@@ -179,5 +183,7 @@
+ warn("Upgrading firmware\n");
+ 
+ system("touch /ucentral.upgrade");
+-system("(sleep 10; /etc/init.d/network stop; " + sysupgrade_cmdline + ")&");
++// An outgoing writer failure must not masquerade as a later upgrade reboot.
++let failed = "; rc=$?; if [ $rc -ne 0 ]; then /usr/libexec/ucentral-boot-report cancel firmware-upgrade; fi";
++system("(sleep 10; /etc/init.d/network stop; " + sysupgrade_cmdline + failed + ")&");
+ system("/etc/init.d/ucentral stop");
