@@ -1,0 +1,5 @@
+# The single procd watcher performs captures; notifications never spawn readers.
+[ "$ACTION" = add ] || return 0
+[ "$(uci -q get radio-crash.main.enabled)" = 1 ] || return 0
+[ -d /var/run/ucentral-radio-crash ] || return 0
+touch /var/run/ucentral-radio-crash/wake

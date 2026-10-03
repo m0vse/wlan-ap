@@ -1,0 +1,10 @@
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -121,6 +121,7 @@
+ let files = [
+ 	"/etc/config", "/etc/config-shadow",
+ 	"/etc/ucentral/boot-reporting",
++	"/etc/ucentral/radio-crash",
+ 	"/etc/ucentral/thor-topology.pending.json", "/etc/ucentral/thor-topology.pending",
+ 	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+ 	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",

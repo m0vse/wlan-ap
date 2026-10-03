@@ -1,0 +1,62 @@
+#!/bin/sh
+# Optional single-worker dispatcher. Never writes or releases kernel dumps.
+set -f
+PROG=/usr/libexec/ucentral-radio-crash-capture
+CLASS=/sys/class/devcoredump
+RUN=/var/run/ucentral-radio-crash
+enabled() { [ "$(uci -q get radio-crash.main.enabled)" = 1 ]; }
+eligible() {
+	device=$(readlink -f "$CLASS/$1/failing_device") || return 1
+	case "$device" in /sys/devices/*) ;; *) return 1 ;; esac
+	driver=
+	if [ -d "$device/driver" ]; then
+		driver=$(readlink -f "$device/driver")
+	else
+		# Remoteproc class devices are children of the owning platform device.
+		subsystem=$(readlink -f "$device/subsystem")
+		[ "${subsystem##*/}" = remoteproc ] || return 1
+		parent=${device%/*}; parent=${parent%/*}
+		driver=$(readlink -f "$parent/driver") || return 1
+	fi
+	case "$driver" in /sys/bus/pci/drivers/ath11k_pci|/sys/bus/pci/drivers/ath10k_pci|/sys/bus/platform/drivers/ath10k_ahb|/sys/bus/platform/drivers/qcom-wcss-secure-pil) return 0 ;; esac
+	return 1
+}
+scan() {
+	# One worker, at most eight eligible entries per pass, each at most two seconds.
+	set +f
+	count=0
+	for path in "$CLASS"/devcd*; do
+		[ -d "$path" ] || continue
+		name=${path##*/}; digits=${name#devcd}
+		case "$digits" in ''|*[!0-9]*) continue ;; esac
+		eligible "$name" || continue
+		count=$((count+1)); [ "$count" -le 8 ] || break
+		timeout -k 1 2 "$PROG" "$name"
+		rc=$?
+		case "$rc" in
+			0) ;;
+			5|6) logger -t radio-crash 'capture paused: spool full or insufficient free space'; break ;;
+			*) logger -t radio-crash 'capture unavailable; original dump retained' ;;
+		esac
+	done
+	set -f
+}
+enabled || exit 0
+case "$1" in
+	once) scan ;;
+	watch)
+		umask 077
+		mkdir -m 700 "$RUN" 2>/dev/null || [ -d "$RUN" ] || exit 1
+		[ ! -L "$RUN" ] && [ "$(stat -c '%u:%a' "$RUN")" = 0:700 ] || exit 1
+		[ ! -L "$RUN/worker.lock" ] || exit 1
+		exec 9>"$RUN/worker.lock"
+		flock -n 9 || exit 0
+		trap 'rm -f "$RUN/wake"' EXIT
+		trap 'exit 0' INT TERM
+		while enabled; do
+			rm -f "$RUN/wake"
+			scan
+			sleep 2
+		done ;;
+	*) exit 2 ;;
+esac
