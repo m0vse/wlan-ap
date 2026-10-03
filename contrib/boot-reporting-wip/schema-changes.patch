@@ -18,7 +18,7 @@
  	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
  	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
  	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
-@@ -160,12 +164,12 @@
+@@ -160,11 +164,11 @@
  let rc = system(archive_cmdline);
  
  if (rc != 0) {
@@ -31,3 +31,12 @@
 -include('reboot_cause.uc', { reason: 'upgrade' });
  result(0, "Triggering FW upgrade");
  sleep(2000);
+@@ -179,5 +183,7 @@
+ warn("Upgrading firmware\n");
+ 
+ system("touch /ucentral.upgrade");
+-system("(sleep 10; /etc/init.d/network stop; " + sysupgrade_cmdline + ")&");
++// An outgoing writer failure must not masquerade as a later upgrade reboot.
++let failed = "; rc=$?; if [ $rc -ne 0 ]; then /usr/libexec/ucentral-boot-report cancel firmware-upgrade; fi";
++system("(sleep 10; /etc/init.d/network stop; " + sysupgrade_cmdline + failed + ")&");
+ system("/etc/init.d/ucentral stop");

@@ -114,7 +114,7 @@ start_service() {
 	if [ -s /var/run/ucentral-boot-report/cause ]; then
 		stored_boot_cause=$(cat /var/run/ucentral-boot-report/cause)
 		case "$stored_boot_cause" in
-		controller-requested|user-requested|orderly-shutdown|upgrade|factory|certupdate|fixedconfig|transfer|kernel-crash|watchdog|power-failure|unexpected-shutdown)
+		controller-requested|user-requested|orderly-shutdown|firmware-upgrade|factory|certupdate|fixedconfig|transfer|confirmed-crash|watchdog|power-failure|unexpected-shutdown)
 			boot_cause="$stored_boot_cause" ;;
 		esac
 	fi

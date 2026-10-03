@@ -49,9 +49,9 @@ f = fixture('unproven'); f.cause = { reason: 'power-failure', source: '' }; f.ap
 check('unproven-power-failure-is-unexpected-shutdown', reason(f) == 'unexpected-shutdown');
 f = fixture('panic'); fs.writefile(f.p.pstore + '/dmesg-ramoops-0', 'TEST Kernel panic - not syncing: isolated synthetic fixture\nTEST stack\n');
 f.app.collect(); f.online = true; f.app.send();
-check('captured-panic-informs-boot-reason', reason(f) == 'kernel-crash');
+check('captured-panic-informs-boot-reason', reason(f) == 'confirmed-crash');
 check('crash-wire-method-loglines-not-rebootLog-crashlog', f.sent[0].method == 'crashlog' && type(f.sent[0].params.loglines) == 'array');
-check('reboot-wire-has-type-date-info', f.sent[1].method == 'rebootLog' && f.sent[1].params.type == 'kernel-crash' && type(f.sent[1].params.info) == 'array');
+check('reboot-wire-has-type-date-info', f.sent[1].method == 'rebootLog' && f.sent[1].params.type == 'confirmed-crash' && type(f.sent[1].params.info) == 'array');
 check('complete-pstore-source-consumed-after-copy', !fs.stat(f.p.pstore + '/dmesg-ramoops-0'));
 f = fixture('oops'); fs.writefile(f.p.pstore + '/dmesg-ramoops-0', 'TEST Oops: nonfatal fault evidence\n'); f.app.collect();
 check('nonfatal-oops-not-proven-reboot-cause', reason(f) == 'unexpected-shutdown' && f.app.state().events[0].classification == 'kernel-fault');
@@ -71,6 +71,29 @@ check('sanitized-bytes-reported-but-original-retained', f.app.state().events[0].
 f = fixture('many'); for (let i = 0; i < 12; i++) fs.writefile(f.p.pstore + '/dmesg-ramoops-' + i, 'TEST dump ' + i); f.app.collect();
 check('queue-bounded-with-eviction-accounting', length(f.app.state().events) == 8 && f.app.state().evicted == 5);
 check('pruned-dumps-not-consumed-without-retained-copy', length(fs.lsdir(f.p.pstore)) == 5);
+let before = sprintf('%J', f.app.state()); f.app.collect();
+check('retained-pruned-sources-do-not-cycle-queue', before == sprintf('%J', f.app.state()));
+f = fixture('fresh-plan'); f.app.plan('upgrade'); reboot(f);
+check('first-request-normalized-firmware-upgrade', reason(f) == 'firmware-upgrade');
+f = fixture('priority-user'); f.app.collect(); f.app.plan('upgrade'); f.app.plan('user-requested');
+check('interactive-reboot-preserves-specific-upgrade', f.app.state().intent.reason == 'firmware-upgrade');
+f = fixture('clockless-expiry'); f.now = 1; f.app.collect(); f.app.plan('controller-requested'); fs.writefile(f.p.uptime, '401.0 0'); f.app.collect(); reboot(f);
+check('clockless-abandoned-intent-expires-before-next-boot', reason(f) == 'unexpected-shutdown');
+f = fixture('late-panic'); f.app.collect(); fs.writefile(f.p.pstore + '/dmesg-ramoops-0', 'TEST Kernel panic: late source'); f.app.collect();
+check('late-confirmed-evidence-updates-local-boot-not-new-boot', reason(f) == 'confirmed-crash' && length(filter(f.app.state().events, e => e.method == 'rebootLog')) == 1);
+f = fixture('late-transmitted'); f.app.collect(); f.online = true; f.app.send(); fs.writefile(f.p.pstore + '/dmesg-ramoops-0', 'TEST Kernel panic: arrived after report'); f.app.collect(); f.app.send();
+check('late-evidence-does-not-replay-transmitted-boot', length(filter(f.sent, e => e.method == 'rebootLog')) == 1);
+f = fixture('escaped-bounds'); let tabs = 'TEST'; for (let i = 0; i < 16370; i++) tabs += '\t';
+for (let i = 0; i < 8; i++) fs.writefile(f.p.pstore + '/dmesg-ramoops-' + i, tabs + i); f.app.collect();
+check('encoded-json-byte-bound-prunes-before-consumption', length(fs.readfile(f.p.state)) <= 196608 && length(fs.lsdir(f.p.pstore)) > 0);
+for (let invalid in ['method', 'delivery', 'boot_id']) {
+ f = fixture('invalid-' + invalid); f.app.collect(); let s = f.app.state();
+ if (invalid == 'boot_id') s.boot_id = '------------------------------------'; else s.events[0][invalid] = 'TEST-invalid';
+ fs.writefile(f.p.state, sprintf('%J', s)); let rejected = false; try { f.app.collect(); } catch (e) { rejected = true; }
+ check('invalid-stored-' + invalid + '-refused-without-overwrite', rejected && fs.readfile(f.p.state) == sprintf('%J', s));
+}
+f = fixture('cause-link'); fs.writefile(f.root + '/sentinel', 'TEST-safe'); fs.symlink(f.root + '/sentinel', f.p.cause); let cause_failed = false; try { f.app.collect(); } catch (e) { cause_failed = true; }
+check('unsafe-volatile-cause-link-refused', cause_failed && fs.readfile(f.root + '/sentinel') == 'TEST-safe');
 f = fixture('symlink'); fs.symlink('/tmp', f.p.directory); let failed = false; try { f.app.collect(); } catch (e) { failed = true; }
 check('unsafe-history-link-refused', failed);
 print(sprintf('%J\n', { passed: true, count: length(results), cases: results, synthetic: 'TEST-only private filesystem/clock/transport/reset-cause fixtures; no AP or controller access', directory: base }));

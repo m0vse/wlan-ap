@@ -26,6 +26,8 @@ define Package/ucentral-boot-report/install
 	$(INSTALL_BIN) ./files/etc/init.d/ucentral-boot-report $(1)/etc/init.d/
 	$(INSTALL_DATA) ./files/etc/profile.d/ucentral-reboot-history.sh $(1)/etc/profile.d/
 	$(INSTALL_DATA) ./files/usr/share/ucentral/boot_reporting.uc $(1)/usr/share/ucentral/
+	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
+	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/ucentral-boot-report $(1)/lib/upgrade/keep.d/
 endef
 
 $(eval $(call BuildPackage,ucentral-boot-report))

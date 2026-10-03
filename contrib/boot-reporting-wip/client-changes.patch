@@ -99,6 +99,24 @@
  }
  
  void
+--- a/main.c
++++ b/main.c
+@@ -275,7 +275,6 @@
+ 
+ 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
+-		ubus_set_client_status("online");
+ 		ULOG_INFO("connection established\n");
+ 		if (!client.selfsigned && client.hostname_validate) {
+ 			if (!lws_tls_peer_cert_info(wsi, LWS_TLS_CERT_INFO_VALIDITY_TO, &ci, 0))
+ 				ULOG_INFO(" Peer Cert Valid to  : %s", ctime(&ci.time));
+@@ -299,6 +298,7 @@
+ 		reconnect_timeout = 1;
+ 		set_conn_time();
+ 		websocket = wsi;
++		ubus_set_client_status("online");
+ 		remove(PUBLIC_IP_FILE);
+ 		connect_send();
+ 		crashlog_init();
 --- a/ubus.c
 +++ b/ubus.c
 @@ -27,6 +27,8 @@

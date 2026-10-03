@@ -30,14 +30,16 @@ directory with a compatible ucode runtime:
   ucode tests.uc /path/to/private-fixture
 tests.uc uses TEST-labelled synthetic events and injected I/O. Never pass
 real /etc/ucentral/boot-reporting or submit fixtures to a real controller.
-37 module fixture checks passed during development; this is NOT a target
-package compilation, production entrypoint test or AP acceptance receipt.
+55 module fixture checks pass on host and extracted ARM/AArch64 runtimes.
+Actual isolated entrypoint/hooks, absent-pmsg include helper, C transport
+controls and target syntax-only checks also pass. This is NOT a firmware
+build or AP acceptance receipt. No persistent kernel backend is qualified.
 
 Outstanding review/qualification:
-  full target package compilation and C transport behavior;
-  entrypoint, interactive shell and shutdown hook checks;
-  failed/late upgrade and factory/certificate-reset marker semantics;
-  per-event history validation and late kernel-evidence handling;
+  firmware package compilation and real gateway/AP transport acceptance;
+  factory/reset intentionally wipes overlay-backed history unless preserved;
+  transport success is not server storage acknowledgement; ambiguous writes
+    may repeat after a persistence failure, and absent ACK prevents certainty;
   family-specific approved persistent crash backend and reset-cause hooks.
 Do not guess ramoops RAM addresses or reuse certificate/OEM crash storage.
 No hardware backend is qualified by this snapshot.
