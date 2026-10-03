@@ -1,0 +1,7 @@
+{
+  "family": "sage",
+  "version": "2026.10.03.2",
+  "productionSourceBase": "2dd26bfc86051fa4b3906fa05b5df289ff4f4d0d",
+  "purpose": "Distinct family release identity for shared DFS, discovery, requested-band and strict-UCI fixes; no production-code change in this commit.",
+  "qualification": "Focused source/target-runtime tests passed; multi-BSS DFS hardware qualified on XV2-2. New-image upgrade/reboot and Sage hardware acceptance remain separate."
+}
