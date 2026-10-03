@@ -1,0 +1,19 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] kernel: enable opt-in dynamic network console targets
+
+Keep target creation explicitly opt-in while permitting endpoint configuration
+without unloading an already probed network console module.
+
+--- a/package/kernel/linux/modules/netsupport.mk
++++ b/package/kernel/linux/modules/netsupport.mk
+@@ -1562,8 +1562,9 @@
+ define KernelPackage/netconsole
+   SUBMENU:=$(NETWORK_SUPPORT_MENU)
+   TITLE:=Network console logging support
++  DEPENDS:=+kmod-fs-configfs
+   KCONFIG:=CONFIG_NETCONSOLE \
+-	  CONFIG_NETCONSOLE_DYNAMIC=n
++	  CONFIG_NETCONSOLE_DYNAMIC=y
+   FILES:=$(LINUX_DIR)/drivers/net/netconsole.ko
+   AUTOLOAD:=$(call AutoProbe,netconsole)
+ endef

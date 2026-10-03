@@ -7,6 +7,7 @@ image: bin/targets/ath79/nand/openwrt-ath79-nand-cambiumnetworks_gambit-persiste
 include:
   - ucentral-ap
 packages:
+  - ucentral-netconsole
   - iwinfo
 diffconfig: |
   CONFIG_TARGET_ROOTFS_INITRAMFS=n

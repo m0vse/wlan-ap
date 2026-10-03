@@ -1,0 +1,17 @@
+#!/bin/sh /etc/rc.common
+START=96
+STOP=99
+start() {
+	/usr/libexec/ucentral-netconsole validate || return $?
+	# Disabled validation returns 0; load only after an explicit enable.
+	[ "$(uci -q get netconsole.capture.enabled)" = 1 ] || { stop; return $?; }
+	modprobe configfs || return 1
+	grep -qs ' /sys/kernel/config configfs ' /proc/mounts ||
+		mount -t configfs configfs /sys/kernel/config || return 1
+	modprobe netconsole || return 1
+	/usr/libexec/ucentral-netconsole apply
+}
+stop() { /usr/libexec/ucentral-netconsole stop; }
+reload() { start; }
+# Keep the target active throughout shutdown, including kernel_restart().
+shutdown() { :; }

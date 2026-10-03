@@ -1,0 +1,49 @@
+#!/usr/bin/ucode
+import * as fs from 'fs';
+import * as libuci from 'uci';
+let target = '/sys/kernel/config/netconsole/ucentral';
+function ipv4(value) {
+	if (type(value) != 'string' || !match(value, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) return false;
+	let parts = split(value, '.');
+	for (let p in parts) if (length(p) > 3 || +p > 255 || sprintf('%d', +p) != p) return false;
+	return +parts[0] > 0 && +parts[0] < 224 && +parts[0] != 127;
+}
+function validate(c) {
+	assert(type(c) == 'object', 'Missing netconsole capture configuration');
+	assert(c.enabled in ['0', '1'], 'enabled must be 0 or 1');
+	if (c.enabled == '0') return false;
+	assert(type(c.device) == 'string' && length(c.device) <= 15 && match(c.device, /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/) && c.device != 'lo', 'Invalid wired device name');
+	assert(ipv4(c.local_ip) && ipv4(c.remote_ip), 'Explicit unicast IPv4 endpoints required');
+	assert(type(c.remote_mac) == 'string' && match(c.remote_mac, /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/) && !(hex(substr(c.remote_mac, 0, 2)) & 1) && c.remote_mac != '00:00:00:00:00:00', 'Explicit unicast next-hop MAC required');
+	for (let key in ['local_port', 'remote_port']) assert(type(c[key]) == 'string' && match(c[key], /^[0-9]+$/) && +c[key] >= 1 && +c[key] <= 65535, 'Invalid UDP port');
+	assert(fs.stat('/sys/class/net/' + c.device) && !fs.stat('/sys/class/net/' + c.device + '/wireless'), 'Wired device unavailable');
+	assert(hex(trim(fs.readfile('/sys/class/net/' + c.device + '/flags') || '0')) & 1, 'Wired device must already be up');
+	assert(trim(fs.readfile('/sys/class/net/' + c.device + '/carrier') || '') == '1', 'Wired carrier required');
+	return true;
+}
+function write(name, value) { assert(fs.writefile(target + '/' + name, value + '\n'), 'Cannot set netconsole ' + name); }
+function stop() {
+	if (!fs.stat(target)) return;
+	write('enabled', '0');
+	assert(fs.rmdir(target), 'Cannot remove owned netconsole target');
+}
+try {
+	if (ARGV[0] == 'stop') { stop(); exit(0); }
+	assert(ARGV[0] in ['validate', 'apply'], 'Expected validate, apply or stop');
+	let uci = libuci.cursor(); uci.load('netconsole');
+	let c = uci.get_all('netconsole', 'capture');
+	if (!validate(c)) { if (ARGV[0] == 'apply') stop(); exit(0); }
+	if (ARGV[0] == 'validate') exit(0);
+	assert(fs.stat('/sys/kernel/config/netconsole'), 'Dynamic netconsole unavailable');
+	if (!fs.stat(target)) assert(fs.mkdir(target), 'Cannot create owned netconsole target');
+	write('enabled', '0');
+	for (let key in ['device', 'local_ip', 'remote_ip', 'remote_mac', 'local_port', 'remote_port']) write(key == 'device' ? 'dev_name' : key, c[key]);
+	write('enabled', '1');
+	// The collector can correlate received messages with the normal boot report.
+	let boot = trim(fs.readfile('/proc/sys/kernel/random/boot_id') || 'unknown');
+	if (match(boot, /^[a-zA-Z0-9-]+$/)) fs.writefile('/dev/kmsg', '<3>ucentral-netconsole boot_id=' + boot + '\n');
+} catch (e) {
+	// Only our fixed target is disabled on failure; unrelated targets are untouched.
+	if (ARGV[0] == 'apply' && fs.stat(target)) fs.writefile(target + '/enabled', '0\n');
+	warn('netconsole: ' + e + '\n'); exit(1);
+}

@@ -5,6 +5,7 @@ subtarget: generic
 description: Build OpenWiFi for qualified Sage E410 and E410B models
 image: bin/targets/ipq40xx/generic/openwrt-ipq40xx-generic-cambium-sage-squashfs-sysupgrade.bin
 packages:
+  - ucentral-netconsole
   - ipq40xx
   - iwinfo
   # Required by the canonical A/B certificate-retention preflight.

@@ -1,0 +1,8 @@
+config capture 'capture'
+	option enabled '0'
+	option device ''
+	option local_ip ''
+	option remote_ip ''
+	option remote_mac ''
+	option local_port '6665'
+	option remote_port '6666'
