@@ -1,0 +1,27 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH 0155] ath79: keep legacy ag71xx zero-budget polling TX-only
+
+The selected AG71XX_LEGACY driver reaches receive refill and completion
+handling during netpoll zero-budget calls. Keep completed transmit cleanup,
+then return before the receive path. Positive-budget polling is unchanged.
+Validated by an isolated object compile with the frozen MIPS kernel flags;
+netconsole transmission and panic delivery still require hardware testing.
+
+diff --git a/target/linux/ath79/patches-6.12/711-net-ag71xx-legacy-netpoll-zero-budget.patch b/target/linux/ath79/patches-6.12/711-net-ag71xx-legacy-netpoll-zero-budget.patch
+new file mode 100644
+--- /dev/null
++++ b/target/linux/ath79/patches-6.12/711-net-ag71xx-legacy-netpoll-zero-budget.patch
+@@ -0,0 +1,13 @@
++--- a/drivers/net/ethernet/atheros/ag71xx/ag71xx_main.c
+++++ b/drivers/net/ethernet/atheros/ag71xx/ag71xx_main.c
++@@ -1378,6 +1378,10 @@
++ 
++ 	tx_done = ag71xx_tx_packets(ag, false, limit);
++ 
+++	/* Netpoll invokes NAPI with zero budget for TX cleanup only. */
+++	if (!limit)
+++		return 0;
+++
++ 	DBG("%s: processing RX ring\n", dev->name);
++ 	rx_done = ag71xx_rx_packets(ag, limit);
++ 
