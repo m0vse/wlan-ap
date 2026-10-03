@@ -1148,7 +1148,7 @@ new file mode 100644
 index 0000000000..61fc21fc9a
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/950-wifi-ath11k-implement-CE-interrupt-enable-disable-for-AHB.patch
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,56 @@
 +From a7ab5c835e4253b6577e4137367c05bfddd79fa2 Mon Sep 17 00:00:00 2001
 +From: Julius Bairaktaris <julius@bairaktaris.de>
 +Date: Mon, 27 Jul 2026 00:19:07 +0200
@@ -1166,7 +1166,6 @@ index 0000000000..61fc21fc9a
 +unchanged. wcn6750 is not affected: it uses the pcic ops, which
 +implement the pair already.
 +
-+Assisted-by: Claude:claude-opus-5
 +Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 +Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
 +Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
@@ -1211,7 +1210,7 @@ new file mode 100644
 index 0000000000..996ce9b5b0
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/951-wifi-ath11k-disable-interrupts-during-firmware-crash-recovery.patch
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,71 @@
 +From f7a74e131d3f0de04335dbe278bfb82bdafcdb3e Mon Sep 17 00:00:00 2001
 +From: Julius Bairaktaris <julius@bairaktaris.de>
 +Date: Mon, 27 Jul 2026 00:19:08 +0200
@@ -1255,7 +1254,6 @@ index 0000000000..996ce9b5b0
 +Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.12-01460-QCAHKSWPL_SILICONZ-1
 +
 +Fixes: d455e805de70 ("wifi: ath11k: rearrange IRQ enable/disable in reset path")
-+Assisted-by: Claude:claude-opus-5
 +Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 +Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
 +Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
@@ -1267,7 +1265,7 @@ index 0000000000..996ce9b5b0
 +
 +--- a/drivers/net/wireless/ath/ath11k/core.c
 ++++ b/drivers/net/wireless/ath/ath11k/core.c
-+@@ -2394,6 +2394,16 @@ static int ath11k_core_reconfigure_on_cr
++@@ -2312,6 +2312,16 @@ static int ath11k_core_reconfigure_on_cr
 + 
 + 	mutex_lock(&ab->core_lock);
 + 	ath11k_thermal_unregister(ab);
@@ -1282,8 +1280,8 @@ index 0000000000..996ce9b5b0
 ++	}
 ++
 + 	ath11k_dp_pdev_free(ab);
-+ 	ath11k_cfr_deinit(ab);
 + 	ath11k_spectral_deinit(ab);
++ 	ath11k_ce_cleanup_pipes(ab);
 diff --git a/package/kernel/mac80211/patches/ath11k/952-ath11k-xv3-8-configurable-radio-mode.patch b/package/kernel/mac80211/patches/ath11k/952-ath11k-xv3-8-configurable-radio-mode.patch
 new file mode 100644
 index 0000000000..a57db3e46e
