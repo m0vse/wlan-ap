@@ -39,6 +39,13 @@ check('6G HE80 preserved',index(b,'set wireless.radio2.htmode=HE80')>=0);
 check('real render objects not mutated',sprintf('%J',{phys,state})==snapshot);
 let again=render(path,context);
 check('repeat render identical',again==b);
+for(let power, value in {'indoor-power-indoor':0,'standard-power':1,'very-low-power':2}) {
+	let result=render(path,{...context,radio:{...six,he_6ghz_settings:{power_type:power}}});
+	check('regular power enum '+power,index(result,"set wireless.radio2.reg_power_type='"+value+"'")>=0);
+	check('vendor power enum unchanged '+power,index(result,"set wireless.radio2.he_6ghz_reg_pwr_type='"+value+"'")>=0);
+}
+check('existing default remains VLP',index(render(path,{...context,radio:{...six,he_6ghz_settings:null}}),"set wireless.radio2.reg_power_type='2'")>=0);
+check('5G does not gain6G power mode',index(a,'reg_power_type')<0 && index(a,'he_6ghz_reg_pwr_type')<0);
 for(let width in [20,40,80,160]){
 	let result=render(path,{...context,radio:{...six,channel_width:width}});
 	check('real6G channel5 width'+width,index(result,'set wireless.radio2.channel=5')>=0 &&
