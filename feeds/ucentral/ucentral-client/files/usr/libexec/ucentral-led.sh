@@ -12,6 +12,9 @@
 . /lib/functions.sh
 
 case "$(board_name)" in
+cambiumnetworks,xv2-21x)
+	LED_PATH="/sys/class/leds/blue:status"
+	;;
 edgecore,eap104)
 	LED_PATH="/sys/class/leds/green:cloud"
 	;;
