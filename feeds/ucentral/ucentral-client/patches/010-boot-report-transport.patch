@@ -1,0 +1,194 @@
+--- a/proto.c
++++ b/proto.c
+@@ -98,26 +98,39 @@
+ }
+ #endif
+ 
+-static void
++static bool
+ send_blob(struct blob_buf *blob)
+ {
+ 	char *msg;
+ 	int len;
+ 
+ 	msg = blobmsg_format_json(blob->head, true);
++	if (!msg)
++		return false;
+ 	len = strlen(msg) + 1;
+ 
+-	msg = realloc(msg, LWS_PRE + len);
++	char *resized = realloc(msg, LWS_PRE + len);
++	if (!resized) {
++		free(msg);
++		return false;
++	}
++	msg = resized;
+ 	memmove(&msg[LWS_PRE], msg, len);
+ 	memset(msg, 0, LWS_PRE);
+ 
+ 	ULOG_DBG("TX: %s\n", &msg[LWS_PRE]);
++	bool transmitted = false;
+ 	if (!websocket)
+ 		ULOG_ERR("trying to send data while not connected\n");
+-	else if (lws_write(websocket, (unsigned char *)&msg[LWS_PRE], len - 1, LWS_WRITE_TEXT) < 0)
+-		ULOG_ERR("failed to send message\n");
++	else {
++		int written = lws_write(websocket, (unsigned char *)&msg[LWS_PRE], len - 1, LWS_WRITE_TEXT);
++		transmitted = written == len - 1;
++		if (!transmitted)
++			ULOG_ERR("failed or incomplete websocket write\n");
++	}
+ 
+ 	free(msg);
++	return transmitted;
+ }
+ 
+ static void
+@@ -277,7 +290,7 @@
+ 	proto_send_blob();
+ }*/
+ 
+-void
++bool
+ raw_send(struct blob_attr *a)
+ {
+ 	enum {
+@@ -298,14 +311,14 @@
+ 
+ 	blobmsg_parse(raw_policy, __RAW_MAX, tb, blob_data(a), blob_len(a));
+ 	if (!tb[RAW_METHOD] || !tb[RAW_PARAMS])
+-		return;
++		return false;
+ 	m = proto_new_blob(blobmsg_get_string(tb[RAW_METHOD]));
+ 	blobmsg_add_string(&proto, "serial", client.serial);
+ 	blobmsg_add_u64(&proto, "uuid", uuid_active);
+ 	blobmsg_for_each_attr(b, tb[RAW_PARAMS], rem)
+ 		blobmsg_add_blob(&proto, b);
+ 	blobmsg_close_table(&proto, m);
+-	proto_send_blob();
++	return send_blob(&proto);
+ }
+ 
+ void
+@@ -568,10 +581,11 @@
+ 	proto_send_blob();
+ }
+ 
+-void
++bool
+ rebootlog_send(char *type, struct blob_attr *a)
+ {
+-	void *m = proto_new_blob("rebootLog");
++	bool crash = !strcmp(type, "crashlog");
++	void *m = proto_new_blob(crash ? "crashlog" : "rebootLog");
+ 	struct blob_attr *b;
+ 	void *c;
+ 	size_t rem;
+@@ -580,12 +594,12 @@
+ 	blobmsg_add_u64(&proto, "uuid", uuid_active);
+ 	blobmsg_add_string(&proto, "type", type);
+ 	blobmsg_add_u64(&proto, "date", time(NULL));
+-	c = blobmsg_open_array(&proto, "info");
++	c = blobmsg_open_array(&proto, crash ? "loglines" : "info");
+ 	blobmsg_for_each_attr(b, a, rem)
+ 		blobmsg_add_blob(&proto, b);
+ 	blobmsg_close_array(&proto, c);
+ 	blobmsg_close_table(&proto, m);
+-	proto_send_blob();
++	return send_blob(&proto);
+ }
+ 
+ void
+--- a/main.c
++++ b/main.c
+@@ -275,7 +275,6 @@
+ 
+ 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
+-		ubus_set_client_status("online");
+ 		ULOG_INFO("connection established\n");
+ 		if (!client.selfsigned && client.hostname_validate) {
+ 			if (!lws_tls_peer_cert_info(wsi, LWS_TLS_CERT_INFO_VALIDITY_TO, &ci, 0))
+ 				ULOG_INFO(" Peer Cert Valid to  : %s", ctime(&ci.time));
+@@ -299,6 +298,7 @@
+ 		reconnect_timeout = 1;
+ 		set_conn_time();
+ 		websocket = wsi;
++		ubus_set_client_status("online");
+ 		remove(PUBLIC_IP_FILE);
+ 		connect_send();
+ 		crashlog_init();
+--- a/ubus.c
++++ b/ubus.c
+@@ -27,6 +27,8 @@
+ 
+ 	blobmsg_add_u32(&u, "latest", uuid_latest);
+ 	blobmsg_add_u32(&u, "active", uuid_active);
++	/* Full websocket write is not acknowledged gateway persistence. */
++	blobmsg_add_u32(&u, "boot_report_transport", 1);
+ 	ubus_send_reply(ctx, req, u.head);
+ 
+ 	return UBUS_STATUS_OK;
+@@ -40,7 +42,11 @@
+ 	if (!msg)
+ 		return UBUS_STATUS_INVALID_ARGUMENT;
+ 
+-	raw_send(msg);
++	if (!raw_send(msg))
++		return UBUS_STATUS_UNKNOWN_ERROR;
++	blob_buf_init(&u, 0);
++	blobmsg_add_u8(&u, "transmitted", true);
++	ubus_send_reply(ctx, req, u.head);
+ 
+ 	return UBUS_STATUS_OK;
+ }
+--- a/ucentral.h
++++ b/ucentral.h
+@@ -78,7 +78,7 @@
+ 
+ void connect_send(void);
+ void ping_send(void);
+-void raw_send(struct blob_attr *a);
++bool raw_send(struct blob_attr *a);
+ void log_send(char *message, int severity);
+ void health_send(uint32_t sanity, struct blob_attr *a);
+ void result_send(uint32_t id, struct blob_attr *a, uint32_t uuid);
+@@ -123,7 +123,7 @@
+ 
+ void crashlog_init(void);
+ void consolelog_init(void);
+-void rebootlog_send(char *type, struct blob_attr *b);
++bool rebootlog_send(char *type, struct blob_attr *b);
+ 
+ int event_dump(struct blob_buf *b, char *type, bool delete);
+ void event_dump_all(struct blob_buf *b);
+--- a/rebootlog.c
++++ b/rebootlog.c
+@@ -25,8 +25,9 @@
+ {
+ 	struct blob_attr *tb[__REBOOT_MAX] = {};
+ 	struct stat s = {};
++	bool transmitted = false;
+ 
+-	if (stat(file, &s))
++	if (stat(file, &s) || s.st_size > 196608)
+ 		return;
+ 
+ 	blob_buf_init(&rebootlog, 0);
+@@ -34,14 +35,15 @@
+ 		blobmsg_parse(policy, __REBOOT_MAX, tb, blob_data(rebootlog.head),
+ 		      blob_len(rebootlog.head));
+ 		if (tb[REBOOT_LOG])
+-			rebootlog_send(type, tb[REBOOT_LOG]);
++			transmitted = rebootlog_send(type, tb[REBOOT_LOG]);
+ 		else
+ 			log_send("failed to parse the rebootlog", LOG_ERR);
+ 	} else {
+ 		log_send("found a rebootlog that is not valid json", LOG_ERR);
+ 	}
+ 	blob_buf_free(&rebootlog);
+-	unlink(file);
++	if (transmitted)
++		unlink(file);
+ }
+ 
+ void
