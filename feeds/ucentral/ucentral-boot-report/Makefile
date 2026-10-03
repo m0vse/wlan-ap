@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-boot-report
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 PKG_LICENSE:=BSD-3-Clause
@@ -12,7 +12,7 @@ define Package/ucentral-boot-report
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=Bounded persistent OpenWiFi reboot and crash-evidence reporting
-  DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-ubus +ucentral-client +coreutils-timeout
+  DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-ubus +ucentral-client +coreutils-timeout +ucentral-radio-crash
   PKGARCH:=all
 endef
 
