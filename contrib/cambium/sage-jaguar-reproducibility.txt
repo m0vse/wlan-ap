@@ -16,8 +16,8 @@ Published source inputs checked 2026-10-03:
     3f081e25e54fc75e01b482b1ac71106ec7ecaa85
 
 Profiles are tracked in wlan-ap:
-  profiles/cambium-sage.yml: ipq40xx/generic, E410 and E410B
-  profiles/cambium-jaguar.yml: qualcommax/ipq60xx, XV2-2, XV2-2T1, XE3-4
+  profiles/cambium_sage.yml: ipq40xx/generic, E410 and E410B
+  profiles/cambium_jaguar.yml: qualcommax/ipq60xx, XV2-2, XV2-2T1, XE3-4
 Listed metadata aliases do not independently qualify additional models.
 
 Sage's retained cnbeacon profile/target-ipq40xx.yml override uses a local
