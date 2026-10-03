@@ -136,6 +136,44 @@ function reporter(p, io) {
 				push(captured, { src, key, text, complete: meta.size <= length(raw) && text == raw });
 			}
 			if (directory) directory.close();
+			// Report only trusted bounded manifests; never read, upload, acknowledge
+			// or remove the private binary or its kernel source from this adapter.
+			let radio_dir = p.radio_crash && fs.lstat(p.radio_crash);
+			let radio_lockpath = p.radio_crash && p.radio_crash + '/.lock';
+			let radio_lock = radio_dir && safe(p.radio_crash, true) && fs.lstat(radio_lockpath) && safe(radio_lockpath, false) ? fs.open(radio_lockpath, 'r') : null;
+			// A writer may have renamed the manifest but failed its final sync.
+			// Shared locking prevents overlap, not proof of durable publication.
+			let radios = radio_lock && radio_lock.lock('sn') && io.sync() == 0 ? fs.opendir(p.radio_crash) : null;
+			for (let n = 0; radios && n < 10; n++) {
+				let name = radios.read(); if (name == null) break;
+				if (!match(name, /^[a-f0-9-]{36}-devcd[0-9]{1,8}\.json$/)) continue;
+				let path = p.radio_crash + '/' + name, st = fs.lstat(path);
+				if (!st || !safe(path, false) || st.size > 4096) continue;
+				let m; try { m = json(read(path, 4097)); } catch (e) { continue; }
+				if (type(m) != 'object' || m.version != 1 || !uuid(m.boot_id) ||
+					!bounded(m.id, 64) || !match(m.id, /^[a-f0-9-]{36}-devcd[0-9]{1,8}$/) ||
+					substr(m.id, 0, 36) != m.boot_id || name != m.id + '.json' ||
+					m.binaryfile != m.id + '.bin' || m.source != 'devcoredump' ||
+					!bounded(m.driver, 64) || !match(m.driver, /^[a-zA-Z0-9_.:-]+$/) ||
+					type(m.byte_count) != 'int' || m.byte_count < 0 || m.byte_count > 4194304 ||
+					type(m.complete) != 'bool' || type(m.truncated) != 'bool' || m.truncated == m.complete ||
+					(m.sha256 != null && (type(m.sha256) != 'string' || !match(m.sha256, /^[a-f0-9]{64}$/)))) continue;
+				let binpath = p.radio_crash + '/' + m.binaryfile, binary = fs.lstat(binpath);
+				if (!binary || !safe(binpath, false) || binary.size != m.byte_count) continue;
+				let key = 'radio:' + m.id;
+				if (index(s.seen || [], key) >= 0 || length(filter(s.events, e => e.capture_key == key))) continue;
+				let metadata = { boot_id: m.boot_id, id: m.id, driver: m.driver, byte_count: m.byte_count,
+					complete: m.complete, truncated: m.truncated, binaryfile: m.binaryfile,
+					producer_sha256: m.sha256 };
+				push(s.events, { id: m.id + ':radio', method: 'crashlog', date: stamp(), source: 'devcoredump',
+					capture_key: key, classification: 'radio-coredump', radio: metadata, truncated: m.truncated,
+					text: 'Radio coredump retained privately on the AP; this is not evidence of a host kernel panic. ' + sprintf('%J', metadata),
+					delivery: 'pending' });
+				s.seen = s.seen || []; push(s.seen, key); while (length(s.seen) > 32) shift(s.seen);
+				changed = true;
+			}
+			if (radios) radios.close();
+			if (radio_lock) radio_lock.close();
 			if (s.boot_id != id) {
 				let intent = s.intent, cause = io.reset_cause();
 				let reason = 'unexpected-shutdown';
@@ -181,12 +219,13 @@ function reporter(p, io) {
 				if (event.delivery != 'pending') continue;
 				let details = { report_id: event.id, source: event.source || 'kernel-boot-id',
 					classification: event.classification, initial_observation: event.initial_observation,
+					radio: event.radio,
 					previous_intent: event.previous_intent, reset_evidence: event.reset_evidence,
 					firmware: event.firmware, observed_uptime: event.observed_uptime, truncated: event.truncated,
 					late_kernel_evidence: event.late_kernel_evidence,
 					sanitized: event.sanitized, evicted_local_reports: s.evicted || 0,
 					timestamp_basis: event.date ? 'collection-time' : 'upload-time', delivery: 'no-server-ack' };
-				let params = event.method == 'crashlog' ? { loglines: [sprintf('OpenWiFi kernel dump %J', details), event.text] } :
+				let params = event.method == 'crashlog' ? { loglines: [sprintf('OpenWiFi crash evidence %J', details), event.text] } :
 					{ type: event.reason, date: event.date || io.now(), info: [details] };
 				if (!io.send({ method: event.method, params })) break;
 				event.delivery = 'transmitted-unacknowledged'; event.transmitted_at = stamp();

@@ -101,4 +101,60 @@ f = fixture('cause-link'); fs.writefile(f.root + '/sentinel', 'TEST-safe'); fs.s
 check('unsafe-volatile-cause-link-refused', cause_failed && fs.readfile(f.root + '/sentinel') == 'TEST-safe');
 f = fixture('symlink'); fs.symlink('/tmp', f.p.directory); let failed = false; try { f.app.collect(); } catch (e) { failed = true; }
 check('unsafe-history-link-refused', failed);
+function radio(f, mutate) {
+	fs.mkdir(f.root + '/radio', 0o700); f.p.radio_crash = f.root + '/radio';
+	fs.writefile(f.p.radio_crash + '/.lock', ''); fs.chmod(f.p.radio_crash + '/.lock', 0o600);
+	let id = A + '-devcd0';
+	let m = { version: 1, id, boot_id: A, driver: 'remoteproc-or-ath', source: 'devcoredump',
+		byte_count: 12, binaryfile: id + '.bin', complete: false, truncated: true };
+	if (mutate) mutate(m);
+	fs.writefile(f.p.radio_crash + '/' + id + '.bin', 'SECRETbinary');
+	fs.chmod(f.p.radio_crash + '/' + id + '.bin', 0o600);
+	fs.writefile(f.p.radio_crash + '/' + id + '.json', sprintf('%J', m));
+	fs.chmod(f.p.radio_crash + '/' + id + '.json', 0o600);
+	return id;
+}
+f = fixture('radio-partial'); let rid = radio(f); f.app.collect();
+let reports = filter(f.app.state().events, e => e.classification == 'radio-coredump');
+check('radio-summary-does-not-attribute-host-reboot', length(reports) == 1 && reason(f) == 'unexpected-shutdown');
+check('radio-summary-is-metadata-only', reports[0].truncated && index(reports[0].text, 'SECRETbinary') < 0 && reports[0].radio.byte_count == 12);
+f.app.collect(); check('radio-reconnect-deduplicates', length(f.app.state().events) == 2);
+f.online = true; f.app.send();
+check('radio-wire-is-crashlog-not-reboot-cause', length(filter(f.sent, e => e.method == 'crashlog' && index(e.params.loglines[1], 'not evidence of a host kernel panic') >= 0)) == 1);
+check('radio-binary-manifest-retained-after-transport', fs.stat(f.p.radio_crash + '/' + rid + '.bin') && fs.stat(f.p.radio_crash + '/' + rid + '.json') && !length(f.unlinks));
+f = fixture('radio-complete'); radio(f, m => { m.complete = true; m.truncated = false; }); f.app.collect();
+check('radio-complete-metadata-supported', !filter(f.app.state().events, e => e.classification == 'radio-coredump')[0].truncated);
+for (let invalid in ['version', 'boot_id', 'binaryfile', 'byte_count', 'complete', 'truncated', 'driver', 'sha256']) {
+	f = fixture('radio-invalid-' + invalid);
+	radio(f, function(m) {
+		if (invalid == 'version') m.version = 2;
+		else if (invalid == 'boot_id') m.boot_id = B;
+		else if (invalid == 'binaryfile') m.binaryfile = '../key.pem';
+		else if (invalid == 'byte_count') m.byte_count = 4194305;
+		else if (invalid == 'complete') m.complete = 0;
+		else if (invalid == 'truncated') m.truncated = false;
+		else if (invalid == 'driver') m.driver = 'unsafe\nmetadata';
+		else m.sha256 = 'bad';
+	}); f.app.collect();
+	check('radio-invalid-' + invalid + '-ignored-without-source-deletion', length(f.app.state().events) == 1 && !length(f.unlinks));
+}
+f = fixture('radio-permissions'); rid = radio(f); fs.chmod(f.p.radio_crash + '/' + rid + '.bin', 0o644); f.app.collect();
+check('radio-public-binary-refused', length(f.app.state().events) == 1);
+f = fixture('radio-size'); radio(f, m => { m.byte_count = 11; }); f.app.collect();
+check('radio-size-mismatch-refused', length(f.app.state().events) == 1);
+f = fixture('radio-write-failure'); rid = radio(f); f.synced = false; let rf = false;
+try { f.app.collect(); } catch (e) { rf = true; }
+check('radio-history-sync-failure-retains-evidence', rf && fs.stat(f.p.radio_crash + '/' + rid + '.json') && fs.stat(f.p.radio_crash + '/' + rid + '.bin') && !length(f.unlinks));
+f = fixture('radio-locked'); radio(f); let writer = fs.open(f.p.radio_crash + '/.lock', 'a'); writer.lock('xn'); f.app.collect();
+check('radio-publish-lock-nonblocking-skip', length(f.app.state().events) == 1);
+writer.close(); f.app.collect(); check('radio-after-publish-lock-release-collected', length(f.app.state().events) == 2);
+f = fixture('radio-bin-link'); rid = radio(f); fs.unlink(f.p.radio_crash + '/' + rid + '.bin'); fs.symlink(f.p.version, f.p.radio_crash + '/' + rid + '.bin'); f.app.collect();
+check('radio-binary-symlink-refused', length(f.app.state().events) == 1);
+f = fixture('radio-malformed'); rid = radio(f); fs.writefile(f.p.radio_crash + '/' + rid + '.json', '{broken'); f.app.collect();
+check('radio-malformed-manifest-does-not-block-boot-report', length(f.app.state().events) == 1);
+f = fixture('radio-newboot'); radio(f); f.app.collect(); reboot(f);
+check('radio-does-not-turn-following-boot-into-confirmed-crash', reason(f) == 'unexpected-shutdown' && length(filter(f.app.state().events, e => e.classification == 'radio-coredump')) == 1);
+f = fixture('radio-publish-sync'); f.app.collect(); radio(f); f.sync_fail_at = f.sync_calls + 1; f.app.collect();
+check('radio-publication-sync-failure-does-not-report-unconfirmed-manifest', length(f.app.state().events) == 1 && !length(f.unlinks));
+f.sync_fail_at = null; f.app.collect(); check('radio-publication-sync-successful-retry-collects', length(f.app.state().events) == 2);
 print(sprintf('%J\n', { passed: true, count: length(results), cases: results, synthetic: 'TEST-only private filesystem/clock/transport/reset-cause fixtures; no AP or controller access', directory: base }));

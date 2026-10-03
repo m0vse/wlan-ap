@@ -23,6 +23,7 @@ let app = reporter({
 	directory: '/etc/ucentral/boot-reporting', state: '/etc/ucentral/boot-reporting/history.json',
 	lock: runtime + '/lock', boot_id: '/proc/sys/kernel/random/boot_id',
 	uptime: '/proc/uptime', version: '/etc/openwrt_release', pstore: '/sys/fs/pstore',
+	radio_crash: '/etc/ucentral/radio-crash',
 	cause: runtime + '/cause'
 }, {
 	now: () => time(), sync: () => system(['sync']), rename: (a, b) => fs.rename(a, b),
