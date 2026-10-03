@@ -1,0 +1,79 @@
+SAGE / JAGUAR SOURCE REPRODUCIBILITY NOTES
+
+These are source-only instructions. No firmware binaries, build output,
+credentials or private device data belong in this directory.
+
+Published source inputs checked 2026-10-03:
+  m0vse/wlan-ap main:
+    b10b5e624fb34c96c0e12bcbf49b2b3bcf4de4d6
+  Sage .6 wlan-ap tag sage-2026.10.02.6:
+    9fe7f73a2dc2839b15037eae9c08392324c51eb3
+  Sage .6 m0vse/wlan-ap-legacy-targets main at release:
+    1dd0433895dbca35188344df185ec2a98993f2ec
+  Jaguar .4 wlan-ap tag jaguar-2026.10.02.4:
+    6dbb803bb37212fdd5d37c9aeb28cc5213fedb94
+  wlan-ap config.yml OpenWrt upstream revision:
+    3f081e25e54fc75e01b482b1ac71106ec7ecaa85
+
+Profiles are tracked in wlan-ap:
+  profiles/cambium-sage.yml: ipq40xx/generic, E410 and E410B
+  profiles/cambium-jaguar.yml: qualcommax/ipq60xx, XV2-2, XV2-2T1, XE3-4
+Listed metadata aliases do not independently qualify additional models.
+
+Sage's retained cnbeacon profile/target-ipq40xx.yml override uses a local
+legacy feed path: ../../../wlan-ap-legacy-targets. This path is a build-host
+convenience, not a different package source. The committed profile uses
+the m0vse legacy GitHub feed. For release reproduction, explicitly resolve
+the feed to the recorded legacy commit, not whichever main tip exists at
+build time. Do not blindly substitute a newer legacy or stock source base.
+The host legacy checkout has older author-history ancestry and dirty r17
+files. Their bytes match the corrected published legacy commit:
+  cambium-ab/Makefile:
+    cc79334e70e5b766760424a72d02dfffdd5b4449f7a44f6c9bb9d8a5b278b862
+  cambium-ab/files/cambium-ab-sage.sh:
+    ef900bf87427b09bb2ba741c2f0b8d46220fcab9babbe0698e153f35768e9094
+  ipq40xx/base-files/lib/upgrade/platform.sh:
+    c418e4a343088ade1f51e4b5d027adeae7ae422ed735f0c0dfbd483d568c9e63
+Do not push that older host ancestry over corrected GitHub main.
+
+Generated OpenWrt trees retain applied patches as dirty files. Reconstruct
+from committed CURRENT integration patches, not merely from the older
+generated 0124 Git commit followed by 0125 onward. Source-only audit of
+0124 through 0130 reproduced the live Jaguar changed files, except the
+02_network zero-context insertion corrected by this publication branch.
+The corrected case placement matches the working Jaguar source exactly:
+  target/linux/qualcommax/ipq60xx/base-files/etc/board.d/02_network:
+    4db4f86b4fcba690a48784aca941bf48c3a014b074444d214db5757aafeb0c64
+This does not change already-built/deployed images.
+
+Current source-only operator/checker inputs are already tracked:
+  tests/installer/sage-stock6-r3/
+  tests/installer/sage-from.1-preflight-r1/
+  tests/installer/jaguar-openwifi-from.1-r2/
+  tests/installer/jaguar-xe3-stock102-to3-r1/
+Checksum comparison against cnbeacon copies found no source-script delta.
+Stock conversion and preserving OpenWiFi upgrade are distinct routes.
+
+EXISTING .1 MIGRATION SCOPE
+  Sage: authenticated .1 prerequisite checker, then conditional normal
+    controller/UI .1 -> .3. Durable shared credentials/store must be healthy
+    before upgrading. E410 physical .1 -> .3 was reported confirmed.
+  Jaguar: exact-source .1 preserving r2 bridge -> .3, XV2-2/XV2-2T1 only.
+    XV2-2T1 physical .1 -> .3 was reported confirmed.
+  Neither receipt proves a DIRECT .1 -> latest upgrade or every model.
+  The pinned .3 installers must not be relabelled to accept latest images.
+  Subsequent .3 -> newer managed-upgrade offline checks are separate from
+    hardware acceptance of the complete staged path.
+  Stop on a checker refusal; do not force, resize manually or invent a path.
+
+Avoid setup.py --rebase/build.sh for package-only changes in retained build
+trees: that refreshes the generated tree and can force broad rebuilds.
+After reviewed source synchronization, clean only changed packages and
+run the existing OpenWrt build workflow; a DTS change rebuilds the kernel.
+These notes authorize no build, flash, reboot, certificate change or AP test.
+
+Stock cambium-openwrt must remain controller-neutral. OpenWiFi identity,
+certificate-policy activation and rendering hooks belong to wlan-ap/legacy
+integration. Adopting a newer stock base requires a separately reviewed
+patch-application and source-closure check; do not rebase retained releases
+silently or let stock cleanup drop required OpenWiFi features.
