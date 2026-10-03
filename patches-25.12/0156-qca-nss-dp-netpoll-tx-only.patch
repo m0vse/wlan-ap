@@ -1,0 +1,63 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] qca-nss-dp: honor zero-budget TX-only netpoll callbacks
+
+Selected IPQ807x EDMA-v1 and IPQ50xx SynGMAC callbacks must make bounded
+TX progress without RX refill, NAPI completion or interrupt re-enable when
+netpoll supplies budget zero. Preserve positive-budget code byte-for-byte.
+
+--- a/package/kernel/qca-nss-dp/Makefile
++++ b/package/kernel/qca-nss-dp/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=qca-nss-dp
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ PKG_SOURCE_URL:=https://github.com/openwrt/qca-nss-dp.git
+ PKG_SOURCE_PROTO:=git
+--- /dev/null
++++ b/package/kernel/qca-nss-dp/patches/010-netpoll-tx-only-zero-budget.patch
+@@ -0,0 +1,42 @@
++--- a/hal/dp_ops/edma_dp/edma_v1/edma_tx_rx.c
+++++ b/hal/dp_ops/edma_dp/edma_v1/edma_tx_rx.c
++@@ -456,6 +456,13 @@
++ 	int work_done = 0;
++ 	int i;
++ 
+++	/* Netpoll requests TX-only progress with a zero NAPI budget. */
+++	if (!budget) {
+++		for (i = 0; i < ehw->txcmpl_rings; i++)
+++			edma_clean_tx(ehw, &ehw->txcmpl_ring[i]);
+++		return 0;
+++	}
+++
++ 	for (i = 0; i < ehw->rxdesc_rings; i++) {
++ 		rxdesc_ring = &ehw->rxdesc_ring[i];
++ 		work_done += edma_clean_rx(ehw, budget, rxdesc_ring);
++--- a/hal/dp_ops/syn_gmac_dp/syn_dp.c
+++++ b/hal/dp_ops/syn_gmac_dp/syn_dp.c
++@@ -30,6 +30,10 @@
++ 	struct syn_dp_info_rx *rx_info = (struct syn_dp_info_rx *)napi;
++ 	void __iomem *mac_base = rx_info->mac_base;
++ 
+++	/* Netpoll must not receive, refill or complete RX NAPI. */
+++	if (!budget)
+++		return 0;
+++
++ 	work_done = syn_dp_rx(rx_info, budget);
++ 	if (likely(!rx_info->page_mode)) {
++ 		pending_refill = syn_dp_rx_refill(rx_info);
++@@ -61,6 +65,12 @@
++ 	struct syn_dp_info_tx *tx_info = (struct syn_dp_info_tx *)napi;
++ 	void __iomem *mac_base = tx_info->mac_base;
++ 	int work_done;
+++
+++	/* A nonzero internal bound avoids zero-budget descriptor underflow. */
+++	if (!budget) {
+++		syn_dp_tx_complete(tx_info, SYN_DP_NAPI_BUDGET_TX);
+++		return 0;
+++	}
++ 
++ 	work_done = syn_dp_tx_complete(tx_info, budget);
++ 
