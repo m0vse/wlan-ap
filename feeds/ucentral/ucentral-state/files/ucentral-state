@@ -22,6 +22,34 @@ let offline_timer;
 let current_state;
 let online = false;
 let leds_off = false;
+let blink_timer;
+let factory_reset_timer;
+let managed_status_led = system('/usr/libexec/ucentral-led.sh managed') == 0;
+
+function controller_connected(status) {
+	return type(status) == 'object' && type(status.connected) == 'int' && status.connected >= 0;
+}
+
+function led_pattern_active() {
+	return current_state in ['blink', 'factory-reset'];
+}
+
+function controller_led_update(restore) {
+	if (managed_status_led && leds_off) {
+		if (blink_timer) { blink_timer.cancel(); blink_timer = null; }
+		if (factory_reset_timer) { factory_reset_timer.cancel(); factory_reset_timer = null; }
+		current_state = online ? 'online' : 'offline';
+		system('/usr/libexec/ucentral-led.sh disabled');
+		return;
+	}
+	if (led_pattern_active()) return;
+	let connected = controller_connected(ubus.call('ucentral', 'status'));
+	system('/usr/libexec/ucentral-led.sh ' + (restore ? 'restore-' : '') + (connected ? 'on' : 'off'));
+}
+
+function status_phase_active() {
+	return managed_status_led && system('/usr/libexec/ucentral-led.sh phase') == 0;
+}
 
 function self_healing() {
 	let heal_wifi = false;
@@ -166,7 +194,7 @@ state = {
 
 function offline_handler() {
 	let status = ubus.call('ucentral', 'status');
-	if (status?.connected)
+	if (controller_connected(status))
 		return;
 	ulog(LOG_INFO, 'going offline\n');
 	ubus.call('network.interface.admin_ui', 'up');
@@ -185,9 +213,7 @@ function config_load() {
 
 	uci.load('system');
 	let led_off_cfg = uci.get("system", "@system[0]", "leds_off");
-	if (led_off_cfg == 1) {
-		leds_off = true;
-	}
+	leds_off = led_off_cfg == 1;
 
 	uci.load('state');
 	config = uci.get_all('state');
@@ -203,12 +229,13 @@ function config_load() {
 		state.run(config?.stats?.interval * 1000);
 
 	let status = ubus.call('ucentral', 'status');
-	if (status?.connected) {
+	if (controller_connected(status)) {
 		online_handler();
 		online = true;
-		system('/usr/libexec/ucentral-led.sh on');
+		controller_led_update();
 	} else {
-		system('/usr/libexec/ucentral-led.sh off');
+		online = false;
+		controller_led_update();
 		if (config.ui.offline_trigger)
 			offline_timer = uloop.timer(config.ui.offline_trigger * 1000, offline_handler);
 	}
@@ -227,6 +254,14 @@ function led_write(led, property, value) {
 }
 
 function led_find(alias) {
+	if (managed_status_led && alias == 'led-running') {
+		// color/function GPIO LEDs need not have a legacy DT label property.
+		let pipe = fs.popen('/usr/libexec/ucentral-led.sh running', 'r');
+		if (!pipe) return;
+		let name = trim(pipe.read('all') || '');
+		pipe.close();
+		return match(name, /^[A-Za-z0-9:_-]{1,128}$/) ? name : null;
+	}
 	let path = fs.readfile('/proc/device-tree/aliases/' + alias);
 	if (!path)
 		return;
@@ -234,15 +269,26 @@ function led_find(alias) {
 }
 
 function factory_reset_timeout() {
+	factory_reset_timer = null;
+	if (managed_status_led) {
+		online = controller_connected(ubus.call('ucentral', 'status'));
+		current_state = online ? 'online' : 'offline';
+		controller_led_update(true);
+		return;
+	}
 	let led = led_find('led-running');
 	if (led)
 		led_write(led, 'trigger', leds_off ? 'none' : 'default-on');
 }
 
-let blink_timer;
 function blink_timeout() {
 	if (current_state == 'blink') {
 		current_state = online ? 'online' : 'offline';
+	}
+	if (managed_status_led && (leds_off || status_phase_active())) {
+		controller_led_update(true);
+		if (blink_timer) { blink_timer.cancel(); blink_timer = null; }
+		return;
 	}
 	system('/etc/init.d/led turnon');
 	/*
@@ -251,7 +297,7 @@ function blink_timeout() {
 	 * userspace, so re-assert it here or it stays dark until the next
 	 * online/offline transition.
 	 */
-	system('/usr/libexec/ucentral-led.sh ' + (online ? 'on' : 'off'));
+	controller_led_update(true);
 	if (!blink_timer)
 		return;
 	blink_timer.cancel();
@@ -262,9 +308,9 @@ let state_handler = {
 	offline: function() {
 		online = false;
 		let led = led_find('led-running');
-		if (!leds_off && led)
+		if (!managed_status_led && !led_pattern_active() && !leds_off && led)
 			led_write(led, 'trigger', 'heartbeat');
-		system('/usr/libexec/ucentral-led.sh off');
+		controller_led_update();
 		if (config.ui.offline_trigger) {
 			if (offline_timer)
 				offline_timer.cancel();
@@ -276,29 +322,35 @@ let state_handler = {
 	online: function() {
 		online = true;
 		let led = led_find('led-running');
-		if (!leds_off && led)
+		if (!managed_status_led && !led_pattern_active() && !leds_off && led)
 			led_write(led, 'trigger', 'default-on');
-		system('/usr/libexec/ucentral-led.sh on');
+		controller_led_update();
 		online_handler();
 		return 0;
 	},
 
 	'factory-reset': function() {
+		if (managed_status_led && leds_off) { controller_led_update(); return 0; }
+		if (status_phase_active()) return ubus.STATUS_INVALID_ARGUMENT;
+		if (managed_status_led) system('/usr/libexec/ucentral-led.sh pattern');
 		let led = led_find('led-running');
 		if (!led)
 			return ubus.STATUS_INVALID_ARGUMENT;
 		led_write(led, 'trigger', 'timer');
 		led_write(led, 'delay_on', '100');
 		led_write(led, 'delay_off', '100');
-		uloop.timer(6000, factory_reset_timeout);
+		factory_reset_timer = uloop.timer(6000, factory_reset_timeout);
 		return 0;	
 	},
 
 	blink: function(args) {
+		if (managed_status_led && leds_off) { controller_led_update(); return 0; }
+		if (status_phase_active()) return ubus.STATUS_INVALID_ARGUMENT;
 		if (!args.duration) {
 			blink_timeout();
 			return 0;
 		}
+		if (managed_status_led) system('/usr/libexec/ucentral-led.sh pattern');
 		system('/etc/init.d/led blink');
 		if (args.duration != 0xffff)
 			blink_timer = uloop.timer((args.duration || 10) * 1000, blink_timeout);
@@ -310,6 +362,10 @@ let ubus_methods = {
 	set: {
 		call: function(req) {
 			ulog(LOG_INFO, 'state %s -> %s\n', current_state, req.args.state);
+			if (led_pattern_active() && req.args.state in ['online', 'offline']) {
+				// Connection changes update services but cannot cancel identification.
+				return state_handler[req.args.state]();
+			}
 			if (current_state == req.args.state && req.args.state != 'blink') {
 				/*
 				 * State is unchanged, so the handlers are skipped.
@@ -317,15 +373,18 @@ let ubus_methods = {
 				 * been cleared meanwhile (ucentral restart, or a
 				 * 'led turnon'), so re-assert it here.
 				 */
-				system('/usr/libexec/ucentral-led.sh ' + (online ? 'on' : 'off'));
+				controller_led_update();
 				return;
 			}
+			if (req.args.state in ['blink', 'factory-reset'] && status_phase_active())
+				return ubus.STATUS_INVALID_ARGUMENT;
 			if (!state_handler[req.args.state])
 				return ubus.STATUS_INVALID_ARGUMENT;
 			if (current_state != req.args.state)
 				ulog(LOG_INFO, 'state %s -> %s\n', current_state, req.args.state);
-			current_state = req.args.state;
+			if (factory_reset_timer) { factory_reset_timer.cancel(); factory_reset_timer = null; }
 			blink_timeout();
+			current_state = req.args.state;
 			ulog(LOG_INFO, 'set state -> ' + req.args.state + '\n');
 
 			return state_handler[req.args.state](req.args);
