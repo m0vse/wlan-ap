@@ -2475,7 +2475,7 @@ index b8b22bcffe..5c760b4113 100644
 +		ucidef_set_interfaces_lan_wan "lan2" "lan1"
  		;;
  	glinet,gl-ax1800|\
-@@ -60,0 +67,7 @@ ipq60xx_setup_macs()
+@@ -60 +67,8 @@ ipq60xx_setup_macs()
 +	cambiumnetworks,xe3-4|\
 +	cambiumnetworks,xe3-4tn|\
 +	cambiumnetworks,xv2-2|\
@@ -2483,6 +2483,7 @@ index b8b22bcffe..5c760b4113 100644
 +	cambiumnetworks,xv2-2t1)
 +		label_mac=$(get_mac_label_dt)
 +		;;
+ 	qihoo,360v6)
 diff --git a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
 index 8d323563bf..90a392af2d 100644
 --- a/target/linux/qualcommax/ipq60xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
