@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-radio-crash
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 PKG_LICENSE:=BSD-3-Clause
 
@@ -11,7 +11,7 @@ define Package/ucentral-radio-crash
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=Optional bounded persistent radio dump retention
-  DEPENDS:=+coreutils-timeout +flock
+  DEPENDS:=+coreutils-timeout +coreutils-stat +flock
 endef
 
 define Package/ucentral-radio-crash/conffiles
