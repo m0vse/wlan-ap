@@ -63,3 +63,28 @@ Set `OW_TEST_UCODE` to the native built host ucode binary. Run
 For Python tests, set `OW_DFS_MODULE` (subprocess), `OW_DFS_SOURCE`
 (health/healing), or `OW_DFS_TARGET_ROOT` and `OW_DFS_QEMU` (target CLI).
 Fixtures are private temporary directories; no AP is accessed or changed.
+
+## Multi-BSS CAC regression (2026-10-03)
+
+XV2-2 runtime evidence showed hostapd listing all three BSSes under the same
+active DFS STATUS, while only wlan0 had a sysfs phy80211 link. Missing links
+for wlan0-1 and wlan0-2 caused the earlier exact-PHY check to reject their CAC
+evidence and restart the network every six minutes, resetting the ten-minute
+CAC. The new fixture reproduces that failure against the old helper.
+
+The collector now gathers exact configured/runtime/hostapd BSS+SSID matches
+and requires a matching sysfs PHY anchor on that same netifd radio. An absent
+secondary link can be covered by that shared anchored STATUS. A contradictory
+nonempty PHY, missing primary anchor, absent BSS/SSID match, malformed status,
+expired CAC or independent fault still retains ordinary recovery. Interface
+ordering does not affect the anchor. No generic cached CAC grace is added.
+
+Validation: full pinned schema patch series replays with zero fuzz; 51
+classifier/mapping controls and 28 actual health/self-healing controls pass
+with both extracted Jaguar AArch64 and Sage ARM runtimes. Tests cover the
+reported three SSIDs, including a separate VLAN interface. Physical runtime
+qualification still requires observing uninterrupted CAC and subsequent
+AP-ENABLED on the affected AP; no AP mutation is part of these source tests.
+
+For target-runtime health tests use OW_TEST_UCODE_CMD containing the QEMU,
+loader root, ucode and library-path arguments instead of OW_TEST_UCODE.

@@ -73,4 +73,36 @@ check('same radio duplicate SSID uncovered BSS fails',cac.has_wifi_failures(fail
 config.bss0.disabled='1';
 check('disabled iface never positive CAC',!cac.collect(config,runtime,query,phy).sections.bss0);
 check('oversize status rejected',!cac.parse_status(sprintf('%16385s','x')));
+let multi_config = { radio0: { '.type': 'wifi-device' } };
+let multi_runtime = { radio0: { interfaces: [] } };
+let multi_text = 'state=DFS\nphy=phy0\ncac_time_seconds=600\ncac_time_left_seconds=543\n';
+for (let i, ssid in ['Shine Systems', 'phil 5Ghz', 'Dante']) {
+	let section = 'bss' + i;
+	let ifname = i ? 'wlan0-' + i : 'wlan0';
+	multi_config[section] = { '.type': 'wifi-iface', device: 'radio0', mode: 'ap', ssid, network: 'up0v0' };
+	push(multi_runtime.radio0.interfaces, { section, ifname, config: { ssid } });
+	multi_text += 'bss[' + i + ']=' + ifname + '\nssid[' + i + ']=' + ssid + '\n';
+}
+let multi_pending = cac.collect(multi_config, multi_runtime,
+	()=>cac.parse_status(multi_text), ()=>'phy0');
+for (let i in [0,1,2])
+	check('multi-BSS positive CAC section '+i, multi_pending.sections['bss'+i]);
+let multi_failure = { data: { radios: { radio0: { failed_ssids: {
+	'Shine Systems': 'missing', 'phil 5Ghz': 'missing', 'Dante': 'missing'
+} } } } };
+check('all three same-PHY CAC failures deferred', !cac.has_wifi_failures(multi_failure, multi_config, multi_pending));
+multi_pending = cac.collect(multi_config, multi_runtime,
+	()=>cac.parse_status(multi_text), (name)=>name=='wlan0'?'phy0':null);
+check('missing secondary PHY links covered by exact anchored hostapd BSS evidence',
+	!cac.has_wifi_failures(multi_failure, multi_config, multi_pending));
+check('no PHY anchor never defers failures', cac.has_wifi_failures(multi_failure, multi_config,
+	cac.collect(multi_config, multi_runtime, ()=>cac.parse_status(multi_text), ()=>null)));
+multi_pending = cac.collect(multi_config, multi_runtime,
+	()=>cac.parse_status(multi_text), (name)=>name=='wlan0'?'phy0':'phy99');
+check('contradictory secondary PHY links retain failures', cac.has_wifi_failures(multi_failure, multi_config, multi_pending));
+check('contradictory secondary not deferred', !multi_pending.sections.bss1 && !multi_pending.sections.bss2);
+let reversed = {radio0:{interfaces:[...multi_runtime.radio0.interfaces]}};
+reverse(reversed.radio0.interfaces);
+check('primary anchor independent of interface ordering', !cac.has_wifi_failures(multi_failure, multi_config,
+	cac.collect(multi_config, reversed, ()=>cac.parse_status(multi_text), (name)=>name=='wlan0'?'phy0':null)));
 printf('%.J\n',{passed:true,count,scope:'Actual CAC classifier/mapping/healing filter, injected pre-BSS hostapd STATUS and netifd/sysfs fixtures; no AP or wireless operations.'});

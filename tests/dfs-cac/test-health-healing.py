@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Actual health/healing functions, boundaries redirected to private fixtures."""
-import hashlib,json,os,pathlib,re,subprocess,tempfile
-base=pathlib.Path(os.environ['OW_DFS_SOURCE']);ucode=os.environ['OW_TEST_UCODE']
+import hashlib,json,os,pathlib,re,shlex,subprocess,tempfile
+base=pathlib.Path(os.environ['OW_DFS_SOURCE'])
+ucode=shlex.split(os.environ['OW_TEST_UCODE_CMD']) if 'OW_TEST_UCODE_CMD' in os.environ else [os.environ['OW_TEST_UCODE']]
 work=pathlib.Path(tempfile.mkdtemp(prefix='cac-health-healing.'))
 (work/'dfs_cac.uc').write_bytes((base/'system/dfs_cac.uc').read_bytes())
 health=(base/'system/health.uc').read_text();daemon=(base/'ucentral-state').read_text()
@@ -45,10 +46,29 @@ check('standalone CAC interface SSID not missing',!check_wifi_health({interface:
 config.bss0.auth_server='server';config.bss0.auth_port=1812;config.bss0.auth_secret='fixture';config.bss0.health_username='fixture';config.bss0.health_password='fixture';
 check('independent radius failure retained during CAC',!!check_wifi_health({interface:'up0v0'},config,wifi_state).health.radius);
 cac_pending={sections:{},radios:{}};check('no CAC evidence detects real missing SSID',!!check_wifi_health({interface:'up0v0'},config,wifi_state).health.ssids);
+config={radio0:{'.name':'radio0','.type':'wifi-device',path:'platform/soc/wifi+0'}};
+runtime={radio0:{interfaces:[]}};
+let multi='state=DFS\\nphy=phy0\\ncac_time_seconds=600\\ncac_time_left_seconds=470\\n';
+for(let i,ssid in ['Shine Systems','phil 5Ghz','Dante']){
+ let name='bss'+i, ifname=i?'wlan0-'+i:'wlan0';
+ config[name]={'.name':name,'.type':'wifi-iface',device:'radio0',mode:'ap',ssid,network:i==2?'up1v101':'up0v0'};
+ push(runtime.radio0.interfaces,{section:name,ifname,config:{ssid}});
+ multi+='bss['+i+']='+ifname+'\\nssid['+i+']='+ssid+'\\n';
+}
+test_cac_module.collect=(c,r)=>cac.collect(c,r,()=>cac.parse_status(multi),(name)=>name=='wlan0'?'phy0':null);
+cac_pending=test_cac_module.collect(config,runtime);
+check('three pre-BSS CAC radio SSIDs not missing',!length(check_radio_health(config,{}).issues));
+check('both upstream pre-BSS CAC SSIDs not missing',!check_wifi_health({interface:'up0v0'},config,{}).health.ssids);
+check('VLAN pre-BSS CAC SSID not missing',!check_wifi_health({interface:'up1v101'},config,{}).health.ssids);
+clock=360;last_restart=0;actions=[];
+snapshot={sanity:50,data:{radios:{radio0:{failed_ssids:{'Shine Systems':'missing','phil 5Ghz':'missing',Dante:'missing'}}},interfaces:{up0v0:{ssids:{'phil 5Ghz':false}},up1v101:{ssids:{Dante:false}}}}};
+self_healing();check('multi-BSS CAC does not reset network at six minutes',!length(actions));
+multi=replace(multi,'cac_time_left_seconds=470','cac_time_left_seconds=0');
+actions=[];self_healing();check('expired multi-BSS CAC restores recovery',length(actions)==1);
 printf('%.J\\n',{passed:true,count,scope:'Actual health matching and self-healing functions; filesystem/ubus/clock/process boundaries stubbed, actual positive-CAC helper injected. No AP, network restart or RADIUS traffic.'});
 '''
 driver.write_text(setup+bands+'\n'+'\n'.join(functions)+'\n'+healer+'\n'+cases)
-p=subprocess.run([ucode,str(driver),str(work)],capture_output=True,text=True)
+p=subprocess.run(ucode+[str(driver),str(work)],capture_output=True,text=True)
 assert p.returncode==0,(p.stdout,p.stderr)
 result=json.loads(p.stdout);result['health_sha256']=hashlib.sha256(health.encode()).hexdigest();result['healer_sha256']=hashlib.sha256(daemon.encode()).hexdigest()
 print(json.dumps(result,indent=2))

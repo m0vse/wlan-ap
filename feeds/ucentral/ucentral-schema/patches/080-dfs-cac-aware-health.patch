@@ -44,7 +44,7 @@
  	let interface_count = perform_interface_health_checks(configs);
 --- /dev/null
 +++ b/system/dfs_cac.uc
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,166 @@
 +// Fresh, read-only hostapd CAC evidence. Never infer CAC from channel numbers.
 +import * as fs from 'fs';
 +
@@ -127,6 +127,8 @@
 +	phy_lookup ??= interface_phy;
 +	for (let radio_name, radio in runtime || {}) {
 +		let radio_status;
++		let phy_verified = false;
++		let candidates = [];
 +		for (let iface in radio.interfaces || []) {
 +			let section = config[iface.section];
 +			if (!enabled(section, config) || section.device != radio_name ||
@@ -135,7 +137,8 @@
 +				continue;
 +			radio_status ??= query(iface.ifname);
 +			let status = radio_status;
-+			if (!status || status.phy != phy_lookup(iface.ifname))
++			let iface_phy = phy_lookup(iface.ifname);
++			if (!status || (iface_phy && status.phy != iface_phy))
 +				continue;
 +			let matched = false;
 +			for (let key, value in status.fields) {
@@ -146,6 +149,17 @@
 +			}
 +			if (!matched)
 +				continue;
++			phy_verified ||= !!iface_phy;
++			push(candidates, { iface, section, status });
++		}
++		// Secondary BSS netdev PHY links can be absent during initial CAC.
++		// Require another exactly matched BSS on this netifd radio to anchor
++		// the shared hostapd STATUS to a real sysfs PHY; never ignore a
++		// contradictory PHY or accept a radio with no positive anchor.
++		if (!phy_verified)
++			continue;
++		for (let candidate in candidates) {
++			let iface = candidate.iface, section = candidate.section, status = candidate.status;
 +			pending.sections[iface.section] = true;
 +			pending.radios[radio_name] ??= {};
 +			pending.radios[radio_name][section.ssid] = {
