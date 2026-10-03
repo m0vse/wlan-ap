@@ -1,0 +1,137 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+USE_PROCD=1
+PROG=/usr/sbin/ucentral
+
+service_triggers() {
+	procd_add_reload_trigger ucentral
+}
+
+reload_service() {
+	restart
+}
+
+stop_service() {
+	[ -x /usr/libexec/ucentral-led.sh ] && /usr/libexec/ucentral-led.sh off
+}
+
+start_service() {
+	# Collect even while offline / before network-ready and identity guards.
+	/usr/libexec/ucentral-boot-report collect || logger -t boot-report 'boot collection unavailable'
+	local identity_mode=stock
+	if [ -x /usr/libexec/ucentral-private-pki ]; then
+		identity_mode=$(/usr/libexec/ucentral-private-pki mode) || return 1
+	fi
+	[ -e /tmp/ucentral-network.ready ] || return 1
+	[ -s /etc/ucentral/capabilities.json ] || rm -f /etc/ucentral/capabilities.json
+	if [ ! -f /etc/ucentral/capabilities.json ]; then
+		if [ "$(cat /etc/ucentral/platform 2>/dev/null)" = "ap" ]; then
+			local retries=60
+			while [ "$retries" -gt 0 ]; do
+				local phy_count=0
+				local configured_count
+				local phy
+
+				for phy in /sys/class/ieee80211/*; do
+					[ -e "$phy" ] && phy_count=$((phy_count + 1))
+				done
+
+				configured_count=$(uci -q show wireless 2>/dev/null |
+					grep -c '=wifi-device$')
+				[ "$configured_count" -ge "$phy_count" ] || /sbin/wifi config
+
+				/usr/share/ucentral/capabilities.uc
+				grep -q '"wifi"' /etc/ucentral/capabilities.json 2>/dev/null && break
+				rm -f /etc/ucentral/capabilities.json
+				retries=$((retries - 1))
+				[ "$retries" -eq 0 ] || sleep 1
+			done
+		else
+			/usr/share/ucentral/capabilities.uc
+		fi
+	fi
+
+	# S18 already rendered the active or initial configuration. Do not apply a
+	# different profile late in boot or delete it before it can be diagnosed.
+
+	[ -f /tmp/ucentral.version ] || cat /etc/openwrt_release | grep DISTRIB_REVISION= | cut -d\' -f2 > /tmp/ucentral.version
+
+	mkdir -p /tmp/ucentral/
+
+	
+	. /lib/functions.sh
+	cp /etc/config-shadow/ucentral /etc/config/
+	config_load 'ucentral'
+	config_get serial 'config' 'serial'
+	#config_get server 'config' 'server'
+	#config_get port 'config' 'port'
+	config_get debug 'config' 'debug' 0
+	if [ "$identity_mode" = private ]; then
+		/usr/libexec/ucentral-private-pki restore || return 1
+	fi
+	if [ "$identity_mode" = stock ]; then
+	insecure=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["allow-self-signed"]')
+	[ "$insecure" = "true" ] && insecure=1 || insecure=0
+	config_get insecure 'config' 'insecure' $insecure
+
+	if [ -f /etc/ucentral/restrictions.json ]; then
+		selfsigned=$(cat /etc/ucentral/restrictions.json | jsonfilter -e '@["allow-self-signed"]')
+		[ "${selfsigned}" == "true" ] && insecure=1
+	fi
+	if [ -f /etc/ucentral/cert.pem ]; then
+		case "$(openssl x509 -in /etc/ucentral/cert.pem -noout -issuer 2>/dev/null)" in
+			*"OpenLAN Demo"*) insecure=1 ;;
+		esac
+	fi
+	else
+		insecure=0
+		config_get private_insecure 'config' 'insecure' 0
+		[ "$private_insecure" = 0 ] || return 1
+		for policy_file in /etc/ucentral/gateway.json /etc/ucentral/restrictions.json; do
+			[ ! -f "$policy_file" ] || {
+				private_insecure=$(jsonfilter -i "$policy_file" -e '@["allow-self-signed"]')
+				[ "$private_insecure" != true ] || return 1
+			}
+		done
+	fi
+
+	server=
+	[ -f /etc/ucentral/gateway.json ] && server=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["server"]')
+	port=
+	[ -f /etc/ucentral/gateway.json ] && port=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["port"]')
+	[ -n "$server" -a -n "$port" ] || {
+		# No gateway configured: the AP cannot be controller-managed
+		[ -x /usr/libexec/ucentral-led.sh ] && /usr/libexec/ucentral-led.sh off
+		return 0
+	}
+
+	cert=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["cert"]')
+	ca=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["ca"]')
+
+	boot_cause=unexpected-shutdown
+	if [ -s /var/run/ucentral-boot-report/cause ]; then
+		stored_boot_cause=$(cat /var/run/ucentral-boot-report/cause)
+		case "$stored_boot_cause" in
+		controller-requested|user-requested|orderly-shutdown|upgrade|factory|certupdate|fixedconfig|transfer|kernel-crash|watchdog|power-failure|unexpected-shutdown)
+			boot_cause="$stored_boot_cause" ;;
+		esac
+	fi
+	procd_open_instance
+	procd_set_param command "$PROG"
+	[ -n "$serial" ] && procd_append_param command -S $serial
+	procd_append_param command -s $server
+	procd_append_param command -P $port
+	[ "$debug" -eq 0 ] || procd_append_param command -d
+	[ "$insecure" -eq 0 ] || procd_append_param command -i
+	[ -n "$cert" -a -n "$ca" ] && procd_append_param command -c $cert -C $ca
+	hostname_validate=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["hostname_validate"]')
+	[ "$identity_mode" != private ] || hostname_validate=1
+	[ "$hostname_validate" = "0" ] || procd_append_param command -h
+	[ -z "$(mount | grep 'tmpfs on / type tmpfs')" ] || procd_append_param command -r
+	procd_append_param command -b "$boot_cause"
+	procd_append_param command -f "$(cat /tmp/ucentral.version)"
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
