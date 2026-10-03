@@ -10,15 +10,16 @@
  let archive_cmdline = [
  	'tar', 'czf', '/upgrade.tgz'
  ];
-@@ -117,6 +120,7 @@
+@@ -117,7 +120,8 @@
   * before DHCP.  Explicit factory reset is the supported deprovision path. */
  let files = [
  	"/etc/config", "/etc/config-shadow",
 +	"/etc/ucentral/boot-reporting",
+ 	"/etc/ucentral/thor-topology.pending.json", "/etc/ucentral/thor-topology.pending",
  	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
  	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
  	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
-@@ -160,11 +164,11 @@
+@@ -161,13 +165,13 @@
  let rc = system(archive_cmdline);
  
  if (rc != 0) {
@@ -31,7 +32,9 @@
 -include('reboot_cause.uc', { reason: 'upgrade' });
  result(0, "Triggering FW upgrade");
  sleep(2000);
-@@ -179,5 +183,7 @@
+ 
+ let sysupgrade_cmdline = sprintf("sysupgrade -f /upgrade.tgz %s", image_path);
+@@ -175,5 +179,7 @@
  warn("Upgrading firmware\n");
  
  system("touch /ucentral.upgrade");
