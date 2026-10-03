@@ -1,0 +1,46 @@
+PERSISTENT KERNEL CRASH CAPTURE: SEPARATE HARDWARE QUALIFICATION PLAN
+
+Shared overlay-backed reboot requests/history work without pmsg/pstore.
+They are not equivalent to persistent panic capture. A mountable pstore
+filesystem or enabled kernel option does not prove a working backend.
+Never label a reconnect, power loss or unexplained reboot as kernel panic.
+
+Recorded source/config assessment of existing images, not new allocations:
+  Sage Linux5.4.164: target CONFIG_PSTORE=y, CONFIG_PSTORE_RAM=y;
+    CONFIG_PSTORE_PMSG and CONFIG_PSTORE_CONSOLE disabled. Inherited DTS
+    ramoops reg=<0x87df0000 0x10000>, record-size=<0x1000>; the node name
+    retains @87f00000. Sage's rsvd2 ends at0x87df0000. This is EXISTING
+    source, not a proposal or verified retention region. Exact running DT,
+    complete reservation/load map, probe and reset-retention remain unproved.
+  Jaguar Linux6.12.85: target CONFIG_PSTORE disabled. No approved persistent
+    region; toolchain Linux header config is NOT the running kernel config.
+  Thor/Cheetah: target PSTORE disabled; no reviewed safe persistent region.
+  Gambit: frozen target PSTORE disabled; hardware replacement required for
+    physical qualification, and it is excluded from this build batch.
+
+Do not repurpose certificate/vault/NVRAM/OEM crash partitions or MRAM.
+Do not guess RAM addresses or take NSS/WCSS/bootloader/security reservations.
+No new ramoops region, panic-on-oops, watchdog reset or panic test is added.
+No hardware reset-cause decoder is currently approved by this source work.
+
+Future qualification sequence, requiring coordinator scheduling:
+  1. Designated E410 test AP first. Read exact booted DT/kernel/backend
+     inventory and full memory map, without crashing or changing storage.
+  2. Review region ownership, Linux load/decompression/radio/bootloader
+     exclusions and retention guarantees for each exact model/revision.
+  3. Only after approval, prepare a unique test image and verify backend
+     probe, record layout, bounded readers and warm/cold reset retention.
+  4. Separately authorize a controlled kernel-crash test with working serial
+     recovery, confirmed fallback image and documented rollback procedure.
+  5. Verify genuine retained dump copied/synced BEFORE original deletion,
+     correct Crashes tab protocol, offline queue and transport failures.
+     Confirm whether each tested reset preserves memory; power removal
+     commonly destroys RAM evidence and must not be assumed supported.
+  6. Repeat exact-model acceptance for other Sage models, then Jaguar,
+     Cheetah and Thor. Shared family naming does not qualify all models.
+     Gambit waits for usable replacement hardware; it is not a blocker.
+
+Software synthetic crash fixtures test collection/protocol/durability only.
+They must never be injected into production AP histories or described as
+physical backend proof. Publishing future reporting images does not itself
+qualify actual panic retention on any platform.
