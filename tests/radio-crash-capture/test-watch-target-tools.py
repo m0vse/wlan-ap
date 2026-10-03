@@ -5,7 +5,7 @@ contain actual target stat, flock and timeout binaries from the candidate.
 Absent providers fail this check; frozen roots are not silently substituted.
 """
 from pathlib import Path
-import os, shlex, subprocess, sys, tempfile
+import fcntl, os, shlex, subprocess, sys, tempfile
 root, providers, source=map(Path,sys.argv[1:])
 assert os.geteuid()==0, 'Use root-owned private fixtures'
 work=Path(tempfile.mkdtemp(prefix='radio-watch-closure.')); commands=work/'bin';commands.mkdir()
@@ -37,6 +37,10 @@ r=invoke('0');check(r.returncode==0 and not run.exists())
 r=invoke('1');check(r.returncode==0);check(run.is_dir() and (run/'.lock').exists() is False and (run/'worker.lock').is_file())
 check(run.stat().st_mode&0o777==0o700)
 r=invoke('1');check(r.returncode==0) # Retained run directory does not break restart.
+with (run/'worker.lock').open('r+') as held:
+ fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ (run/'wake').write_text('TEST existing worker owns wake marker')
+ r=invoke('1');check(r.returncode==0 and (run/'wake').exists())
 run.chmod(0o755);r=invoke('1');check(r.returncode!=0);run.chmod(0o700)
 # Verify timeout is the target provider even though this empty scan needs none.
 r=subprocess.run(q+[str(providers/'timeout'),'--version'],capture_output=True,text=True);check(r.returncode==0)
