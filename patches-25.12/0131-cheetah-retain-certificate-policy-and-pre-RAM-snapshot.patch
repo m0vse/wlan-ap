@@ -1,0 +1,37 @@
+From 46c7ce4c8174e91fc76b5bca079d78a5694d3fbc Mon Sep 17 00:00:00 2001
+From: Phil Taylor <phil@m0vse.uk>
+Date: Fri, 2 Oct 2026 12:00:00 +0100
+Subject: [PATCH] cheetah: retain qualified certificate policy and pre-RAM snapshot
+
+Preserve the exact tested .13 outgoing certificate guard and bank policy.
+No hardware storage allocation or controller behavior is added.
+
+diff --git a/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh b/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
+--- a/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
++++ b/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
+@@ -16,6 +16,8 @@
+ 	AB_ENV=cheetah
+ 	AB_IMAGE_DIR=sysupgrade-cambiumnetworks_cheetah
+ 	AB_VAULT=1
++	# OpenWiFi bank ABI: survive preflight and the sysupgrade RAM pivot.
++	AB_CERTIFICATE_LEBS=20
+ 	AB_BANK_SIZE=06000000
+ 	AB_SLOT0_OFFSET=0x80000
+ 	AB_SLOT1_OFFSET=0x6080000
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+--- a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+@@ -175,6 +175,13 @@
+ }
+ 
+ platform_pre_upgrade() {
++	if command -v ab_family >/dev/null && ab_family; then
++		ab_certificate_export || {
++			echo 'A/B upgrade: certificate snapshot failed; no bank was written' >&2
++			exit 1
++		}
++		return 0
++	fi
+ 	case "$(board_name)" in
+ 	xiaomi,ax6000)
+ 		xiaomi_initramfs_prepare
