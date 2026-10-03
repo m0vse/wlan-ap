@@ -94,3 +94,22 @@ options, existing strings/lists, repeated reset without duplicates, no final
 channels option when no real channels, and preservation of unrelated errors.
 The live correction is a single template insertion and rerun of the strict
 early-network renderer, not a relaxation of validation or a factory reset.
+
+Main integration acceptance, 2026-10-03
+
+After the strict-UCI correction, the XE3-4 EU unit enabled both 5GHz and 6GHz
+with its own imported Puma API2 board data and the regular-hostapd MBSSID key.
+The coordinator verified a 6GHz client at 6155MHz/channel41/HE80 under GB,
+authenticated/associated/authorized with SAE and required PMF, and traffic
+in both directions. This proves that operating-band selection can work; it
+does not prove all regulatory transitions, advertised telemetry snapshots,
+reboot persistence, second-bank upgrades or a newly built firmware image.
+Channel41 is not a PSC channel: no PSC discovery success is claimed.
+
+Fresh full-schema -F0 replay and 23+43+19 source controls, 9 actual-UCI controls
+and installed-module compile checks passed on both extracted Jaguar and Sage
+runtimes before main integration. Shared board-data patch0158 independently
+passed zero-fuzz import, shell syntax and 8 synthetic controls on host sh and
+the actual Jaguar BusyBox shell. No OEM BDF/calibration bytes are in the patch.
+FILS discovery interval propagation through regular wifi-scripts remains a
+separate unresolved gap, not part of these accepted fixes.
