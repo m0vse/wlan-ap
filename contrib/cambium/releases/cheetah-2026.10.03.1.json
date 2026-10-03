@@ -1,0 +1,7 @@
+{
+  "family": "cheetah",
+  "version": "2026.10.03.1",
+  "productionSourceBase": "39d657eefda2861b430a1342d0ddef6384aee1c3",
+  "purpose": "Unique release commit for a single family tag; production code unchanged from the qualified source base.",
+  "qualification": "Source/runtime checks passed; firmware artifact and hardware acceptance are separate."
+}
