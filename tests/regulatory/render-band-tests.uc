@@ -34,6 +34,7 @@ check('6G fixed5 does not fall back to ACS',index(b,'set wireless.radio2.channel
 check('6G channels no5G channel36',index(b,'channels=36\n')<0);
 check('one channel list entry each',length(match(b,/channels=5\n/g))==1);
 check('list reset before add',index(b,'delete wireless.radio2.channels')<index(b,'add_list wireless.radio2.channels'));
+check('missing list created before strict delete',index(b,'set wireless.radio2.channels=__reset__')<index(b,'delete wireless.radio2.channels'));
 check('6G HE80 preserved',index(b,'set wireless.radio2.htmode=HE80')>=0);
 check('real render objects not mutated',sprintf('%J',{phys,state})==snapshot);
 let again=render(path,context);

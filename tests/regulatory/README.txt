@@ -66,7 +66,7 @@ BAND_TEMPLATE=FIXTURE/renderer/templates/radio.uc \
 
 Repeat with qemu-arm and the Sage target root. tests.uc retains its23 controls;
 band-tests.uc executes43 controls including the real patched wiphy module;
-render-band-tests.uc executes18 controls against the real patched radio
+render-band-tests.uc executes19 controls against the real patched radio
 template with mocked configuration, PHY and filesystem data. No AP access,
 daemon startup, UCI changes or filesystem writes occur in those tests.
 
@@ -75,3 +75,22 @@ ath11k scan/WMI timeouts and CE descriptor exhaustion on a clean reboot. The
 single fixed-channel attempt through UCI was overwritten to ACS by early
 cached-config rendering, so it did not test fixed-channel operation. No6GHz
 beacon/client or regulatory hardware acceptance is claimed by this candidate.
+
+Strict UCI boot follow-up (schema release 22): the initial live trial exposed
+an absent-option delete error. The original unconditional channel-list delete
+failed when config-shadow had no channels option, so the strict boot renderer
+correctly refused to activate the whole network. A nonempty temporary value
+is now set before deleting it and adding real channels. Empty-string set is
+not sufficient: the actual target UCI treats it as an absent option. The
+temporary '__reset__' is deleted within the batch and is never a channel.
+Strict stderr validation remains unchanged; unrelated bad commands still fail.
+
+Run the actual CLI regression with both extracted image runtimes:
+python3 tests/regulatory/uci-channel-tests.py /usr/bin/qemu-aarch64 JAGUAR_ROOT
+python3 tests/regulatory/uci-channel-tests.py /usr/bin/qemu-arm SAGE_ROOT
+
+Nine actual UCI controls cover reproduction of the bad absent delete, missing
+options, existing strings/lists, repeated reset without duplicates, no final
+channels option when no real channels, and preservation of unrelated errors.
+The live correction is a single template insertion and rerun of the strict
+early-network renderer, not a relaxation of validation or a factory reset.
