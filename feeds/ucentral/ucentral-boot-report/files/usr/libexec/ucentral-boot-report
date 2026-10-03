@@ -1,0 +1,45 @@
+#!/usr/bin/ucode
+import * as fs from 'fs';
+import { reporter } from '/usr/share/ucentral/boot_reporting.uc';
+let connection;
+function rpc(method, args) {
+	if (!connection) connection = require('ubus').connect(null, 2);
+	return connection ? connection.call('ucentral', method, args) : null;
+}
+function reset_cause() {
+	// Only a family-reviewed root-owned hook may attribute hardware reset causes.
+	let path = '/usr/libexec/ucentral-reset-cause', s = fs.lstat(path);
+	if (!s || s.type != 'file' || s.uid != 0 || (s.mode & 0o022) || !(s.mode & 0o111)) return null;
+	let f = fs.popen('/usr/bin/timeout 2 ' + path, 'r'); if (!f) return null;
+	let text = f.read(4096), status = f.close();
+	if (status != 0) return null;
+	try { return json(text); } catch (e) { return null; }
+}
+let runtime = '/var/run/ucentral-boot-report';
+let runtime_stat = fs.lstat(runtime);
+if (runtime_stat && (runtime_stat.type != 'directory' || runtime_stat.uid != 0 || (runtime_stat.mode & 0o077))) die('Unsafe reporting runtime directory\n');
+if (!runtime_stat && !fs.mkdir(runtime, 0o700)) die('Cannot create reporting runtime directory\n');
+let app = reporter({
+	directory: '/etc/ucentral/boot-reporting', state: '/etc/ucentral/boot-reporting/history.json',
+	lock: runtime + '/lock', boot_id: '/proc/sys/kernel/random/boot_id',
+	uptime: '/proc/uptime', version: '/etc/openwrt_release', pstore: '/sys/fs/pstore',
+	cause: runtime + '/cause'
+}, {
+	now: () => time(), sync: () => system(['sync']), rename: (a, b) => fs.rename(a, b),
+	unlink: path => fs.unlink(path), reset_cause,
+	connected: function() { let s = rpc('status', {}); return s && type(s.connected) == 'int' && s.connected >= 0 && s.boot_report_transport == 1; },
+	send: function(message) { let response = rpc('send', message); return response && response.transmitted === true; }
+});
+let command = ARGV[0];
+try {
+	if (command == 'collect') app.collect();
+	else if (command == 'plan') app.plan(ARGV[1]);
+	else if (command == 'cancel') app.cancel(ARGV[1]);
+	else if (command == 'send') app.send();
+	else if (command == 'run') {
+		for (;;) {
+			try { app.collect(); app.send(); } catch (e) { warn(sprintf('boot-report: %s\n', e)); connection = null; }
+			sleep(30000);
+		}
+	} else die('Usage: ucentral-boot-report collect|plan REASON|cancel REASON|send|run\n');
+} catch (e) { warn(sprintf('boot-report: %s\n', e)); exit(1); }

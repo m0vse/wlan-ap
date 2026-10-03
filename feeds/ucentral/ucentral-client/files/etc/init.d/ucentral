@@ -18,6 +18,8 @@ stop_service() {
 }
 
 start_service() {
+	# Collect even while offline / before network-ready and identity guards.
+	/usr/libexec/ucentral-boot-report collect || logger -t boot-report 'boot collection unavailable'
 	local identity_mode=stock
 	if [ -x /usr/libexec/ucentral-private-pki ]; then
 		identity_mode=$(/usr/libexec/ucentral-private-pki mode) || return 1
@@ -58,7 +60,6 @@ start_service() {
 
 	mkdir -p /tmp/ucentral/
 
-	#ucode -l fs /usr/share/ucentral/pstore.uc
 	
 	. /lib/functions.sh
 	cp /etc/config-shadow/ucentral /etc/config/
@@ -109,10 +110,13 @@ start_service() {
 	cert=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["cert"]')
 	ca=$(cat /etc/ucentral/gateway.json | jsonfilter -e '@["ca"]')
 
-	boot_cause=coldboot
-	if [ -s /tmp/pstore ]; then
-		stored_boot_cause=$(jsonfilter -i /tmp/pstore -e '@["pstore"][-1].boot_cause' 2>/dev/null)
-		[ -n "$stored_boot_cause" ] && boot_cause="$stored_boot_cause"
+	boot_cause=unexpected-shutdown
+	if [ -s /var/run/ucentral-boot-report/cause ]; then
+		stored_boot_cause=$(cat /var/run/ucentral-boot-report/cause)
+		case "$stored_boot_cause" in
+		controller-requested|user-requested|orderly-shutdown|firmware-upgrade|factory|certupdate|fixedconfig|transfer|confirmed-crash|watchdog|power-failure|unexpected-shutdown)
+			boot_cause="$stored_boot_cause" ;;
+		esac
 	fi
 	procd_open_instance
 	procd_set_param command "$PROG"

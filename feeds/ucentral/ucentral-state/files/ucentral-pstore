@@ -232,27 +232,6 @@ function do_backup() {
 	}
 }
 
-function move_to_json(src, dst) {
-	if (!fs.stat(src))
-		return 0;
-	let fd = fs.open(src, "r");
-	let line, lines = [];
-	while (line = fd.read("line")) {
-		line = trim(line);
-		try {
-			line = json(line);
-		} catch(c) {};
-		push(lines, line);
-	}
-	fd.close();
-	fs.unlink(src);
-	fd = fs.open(dst, "w");
-	let msg = {};
-	msg[fs.basename(dst)] = lines;
-	fd.write(msg);
-	fd.close();
-}
-
 // Backup is performed only when log-helper is enabled (value = 1).
 let ctx = uci.cursor();
 let pkg = ctx.get_all(UCI_CONFIG_FILE);
@@ -260,6 +239,7 @@ if (pkg && pkg.global && pkg.global.enabled === '1') {
 	do_backup();
 }
 
-move_to_json('/sys/fs/pstore/dmesg-ramoops-0', '/tmp/crashlog');
-move_to_json('/sys/fs/pstore/console-ramoops-0', '/tmp/consolelog');
-move_to_json('/sys/fs/pstore/pmsg-ramoops-0', '/tmp/pstore');
+// New collector copies bounded kernel evidence durably before clearing it.
+// Console/pmsg data may contain credentials and is not uploaded implicitly.
+if (system(['/usr/libexec/ucentral-boot-report', 'collect']) != 0)
+	warn('Pstore collection unavailable; original kernel evidence retained\n');
