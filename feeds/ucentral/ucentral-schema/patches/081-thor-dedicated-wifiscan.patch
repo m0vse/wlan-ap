@@ -1,0 +1,188 @@
+--- a/command/cmd_wifiscan.uc
++++ b/command/cmd_wifiscan.uc
+@@ -1,3 +1,4 @@
++let thor_scanner = false;
+ let verbose = args?.verbose == null ? true : args.verbose;
+ let active = args?.active ? true : false;
+ /* frequency_width is keyed by string, the UI sends a number */
+@@ -107,11 +108,13 @@
+ 
+ 	else if (res.cmd == def.NL80211_CMD_SCAN_ABORTED)
+ 		warn("Scan aborted by kernel\n");
++	return !thor_scanner || !!res && res.cmd == def.NL80211_CMD_NEW_SCAN_RESULTS;
+ }
+ 
+ function trigger_scan_width(wdev, freqs, width) {
+ 	for (let freq in freqs)
+-		scan_trigger(wdev, freq, width);
++		if (scan_trigger(wdev, freq, width) === false && thor_scanner) return false;
++	return true;
+ }
+ 
+ function phy_get(wdev) {
+@@ -155,8 +158,36 @@
+ 	return fs.stat('/sys/kernel/debug/ieee80211/phy' + phy.wiphy + '/morse') ? true : false;
+ }
+ 
++let scan_name = 'scan';
+ let phys = phy_get();
++// XV3-8 scans belong exclusively to its dedicated dual-band QCA9887.
++// Resolve driver identity on every invocation: PHY numbers change by topology.
++if (trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++	thor_scanner = true;
++	scan_name = 'thor-scan';
++	let scanners = {};
++	for (let phy in phys || []) {
++		if (!phy || phy.wiphy == null) continue;
++		let driver = fs.readlink('/sys/class/ieee80211/phy' + phy.wiphy + '/device/driver');
++		if (driver && match(driver, /(^|\/)ath10k_pci$/))
++			scanners['' + phy.wiphy] = true;
++	}
++	if (length(keys(scanners)) != 1) {
++		result_json({error: 1, text: 'Dedicated Thor scanner unavailable or ambiguous', resultCode: 0});
++		return;
++	}
++	phys = filter(phys, phy => phy && phy.wiphy != null && scanners['' + phy.wiphy]);
++}
+ let ifaces = iface_get();
++if (thor_scanner) {
++	for (let iface in ifaces) {
++		if ((iface.ifname == scan_name || iface.dev == scan_name) &&
++		    iface.wiphy != phys[0].wiphy) {
++			result_json({error: 1, text: 'Thor temporary scan name belongs to another PHY', resultCode: 0});
++			return;
++		}
++	}
++}
+ 
+ function intersect(list, filter) {
+ 	let res = [];
+@@ -170,6 +201,12 @@
+ 	return res;
+ }
+ 
++function thor_scan_failed(iface, owned) {
++	if (owned) nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, {dev: iface.dev});
++	result_json({error: 1, text: 'Dedicated Thor scan failed or timed out', resultCode: 0});
++	return null;
++}
++
+ function wifi_scan() {
+ 	let scan = [];
+ 
+@@ -183,28 +220,46 @@
+ 			continue;
+ 		}
+ 
+-		let iface = iface_find(phy.wiphy, [ IFTYPE_STATION, IFTYPE_AP ], ifaces);
+-		let scan_iface = false;
++		let iface = iface_find(phy.wiphy, thor_scanner ? [ IFTYPE_STATION ] : [ IFTYPE_STATION, IFTYPE_AP ], ifaces);
++		let scan_iface = thor_scanner && iface && (iface.ifname == scan_name || iface.dev == scan_name);
+ 		if (!iface) {
+ 			warn('no valid interface found for phy' + phy.wiphy + '\n');
+-			/* drop a leftover 'scan' iface from an aborted run */
+-			nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: 'scan' });
+-			nl.request(def.NL80211_CMD_NEW_INTERFACE, 0, { wiphy: phy.wiphy, ifname: 'scan', iftype: IFTYPE_STATION });
++			if (!thor_scanner)
++				nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: scan_name });
++			let created = nl.request(def.NL80211_CMD_NEW_INTERFACE, 0, { wiphy: phy.wiphy, ifname: scan_name, iftype: IFTYPE_STATION });
++			if (thor_scanner && created === false) {
++				result_json({error: 1, text: 'Cannot create dedicated Thor scan interface', resultCode: 0});
++				return null;
++			}
+ 			nl.waitfor([ def.NL80211_CMD_NEW_INTERFACE ], 1000);
+ 			scan_iface = true;
+-			iface = {
+-				dev: 'scan',
+-				channel_width: 1,
+-			};
+-			rtnl.request(rtnl.const.RTM_NEWLINK, 0, { dev: 'scan', flags: IFF_UP, change: 1});
++			if (thor_scanner) {
++				let owned = filter(iface_get(), i => (i.ifname == scan_name || i.dev == scan_name) &&
++				                                    i.wiphy == phy.wiphy && i.iftype == IFTYPE_STATION);
++				if (length(owned) != 1) {
++					result_json({error: 1, text: 'Dedicated Thor scan interface ownership unverified', resultCode: 0});
++					return null;
++				}
++				iface = owned[0];
++			} else {
++				iface = { dev: scan_name, channel_width: 1 };
++			}
++			let enabled = rtnl.request(rtnl.const.RTM_NEWLINK, 0, { dev: iface.dev, flags: IFF_UP, change: 1});
++			if (thor_scanner && enabled === false) {
++				nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: iface.dev });
++				result_json({error: 1, text: 'Cannot enable dedicated Thor scan interface', resultCode: 0});
++				return null;
++			}
+ 			sleep(1000);
+ 		}
+ 
+ 		printf("scanning on phy%d\n", phy.wiphy);
+ 
+ 		let freqs = phy_get_frequencies(phy);
+-		if (length(intersect(freqs, frequency_list_2g)))
+-			scan_trigger(iface.dev, frequency_list_2g);
++		if (length(intersect(freqs, frequency_list_2g))) {
++			if (scan_trigger(iface.dev, thor_scanner ? intersect(freqs, frequency_list_2g) : frequency_list_2g) === false && thor_scanner)
++				return thor_scan_failed(iface, scan_iface);
++		}
+ 
+ 		let ch_width = iface.channel_width;
+ 		if (frequency_width[bandwidth])
+@@ -216,11 +271,12 @@
+ 			ch_width = 3;
+ 		let freqs_5g = intersect(freqs, frequency_list_5g[ch_width]);
+ 		if (length(freqs_5g)) {
+-			if (override_dfs && !scan_iface && phy_frequency_dfs(phy, iface.wiphy_freq)) {
++			if (!thor_scanner && override_dfs && !scan_iface && phy_frequency_dfs(phy, iface.wiphy_freq)) {
+ 				ctx.call(sprintf('hostapd.%s', iface.dev), 'switch_chan', { freq: 5180, bcn_count: 10 });
+ 				sleep(2000)
+ 			}
+-			trigger_scan_width(iface.dev, freqs_5g, ch_width);
++			if (trigger_scan_width(iface.dev, freqs_5g, ch_width) === false && thor_scanner)
++				return thor_scan_failed(iface, scan_iface);
+ 		}
+ 		let res = nl.request(def.NL80211_CMD_GET_SCAN, def.NLM_F_DUMP, { dev: iface.dev });
+ 		for (let bss in res) {
+@@ -297,7 +353,7 @@
+ 		}
+ 		if (scan_iface) {
+ 			warn('removing temporary interface\n');
+-			nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: 'scan' });
++			nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: iface.dev });
+ 		}
+ 	}
+ 	printf("%.J\n", scan);
+@@ -305,6 +361,7 @@
+ }
+ 
+ let scan = wifi_scan();
++if (scan == null) return;
+ 
+ if (args.periodic) {
+ 	ctx.call('ucentral', 'send', {
+--- a/command/cmd.uc
++++ b/command/cmd.uc
+@@ -78,7 +78,9 @@
+ 
+ if (match(cmd.command, /^[A-Za-z0-9_]+$/)) {
+ 	try {
+-		if (cmd.command == 'wifiscan' && fs.stat('/sys/kernel/debug/ath12k/'))
++		if (cmd.command == 'wifiscan' &&
++		    trim(fs.readfile('/tmp/sysinfo/board_name') || '') != 'cambiumnetworks,xv3-8' &&
++		    fs.stat('/sys/kernel/debug/ath12k/'))
+ 			cmd.command += '7';
+ 
+ 		include(sprintf("cmd_%s.uc", cmd.command), scope);
+--- a/command/cmd_wifiscan7.uc
++++ b/command/cmd_wifiscan7.uc
+@@ -1,3 +1,9 @@
++// Even explicit alternate scan dispatch must use Thor's dedicated scanner.
++if (trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++	include('./cmd_wifiscan.uc', {args: args || {}, ctx, fs, result_json});
++	return;
++}
++
+ import * as libubus from 'ubus';
+ import * as nl from 'nl80211';
+ let def = nl.const;
