@@ -1,0 +1,84 @@
+--- a/renderer/renderer.uc
++++ b/renderer/renderer.uc
+@@ -9,6 +9,7 @@
+ import { ipcalc } from 'libs.ipcalc';
+ import { create_ethernet } from 'libs/ethernet.uc';
+ import { create_wiphy } from 'libs/wiphy.uc';
++import * as regulatory from 'wifi/regulatory.uc';
+ import { create_routing_table } from 'libs/routing_table.uc';
+ import { create_captive } from 'libs/captive.uc';
+ import { 
+@@ -530,6 +531,10 @@
+ return /** @lends uCentral.prototype */ {
+ 	render: function(state, logs) {
+ 		logs = logs || [];
++		// Only a settled, matching-country live snapshot restricts rendering.
++		// Startup/board capability lists are never refreshed as a side effect.
++		regulatory.intersect_phys(wiphy.phys, state.radios,
++			default_config.country, regulatory.sample(wiphy.phys), state.interfaces);
+ 
+ 		/** @lends uCentral.prototype */
+ 		return render('templates/toplevel.uc', {
+--- a/system/state/wifi.uc
++++ b/system/state/wifi.uc
+@@ -3,6 +3,7 @@
+ import * as telemetry_module from './telemetry.uc';
+ import * as fingerprint_module from './fingerprint.uc';
+ import * as network_module from './network.uc';
++import * as regulatory from '../wifi/regulatory.uc';
+ 
+ /* Load WiFi data via require */
+ let wifiphy = require('wifi.phy');
+@@ -10,6 +11,7 @@
+ let stations = require('wifi.station');
+ let survey = require('wifi.survey');
+ let mesh = require('wifi.mesh');
++let live_regulatory = regulatory.sample(wifiphy);
+ 
+ /* Collect data via ubus */
+ let wifistatus = global.ubus.call("network.wireless", "status");
+@@ -110,6 +112,10 @@
+ 		if (wifiphy[path] && wifiphy[path].temperature)
+ 			radio.temperature = wifiphy[path].temperature;
+ 		radio.band = wifiphy[path].band;
++		let eligible = regulatory.telemetry(live_regulatory[path], data.config.country);
++		// Missing/mismatched country is unavailable, not an unrestricted list.
++		if (eligible)
++			radio.regulatory = eligible;
+ 
+ 		radio.chanUtil = 0;
+ 		let radio_band = lc(radio.band[0]);
+--- a/state/radio.yml
++++ b/state/radio.yml
+@@ -6,6 +6,31 @@
+   type: object
+   properties:
++    regulatory:
++      description:
++        Fresh per-PHY AP primary-channel eligibility under the configured
++        country. Absent means unavailable, never unrestricted. This is not
++        hardware capability or authorization for a particular channel width.
++      type: object
++      properties:
++        country:
++          type: string
++        timestamp:
++          type: integer
++          description: UNIX seconds when the live PHY snapshot was obtained.
++        channels:
++          type: array
++          items:
++            type: integer
++        dfs_channels:
++          type: array
++          items:
++            type: integer
++      required:
++      - country
++      - timestamp
++      - channels
++      - dfs_channels
+     channel:
+       description:
+         The primary channel that the radio is currently operating on.
+       type: number
