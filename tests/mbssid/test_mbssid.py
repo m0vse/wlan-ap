@@ -17,6 +17,13 @@ script = openwrt / 'package/network/config/wifi-scripts/files/lib/netifd/wireles
 
 
 class MbssidTests(unittest.TestCase):
+    def test_patch_hunk_lengths(self):
+        text = (repo / 'patches-25.12/0157-wifi-scripts-use-regular-hostapd-mbssid-key.patch').read_text()
+        for hunk in re.finditer(r'(?ms)^@@ -\d+,(\d+) \+\d+,(\d+) @@[^\n]*\n(.*?)(?=^--- |^@@ |\Z)', text):
+            body = hunk[3].splitlines()
+            self.assertEqual(sum(line.startswith((' ', '-')) for line in body), int(hunk[1]))
+            self.assertEqual(sum(line.startswith((' ', '+')) for line in body), int(hunk[2]))
+
     def test_regular_emission(self):
         lines = [s for s in script.read_text().splitlines()
                  if s.startswith('${multiple_bssid:+')]
