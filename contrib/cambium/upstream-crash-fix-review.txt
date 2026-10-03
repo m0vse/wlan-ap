@@ -1,0 +1,159 @@
+OpenWiFi selected-driver stability review, 2026-10-03
+
+Scope and evidence
+------------------
+Review the generated driver selected by each retained build, not an
+unused qca-wifi-6/7 feed. No AP, controller, firmware build, flash,
+reboot or panic operation was used in this review. Object compilation
+is not a module-link, image-build or hardware acceptance result.
+
+Jaguar/Cheetah/Thor: Linux 6.12.85, regular backports 6.18.7.
+Sage: Linux 5.4.164, legacy backports 5.8-1, ath10k-ct 2021.05.22b
+54a9ac02 selecting ath10k-5.7 (AHB; PCI where model requires it).
+Gambit: Linux 6.12.85, regular backports 6.18.7, ath9k and ath10k-ct.
+Do not infer all advertised models are hardware-qualified.
+
+Included source changes
+-----------------------
+Existing canonical 0141 already carries upstream a7ab5c835e42 and
+f7a74e131d3f as nested ath11k 950/951: AHB CE IRQ operations and
+IRQ/NAPI quiescence before firmware-crash data-path teardown.
+These are global patches, not profile-scoped. Thor .10 already has
+both; older retained Jaguar/Cheetah generated trees do not. Align
+951 context to actual 6.18.7 without the absent CFR call; no change
+to recovery semantics. Do not apply duplicate copies.
+
+0144 / ath11k 953: OpenWrt PR25520, Patrick Lawler unique station
+address safeguard. mac80211 already supports NEEDS_UNIQUE_STA_ADDR.
+Same-radio duplicate station insertion returns ENOTUNIQ before the
+driver/firmware sees it; different physical radios remain separate.
+The client must leave an existing same-radio BSS before joining another.
+Do not automatically prune a legitimate station or redesign peer locks.
+Upstream: https://github.com/openwrt/openwrt/pull/25520
+
+0145 / ath11k 954: e8d85672dd7e2523f774caafba8f858384e18df7.
+Only mark firmware-ready registration successful after initialization
+actually succeeds. Applicable/missing in selected modern ath11k.
+
+0146 / ath11k 955: 7f11e70629650ff6ea140984e5ce188b775b2683.
+Do not index MSDU details[-1] when the first descriptor address is zero.
+Applicable/missing in selected modern ath11k.
+
+0147 / ath11k 956: 9ef9dd30058cc9223c72f711dca1a28a5947d0c5.
+Check WMI buffer length before reading/tracing its event header.
+Applicable/missing in selected modern ath11k.
+
+0148 / ath11k 957: 6b471e9aefee9ed73278eb1141e0d8530a56fae9.
+Validate native Wi-Fi header length before undecapsulation; propagate
+drop handling through normal, exception and TKIP paths.
+Applicable/missing in selected modern ath11k.
+
+0149 / ath11k 958: 820b8cff81c796ba20573e04722ab62500713f97.
+Free station TX/RX statistics during firmware-crash peer cleanup as
+well as normal removal. Applicable/missing, AHB and PCI.
+
+0150 / ath11k 959: 8c79aac429b583301f387374ff37c59be671df87.
+Serialize PCI/MHI unregistering against RDDM recovery work and cancel
+reset/dump work before shutdown. Missing; runtime applicability is
+PCI/MHI only, including the QCN9074 path when selected. Not a Thor
+AHB fix or proof any particular AP used PCI. Adapt only trailing MHI
+context to the existing SBL_MODE case in 6.18.7.
+
+0151 / subsys 401: 286e52a799fa158bdbd77da1426c4d93f9a6e7ad.
+0152 / subsys 402: 1d067abcd37062426c59ec73dbc4e87a63f33fea.
+Retain old FILS discovery / unsolicited broadcast probe templates on
+allocation failure, instead of queueing a still-published object for
+RCU freeing. Missing/applicable shared source in modern regular
+6.18.7 across Jaguar/Cheetah/Thor/Gambit. Actual feature use on a
+model is a separate question. Sage's selected 5.8 cfg.c has neither
+function: do not transplant these into legacy code or claim a fix.
+
+0153 / ath9k 952: 7ce2f118a2389e8f0a64068c6fe7cc7d40639be0.
+Validate hardware TX queue ID before indexing the queue array.
+Missing/applicable to Gambit's selected ath9k; other families do not
+gain this protection merely because unused ath9k source is patched.
+
+All upstream fixes retain their authors, review and sign-off trailers.
+Assistance trailers are omitted per the requested publication policy.
+The selected mac80211 package release advances from 1 to 2; no broad
+kernel/backports baseline bump is needed. Generic fixes may also be
+eligible for stock OpenWrt, but stock current source is 7.2/release4:
+inspect its actual selected source first; do not duplicate modern
+upstream fixes or change the active stock checkout during this work.
+Stock source already carries 950/951 and Thor topology 952.
+
+Offline checks and their limits
+-------------------------------
+All nested patches apply with patch -F0 on isolated actual Jaguar
+6.18.7 source; line-number offsets are allowed, fuzz is not required.
+Actual retained AArch64 compiler and saved kernel flags compile
+mac/core/ahb/qmi/dp_rx/wmi/pci/mhi/cfg objects with private outputs.
+No retained objects or dependencies are overwritten.
+
+Independent Cheetah: initial mac/core/ahb candidate objects pass;
+FILS/unsolicited template cfg object passes. Broader stack checks
+are coordinated separately before integration/build release.
+Independent Thor: initial mac/core/ahb pass and existing recovery/
+topology semantics preserved; PCI is not enabled in that target.
+Independent Gambit: shared cfg and ath9k xmit MIPS objects pass.
+
+tests/ath11k/test-unique-sta.py extracts actual insertion check and
+error cleanup functions, verifies the candidate sets the flag, and
+passes 8 registry-mocked controls. Same-radio duplicates never reach
+driver insertion; 10000 rejected attempts free each candidate without
+removing the existing station. Different radio, different address
+and insertion after removal succeed; existing down/invalid checks
+and flag-disabled behavior remain intact. This is not a concurrent
+mac80211/firmware test and does not prove hostapd behavior on hardware.
+
+Separate findings, NOT included speculative changes
+--------------------------------------------------
+ath12k PR1295 uses a hardware virtual-address path ath11k does not
+share; ath11k uses cookie/IDR lookup. PR1306's ath12k link-peer RCU
+architecture is not present in ath11k: do not transplant either.
+https://github.com/Telecominfraproject/wlan-ap/pull/1295
+https://github.com/Telecominfraproject/wlan-ap/pull/1306
+
+Unused qca-wifi-6 a-106 wrong-radio/double-delete patch changes a peer
+create path that tears down the old peer using the new radio. Selected
+modern peer_create only removes the old hash entry; that path is absent.
+No blind transplant of claims/cross-radio mutex acquisition.
+
+Further independent hardening review is warranted: descriptor-derived
+mac_id before pdev access, link descriptor bank/address bounds, error
+code array bounds, peer lifetime across base_lock release (TX completion,
+RX debug logging and fragment-timer waits). These are source candidates,
+not evidence they caused observed fleet resets, and need separate
+prerequisite/lifetime analysis before code changes.
+
+ath10k 7039825a7479 / upstream 4f25071afe9218aaae1c63fbf75e229aa6405319
+is WCN3990 SNOC MSA ramdump copying. Sage selects AHB/PCI, not SNOC;
+not applicable. This is not an exhaustive audit of all ath10k-ct bugs.
+
+Persistent evidence remains a separate release gate
+--------------------------------------------------
+Durable reboot reporting does not enable kernel crash capture.
+Existing bounded reporting can collect pstore when a proven backend
+produces records; it cannot create records on an unsupported target.
+
+Sage actual 5.4 kernel has PSTORE/PSTORE_RAM, inherited ramoops reg
+0x87df0000 size 0x10000 and record size 0x1000. No new RAM allocation.
+Actual probe and warm-reset retention still require hardware proof.
+PMSG/CONSOLE are disabled. DEV_COREDUMP is disabled despite ALLOW being
+enabled; CT export needs deliberate kernel enablement, otherwise only
+the destructive debugfs dump path exists. Never promise copy-before-
+delete through that debugfs interface without changing its contract.
+
+Jaguar actual 6.12 kernel has DEV_COREDUMP, no PSTORE and no NETCONSOLE.
+AHB hif has no direct coredump_download callback; PCI does. Remoteproc
+may independently produce a dump: inspect the exact selected backend
+before claiming that AHB cannot emit any devcoredump.
+
+Thor owns a disabled-by-default netconsole/remote durable collector
+candidate; Cheetah owns bounded private devcoredump retention. These
+must be independently qualified on Sage/Jaguar before builds are released.
+No guessed RAM region, NAND/SPI panic write, live panic, AP reconfiguration
+or collector host deployment is authorized by these offline checks.
+Userspace radio-dump retention needs a surviving OS; remote netconsole
+needs working NIC/netpoll and collector reachability. Power removal and
+hard lockups may produce no panic dump. Hardware acceptance remains later.
