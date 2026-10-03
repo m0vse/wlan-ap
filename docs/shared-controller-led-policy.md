@@ -36,3 +36,5 @@ Offline results at source preparation: 21 full-state ARM controls, 210 helper AR
 controls including eight mapped model-name variants and frozen Gambit cases. No
 firmware build, AP LED write, service restart, radio operation or reboot occurred.
 Independent family validation and physical patterns remain coordinator gates.
+
+Phase ownership survives global LED suppression in a private volatile directory at `/tmp/ucentral-led-phase`. The diagnostic lifecycle hook in patch 0143 records preinit, failsafe, upgrade and reboot ownership; `connect` or `done` releases it. A suppressed timer restores its original delay values once, without restarting on every normal status update. Cancelling an identify/reset pattern uses `disabled-pattern` so that its timer cannot become a retained boot phase. No persistent flash writes or AP operations are part of the fixtures.

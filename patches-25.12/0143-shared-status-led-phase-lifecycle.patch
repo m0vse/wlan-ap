@@ -1,0 +1,15 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] base-files: notify managed status LEDs of diagnostic phases
+
+Keep boot, upgrade and recovery ownership separate from physical LED outputs
+so a global-off toggle cannot end an outstanding phase. The optional helper
+handles only explicitly qualified boards; other boards retain their policy.
+
+--- a/package/base-files/files/etc/diag.sh
++++ b/package/base-files/files/etc/diag.sh
+@@ -60,3 +60,5 @@
+ set_state() {
+ 	[ -n "$boot" -o -n "$failsafe" -o -n "$running" -o -n "$upgrade" ] && set_led_state "$1"
++	[ ! -x /usr/libexec/ucentral-led.sh ] ||
++		/usr/libexec/ucentral-led.sh "phase-$1"
+ }

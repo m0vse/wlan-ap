@@ -36,10 +36,11 @@ function led_pattern_active() {
 
 function controller_led_update(restore) {
 	if (managed_status_led && leds_off) {
+		let disable = led_pattern_active() ? 'disabled-pattern' : 'disabled';
 		if (blink_timer) { blink_timer.cancel(); blink_timer = null; }
 		if (factory_reset_timer) { factory_reset_timer.cancel(); factory_reset_timer = null; }
 		current_state = online ? 'online' : 'offline';
-		system('/usr/libexec/ucentral-led.sh disabled');
+		system('/usr/libexec/ucentral-led.sh ' + disable);
 		return;
 	}
 	if (led_pattern_active()) return;
