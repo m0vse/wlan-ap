@@ -1,0 +1,151 @@
+Subject: cambium-ab: retain generic family kernel, environment and health hooks
+
+Restore controller-neutral interfaces already present in stock source at
+b3bfc7360f22e8adb84f4f0d85d617a30340d2cf. Keep shared certificate
+policy and FIT default behavior; raw-kernel families opt in via hooks.
+
+diff --git a/package/cambium/cambium-ab/files/cambium-ab.sh b/package/cambium/cambium-ab/files/cambium-ab.sh
+--- a/package/cambium/cambium-ab/files/cambium-ab.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab.sh
+@@ -25,6 +25,9 @@
+ # AB_HEALTH_TRIES (5-second health checks before a boot counts as failed;
+ # default 60), AB_MARKER (0: this U-Boot needs no changing_bootcmd marker)
+ # and AB_ROOT_MAGIC (the root image's first four bytes as hex, or hsqs).
++# AB_ENV_PART names the 64 KiB environment partition (default 0:APPSBLENV).
++# Raw-kernel families may also supply check_kernel, oem_hash, convert_target
++# and healthy_boot hooks; they still use the shared trial and boot guard.
+ #
+ # A family whose slots are not two MTD banks (Sage: volume pairs in one UBI
+ # device, AB_LAYOUT=pair) also defines ab_<family>_identity (sets the slot
+@@ -52,6 +55,7 @@
+ 	for family in ${AB_FAMILIES:-}; do
+ 		AB_QUALIFIED=0 AB_VAULT=0 AB_STOCK_BOOTCMD=bootipq AB_LAN=br-lan AB_RADIOS=0 AB_RADIO_DEVICE=
+ 		AB_LAYOUT=banks AB_MARKER=1 AB_ROOT_MAGIC=hsqs AB_HEALTH_TRIES=60
++		AB_ENV_PART=0:APPSBLENV
+ 		# OpenWiFi-specific modules opt into the certificate-volume ABI.
+ 		# Modules survive stage2's /lib/functions/*.sh copy; preinit does not.
+ 		AB_CERTIFICATE_LEBS=0
+@@ -250,14 +254,14 @@
+ 	echo "setenv bootcmd run ${AB_ENV}_stable$1; setenv image $1; setenv ${AB_ENV}_ab_state trial-started; saveenv; run ${AB_ENV}_boot$2; run ${AB_ENV}_boot$1"
+ }
+ 
+-# fw_printenv/fw_setenv against the verified 64 KiB 0:APPSBLENV mapping.
++# fw_printenv/fw_setenv against the family's verified 64 KiB mapping.
+ ab_env_config() {
+ 	local idx
+ 	[ -z "${AB_ENV_CONFIG:-}" ] || return 0
+-	idx=$(ab_mtd_index 0:APPSBLENV)
+-	[ -n "$idx" ] || { echo 'cambium-ab: no 0:APPSBLENV partition' >&2; return 1; }
+-	[ "$(ab_mtd_geometry 0:APPSBLENV | cut -d' ' -f1)" = 00010000 ] || {
+-		echo 'cambium-ab: unexpected 0:APPSBLENV size' >&2
++	idx=$(ab_mtd_index "${AB_ENV_PART:-0:APPSBLENV}")
++	case "$idx" in ''|*[!0-9]*) echo 'cambium-ab: missing or duplicate environment partition' >&2; return 1 ;; esac
++	[ "$(ab_mtd_geometry "${AB_ENV_PART:-0:APPSBLENV}" | cut -d' ' -f1)" = 00010000 ] || {
++		echo 'cambium-ab: unexpected environment partition size' >&2
+ 		return 1
+ 	}
+ 	AB_ENV_CONFIG=/tmp/cambium-ab-fw_env.config
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+--- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -68,10 +68,14 @@
+ 	AB_KERNEL=$AB_WORK/$AB_IMAGE_DIR/kernel
+ 	AB_ROOT=$AB_WORK/$AB_IMAGE_DIR/root
+ 	magic=$(hexdump -n 4 -v -e '4/1 "%02x"' "$AB_KERNEL")
++	if ab_hook check_kernel; then
++		"ab_${AB_FAMILY}_check_kernel" "$AB_KERNEL" || return 1
++	else
+ 	[ "$magic" = d00dfeed ] || ab_fail "kernel is not a FIT image" || return 1
+ 	# A FIT node name follows the FDT_BEGIN_NODE token, which ends in 0x01.
+ 	tr '\000' '\n' < "$AB_KERNEL" | grep -q "^$(printf '\001')$AB_FIT\$" ||
+ 		ab_fail "FIT lacks $AB_FIT for $AB_MODEL" || return 1
++	fi
+ 	if [ "$AB_ROOT_MAGIC" = hsqs ]; then
+ 		[ "$(head -c 4 "$AB_ROOT")" = hsqs ] || ab_fail "root is not SquashFS" || return 1
+ 	else
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-guard b/package/cambium/cambium-ab/files/cambium-ab-guard
+--- a/package/cambium/cambium-ab/files/cambium-ab-guard
++++ b/package/cambium/cambium-ab/files/cambium-ab-guard
+@@ -203,7 +203,8 @@
+ 			log "U-Boot image is not the stock firmware's slot $((1 - slot)); leaving it alone"
+ 			return 1
+ 		}
+-		ab_setenv changing_bootcmd 1 || return 1
++		! ab_hook healthy_boot || "ab_${AB_FAMILY}_healthy_boot" || return 1
++		[ "$AB_MARKER" != 1 ] || ab_setenv changing_bootcmd 1 || return 1
+ 		ab_setenv bootcmd "$bootcmd" || return 1
+ 		log "healthy; guarded OpenWrt boot of slot $slot rearmed"
+ 		return 0
+@@ -221,6 +222,7 @@
+ 
+ commit_trial() {
+ 	local slot="$1" batch=/tmp/cambium-ab-guard.$$ rc=0
++	! ab_hook healthy_boot || "ab_${AB_FAMILY}_healthy_boot" || return 1
+ 	printf "${AB_ENV}_ab_confirmed %s\n${AB_ENV}_ab_state confirmed\nimage %s\n" "$slot" "$slot" > "$batch"
+ 	# A committed switch supersedes any earlier failure.
+ 	printf "${AB_ENV}_ab_target\n${AB_ENV}_ab_last_failure\n" >> "$batch"
+@@ -269,6 +271,9 @@
+ 		log "slot $target is armed for a trial on the next boot"
+ 		;;
+ 	*)
++		if ab_hook healthy_boot && [ "$running" = "$confirmed" ]; then
++			wait_healthy ab && "ab_${AB_FAMILY}_healthy_boot" || return 1
++		fi
+ 		if [ "$running" != "$confirmed" ] && [ "$state" != fallback ]; then
+ 			local batch=/tmp/cambium-ab-guard.$$
+ 			printf "${AB_ENV}_ab_state fallback\n${AB_ENV}_ab_last_failure %s\n" \
+diff --git a/package/cambium/cambium-ab/files/cambium-ab-convert b/package/cambium/cambium-ab/files/cambium-ab-convert
+--- a/package/cambium/cambium-ab/files/cambium-ab-convert
++++ b/package/cambium/cambium-ab/files/cambium-ab-convert
+@@ -69,7 +69,11 @@
+ 	ab_ubi_for_mtd "$AB_TARGET_MTD" >/dev/null &&
+ 		die "bank $AB_TARGET_PART is attached; reboot first"
+ 	echo "Hashing the OEM bank $AB_TARGET_PART (mtd$AB_TARGET_MTD)..."
+-	live=$(sha256sum < "$dev/mtd$AB_TARGET_MTD" | cut -d' ' -f1)
++	if ab_hook oem_hash; then
++		live=$("ab_${AB_FAMILY}_oem_hash") || die 'cannot read the complete OEM bank'
++	else
++		live=$(sha256sum < "$dev/mtd$AB_TARGET_MTD" | cut -d' ' -f1)
++	fi
+ 	[ "$live" = "$oem_sha" ] ||
+ 		die "live OEM bank hash $live does not match your backup $oem_sha"
+ fi
+@@ -84,7 +88,7 @@
+ 	ab_setenv_batch "$batch" || die 'cannot record the conversion'
+ 	rm -f "$batch"
+ fi
+-[ "$(ab_getenv changing_bootcmd)" = 1 ] || ab_setenv changing_bootcmd 1 ||
++[ "$AB_MARKER" != 1 ] || [ "$(ab_getenv changing_bootcmd)" = 1 ] || ab_setenv changing_bootcmd 1 ||
+ 	die 'cannot save changing_bootcmd'
+ ab_write_boot_vars || die 'cannot write the boot commands'
+ ab_setenv bootcmd "run ${AB_ENV}_stable$AB_ACTIVE" || die 'cannot write bootcmd'
+@@ -99,6 +103,9 @@
+ }
+ 
+ echo "Writing slot $AB_TARGET ($AB_TARGET_PART) from running slot $AB_ACTIVE..."
++if ab_hook convert_target; then
++	"ab_${AB_FAMILY}_convert_target" || fail "cannot copy slot $AB_ACTIVE to slot $AB_TARGET"
++else
+ src_kernel=$dev/$(ab_ubi_volume "$AB_ACTIVE_UBI" kernel)
+ src_root=$dev/$(ab_ubi_volume "$AB_ACTIVE_UBI" rootfs)
+ kernel_size=$(cat "${AB_UBI_SYS:-/sys/class/ubi}/${src_kernel##*/}/data_bytes")
+@@ -112,6 +119,7 @@
+ 	ab_verify_volume "$dev/${AB_TARGET_UBI}_1" "$src_root" "$root_size" ||
+ 	fail "slot $AB_TARGET readback mismatch"
+ [ "$AB_VAULT" != 1 ] || ab_copy_vault || fail 'cannot copy the device-data vault'
++fi
+ sync
+ 
+ # Converted: ${AB_ENV}_ab_version is written last.
+diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=16
++PKG_RELEASE:=17
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
