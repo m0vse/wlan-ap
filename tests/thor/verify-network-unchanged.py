@@ -9,6 +9,6 @@ for path in paths:
  same=a.read_bytes()==b.read_bytes()
  if path not in ('sbin/netifd','usr/sbin/bridger','usr/sbin/udhcpsnoop'): assert same,path
  reports.append({'path':path,'sha256':hashlib.sha256(a.read_bytes()).hexdigest(),'previous_sha256':hashlib.sha256(b.read_bytes()).hexdigest(),'unchanged':same,'kind':'rebuilt-daemon-inventory' if path in ('sbin/netifd','usr/sbin/bridger','usr/sbin/udhcpsnoop') else 'unchanged-settings-or-script'})
-stage=Path('/home/phil/openwifi-thor-build')
-assert (stage/'thor9-build.config').read_bytes()==(stage/'thor10-build.config').read_bytes()
+assert len(sys.argv) == 5, 'Usage: verify-network-unchanged.py NEW_ROOT OLD_ROOT OLD_CONFIG NEW_CONFIG'
+assert Path(sys.argv[3]).read_bytes() == Path(sys.argv[4]).read_bytes()
 print(json.dumps({'passed':True,'count':len(reports),'unchanged_settings_count':17,'daemon_inventory_count':3,'build_config_unchanged':True,'files':reports,'scope':'17 Ethernet/DHCP/startup/guard/factory/topology settings and scripts byte-identical to frozen .9; three rebuilt daemons inventoried exactly; full build config identical. Runtime binary hashes may differ and require additional complete offline-qualified runtime manifest'},indent=2))
