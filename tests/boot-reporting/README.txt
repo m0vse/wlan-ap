@@ -88,3 +88,15 @@ requirements. Explicit -n/factory reset still erases overlay evidence.
 
 No physical reboot, power-retention, kernel panic, gateway database or
 firmware-package acceptance is established by these offline controls.
+
+Full-series integration regression (2026-10-03):
+  sh tests/boot-reporting/test-schema-series.sh SOURCE.tar.zst PATCH_DIRECTORY
+replays every schema patch in lexical order against freshly extracted source
+with patch -F0; it never modifies retained build inputs. Use the pinned
+ucentral-schema-2026.08.26~d1e90a04 archive and the canonical schema patches.
+The combined 072/090 archive includes both Thor pending topology paths and
+boot-reporting history. upgrade-tests.uc verifies their presence for every
+managed upgrade UI-flag combination, plus intent ordering and cancellation.
+Full pristine series and validate-managed-upgrade.sh passed on cnbeacon;
+21 mocked upgrade controls passed each actual Sage ARM and Jaguar AArch64
+runtime. This is source/runtime qualification, not a firmware build receipt.
