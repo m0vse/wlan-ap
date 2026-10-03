@@ -89,7 +89,10 @@ export function telemetry(entry, configured_country) {
 };
 
 export function intersect_phys(phys, radios, default_country, live, interfaces) {
+	let views = {};
 	for (let path, phy in phys || {}) {
+		phy = { ...phy };
+		views[path] = phy;
 		let entry = live[path];
 		if (!entry) continue;
 		let requested = filter(radios || [], r => r.band in phy.band ||
@@ -112,5 +115,5 @@ export function intersect_phys(phys, radios, default_country, live, interfaces) 
 		phy.channels = filter(phy.channels || [], c => c in channels);
 		phy.dfs_channels = filter(phy.dfs_channels || [], c => c in dfs);
 	}
-	return phys;
+	return views;
 };

@@ -37,3 +37,41 @@ state regulatory channels must match live allowed frequencies, exclude the
 observed disabled149/157 and carry country GB and a fresh timestamp. Verify a
 failed/transitioning snapshot causes RRM to hold, and verify dual-5GHz topology
 does not mix PHYs. No hardware acceptance is claimed by source fixture tests.
+
+Operating-band follow-up (patch 093, schema release 21)
+
+The physical capability list is not an operating-band list. The renderer now
+builds pure paired-frequency band views, deduplicates channels, and uses 6GHz
+bonded-primary geometry independently of the existing 5GHz tables. Enabled6G
+reserves a switchable5/6PHY; dedicated5G continues operating. Disabled6G does
+not reserve it. SSID lookup uses this render's selected band/disabled state,
+not old UCI state, so a first5-to6transition is mapped correctly. HaLow and
+60GHz retain their prior lookup behavior. Regulatory filtering returns a new
+per-render view and never shrinks cached hardware capabilities permanently.
+Each generated channel list is deleted before add_list, avoiding accumulation.
+
+These checks are not width authorization: primary/bonded geometry is necessary
+but hostapd/kernel still enforce live regulatory and hardware width limits.
+320MHz geometry tests do not claim XE3-4 hardware support; the actual radio
+template test verifies its existing EHT320-to-HE160 fallback instead.
+
+Replay the complete series with test-schema-series.sh, then copy both helper
+files into FIXTURE/renderer/wifi/. Supply that renderer directory with -L:
+
+qemu-aarch64 -L TARGET_ROOT TARGET_ROOT/usr/bin/ucode \
+  -L TARGET_ROOT/usr/lib/ucode -L FIXTURE/renderer tests/regulatory/band-tests.uc
+BAND_TEMPLATE=FIXTURE/renderer/templates/radio.uc \
+  qemu-aarch64 -L TARGET_ROOT TARGET_ROOT/usr/bin/ucode \
+  -L TARGET_ROOT/usr/lib/ucode -L FIXTURE/renderer tests/regulatory/render-band-tests.uc
+
+Repeat with qemu-arm and the Sage target root. tests.uc retains its23 controls;
+band-tests.uc executes43 controls including the real patched wiphy module;
+render-band-tests.uc executes18 controls against the real patched radio
+template with mocked configuration, PHY and filesystem data. No AP access,
+daemon startup, UCI changes or filesystem writes occur in those tests.
+
+Live XE3-4 notes: the regular-hostapd key fix was accepted, but ACS caused
+ath11k scan/WMI timeouts and CE descriptor exhaustion on a clean reboot. The
+single fixed-channel attempt through UCI was overwritten to ACS by early
+cached-config rendering, so it did not test fixed-channel operation. No6GHz
+beacon/client or regulatory hardware acceptance is claimed by this candidate.

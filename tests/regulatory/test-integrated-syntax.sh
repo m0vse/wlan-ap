@@ -9,6 +9,7 @@ checkdir=$(mktemp -d /tmp/regulatory-installed-syntax.XXXXXX)
 cp -R "$fixture/renderer/"* "$checkdir/"
 cp -R "$fixture/system/"* "$checkdir/"
 cp "$helper" "$checkdir/wifi/regulatory.uc"
+cp "$(dirname "$helper")/band_channels.uc" "$checkdir/wifi/band_channels.uc"
 cp "$(dirname "$0")/syntax-import.uc" "$checkdir/syntax-import.uc"
 for module in renderer.uc syntax-import.uc; do
     "$qemu" -L "$root" "$root/usr/bin/ucode" -L "$root/usr/lib/ucode" \

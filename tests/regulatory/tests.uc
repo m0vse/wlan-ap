@@ -23,7 +23,7 @@ check('DFS unavailable excluded', !(100 in t.channels));
 check('exact PHY GET_REG not global', length(f.calls)==2 && f.calls[0]==0 && f.calls[1]==0);
 check('fresh timestamp', t.timestamp==1234567);
 check('country mismatch unavailable', reg.telemetry(s[path],'US')==null);
-reg.intersect_phys(f.phys,[{band:'5G',country:'GB'}],'US',s);
+f.phys = reg.intersect_phys(f.phys,[{band:'5G',country:'GB'}],'US',s);
 check('stale board channels filtered', !(149 in f.phys[path].channels) && !(157 in f.phys[path].channels));
 check('AP renderer noIR excluded', !(165 in f.phys[path].channels));
 check('frequencies and channels stay paired', !(5745 in f.phys[path].frequencies));
@@ -40,7 +40,7 @@ f=fixture('GB');s=reg.sample(f.phys,f.io);reg.intersect_phys(f.phys,[{band:'5G',
 check('unsettled country not misrepresented',149 in f.phys[path].channels);
 f=fixture('GB'); f.phys[path].band=['HaLow'];check('HaLow shim not treated as 5GHz',!length(reg.sample(f.phys,f.io)));
 f=fixture('GB');s=reg.sample(f.phys,f.io);
-reg.intersect_phys(f.phys,[{band:'5G',country:'GB'}],'US',s,
+f.phys = reg.intersect_phys(f.phys,[{band:'5G',country:'GB'}],'US',s,
 	[{ssids:[{bss_mode:'sta',wifi_bands:['5G']}]}]);
 check('STA renderer noIR preserved',165 in f.phys[path].channels);
 check('STA still excludes disabled149',!(149 in f.phys[path].channels));

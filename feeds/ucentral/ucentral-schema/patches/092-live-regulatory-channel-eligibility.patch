@@ -8,17 +8,21 @@
  import { create_routing_table } from 'libs/routing_table.uc';
  import { create_captive } from 'libs/captive.uc';
  import { 
-@@ -530,6 +531,10 @@
+@@ -530,6 +531,11 @@
  return /** @lends uCentral.prototype */ {
  	render: function(state, logs) {
  		logs = logs || [];
 +		// Only a settled, matching-country live snapshot restricts rendering.
 +		// Startup/board capability lists are never refreshed as a side effect.
-+		regulatory.intersect_phys(wiphy.phys, state.radios,
-+			default_config.country, regulatory.sample(wiphy.phys), state.interfaces);
++		let render_wiphy = { ...wiphy, operating_bands: {},
++			phys: regulatory.intersect_phys(wiphy.phys, state.radios,
++				default_config.country, regulatory.sample(wiphy.phys), state.interfaces) };
  
  		/** @lends uCentral.prototype */
  		return render('templates/toplevel.uc', {
+@@ -560 +566 @@
+-			wiphy,
++			wiphy: render_wiphy,
 --- a/system/state/wifi.uc
 +++ b/system/state/wifi.uc
 @@ -3,6 +3,7 @@

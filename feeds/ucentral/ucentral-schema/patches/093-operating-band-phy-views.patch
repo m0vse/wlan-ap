@@ -1,0 +1,133 @@
+--- a/renderer/libs/wiphy.uc
++++ b/renderer/libs/wiphy.uc
+@@ -1,6 +1,7 @@
+ // Wireless PHY management library
+ 
+ "use strict";
++import * as band_channels from '../wifi/band_channels.uc';
+ 
+ /**
+  * @class uCentral.wiphy
+@@ -14,6 +15,7 @@
+ 
+ export function create_wiphy(cursor, warn) {
+ 	return {
++		channel_policy: band_channels,
+ 		/**
+ 		 * Return a list of PHY information structures
+ 		 *
+@@ -45,7 +47,7 @@
+ 			'5G': [ 7, 196 ],
+ 			'5G-lower': [ 7, 68 ],
+ 			'5G-upper': [ 96, 177 ],
+-			'6G': [ 200, 600 ], // FIXME
++			'6G': [ 1, 233 ],
+ 			'60G': [ 1, 6 ],
+ 			'HaLow': [1, 51 ]
+ 		},
+@@ -71,6 +73,8 @@
+ 				return 4000 + channel * 5;
+ 			else if (band == '60G' && channel >= 1 && channel <= 6)
+ 				return 56160 + channel * 2160;
++			else if (band == '6G' && channel >= 1 && channel <= 233 && (channel - 1) % 4 == 0)
++				return 5950 + channel * 5;
+ 
+ 			return null;
+ 		},
+@@ -108,7 +112,7 @@
+ 		 * Returns an array of all wireless PHYs for a specific wireless
+ 		 * band.
+ 		 */
+-		lookup_by_band: function(band) {
++		lookup_by_band: function(band, operating_only) {
+ 			let baseband = band;
+ 			let phys = [];
+ 
+@@ -118,6 +122,8 @@
+ 			for (let path, phy in this.phys) {
+ 				if (!(baseband in phy.band))
+ 					continue;
++				phy = band_channels.select_band(phy, band);
++				if (!phy) continue;
+ 
+ 				if (!length(phy.frequencies) && !length(phy.channels))
+ 					continue;
+@@ -154,6 +160,15 @@
+ 					continue;
+ 
+ 				let sid = this.path_to_section(path, phy.radio_index);
++				// Only SSID mapping asks for the already selected operating
++				// band. Radio configuration still sees hardware capabilities.
++				if (operating_only && baseband in ['2G','5G','6G'] && sid) {
++					let selected = this.operating_bands?.[sid];
++					if (this.operating_bands && !selected) continue;
++					let disabled = selected ? selected.disabled : cursor.get('wireless',sid,'disabled') == '1';
++					let active_band = selected ? selected.band : cursor.get('wireless',sid,'band');
++					if (disabled || active_band != lc(baseband)) continue;
++				}
+ 
+ 				if (sid)
+ 					push(phys, { ...phy, section: sid });
+--- a/renderer/templates/radio.uc
++++ b/renderer/templates/radio.uc
+@@ -1,8 +1,12 @@
+ {%
+ 	let halow = require('halow_channels');
+-	let phys = wiphy.lookup_by_band(radio.band);
++	let band_channels = wiphy.channel_policy;
++	radio = { ...radio };
++	if (radio.he_settings) radio.he_settings = { ...radio.he_settings };
++	let phys = band_channels.reserve_switchable(wiphy.lookup_by_band(radio.band), radio.band, state.radios);
+ 
+ 	if (!length(phys)) {
++		if (radio.enable == false) return;
+ 		warn("Can't find any suitable radio phy for band %s radio settings", radio.band);
+ 
+ 		return;
+@@ -185,6 +189,9 @@
+ 	}
+ 
+ 	function allowed_channel(phy, radio) {
++		if (radio.band == '6G')
++			return band_channels.primary_6g_allowed(radio.channel, radio.channel_width,
++				filter(phy.channels, ch => ch in radio.valid_channels));
+ 		if (restrict.dfs && radio.channel in phy.dfs_channels)
+ 			return false;
+ 		if (radio.channel_width == 20)
+@@ -258,7 +265,7 @@
+ 		if (!wanted_channel || wanted_channel == "auto")
+ 			return 0;
+ 
+-		if (index(phy.band, "5G") >= 0 && !allowed_channel(phy, radio)) {
++		if ((radio.band == '6G' || index(phy.band, "5G") >= 0) && !allowed_channel(phy, radio)) {
+ 			warn("Selected radio does not support requested channel %d, falling back to ACS",
+ 				wanted_channel);
+ 			return 0;
+@@ -399,6 +406,8 @@
+ {#  Resolve the channel once. match_channel() warns on fallback, so calling it
+     per output line would repeat the same warning for a single radio. #}
+ {%  let resolved_chan = match_channel(phy, radio) %}
++{%  wiphy.operating_bands ??= {} %}
++{%  wiphy.operating_bands[phy.section] = {band:lc(band_channels.base_band(radio.band)),disabled:radio.enable==false} %}
+ set wireless.{{ phy.section }}.disabled={{ exists(radio, 'enable') ? b(!radio.enable) : 0 }}
+ set wireless.{{ phy.section }}.ucentral_path={{ s(location) }}
+ {%  if (radio.band != "HaLow"): %}
+@@ -418,6 +427,7 @@
+ set wireless.{{ phy.section }}.maxassoc_ignore_probe={{ b(radio.maximum_clients_ignore_probe) }}
+ set wireless.{{ phy.section }}.reconf={{ b(reconf) }}
+ set wireless.{{ phy.section }}.acs_exclude_dfs={{ b(!radio.allow_dfs) }}
++delete wireless.{{ phy.section }}.channels
+ {% for (let channel in radio.valid_channels): %}
+ {%    if (!(channel in phy.channels)) continue %}
+ {%    if (!radio.allow_dfs && channel in phy.dfs_channels) continue %}
+--- a/renderer/templates/interface/ssid.uc
++++ b/renderer/templates/interface/ssid.uc
+@@ -189,7 +189,7 @@
+ 
+ 	let phys = [];
+ 	for (let band in ssid.wifi_bands) {
+-		for (let phy in wiphy.lookup_by_band(band)) {
++		for (let phy in wiphy.lookup_by_band(band, true)) {
+ 			if (phy.section)
+ 				push(phys, phy);
+ 		}
