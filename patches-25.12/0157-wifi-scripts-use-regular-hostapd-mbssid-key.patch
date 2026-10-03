@@ -1,0 +1,30 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi-scripts: restore regular hostapd's mbssid config key
+
+The regular OpenWrt hostapd parser accepts mbssid, not multiple_bssid.
+Keep the existing netifd/UCI option name and MBSSID behavior; only fix the
+generated hostapd key. The independent qca-wifi-6 vendor script/parser uses
+multiple_bssid and is deliberately unchanged. The qca-wifi-7 feed is also
+unchanged. This fixes all families selecting the regular wifi-scripts package.
+
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -10,5 +10,5 @@
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ PKG_LICENSE:=GPL-2.0
+ 
+--- a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+@@ -529,7 +529,7 @@
+ ${channel:+channel=$channel}
+ ${channel_list:+chanlist=$channel_list}
+ ${hostapd_noscan:+noscan=1}
+ ${tx_burst:+tx_queue_data2_burst=$tx_burst}
+-${multiple_bssid:+multiple_bssid=$multiple_bssid}
++${multiple_bssid:+mbssid=$multiple_bssid}
+ #num_global_macaddr=$num_global_macaddr
+ #macaddr_base=$macaddr_base
+ $base_cfg
