@@ -1,0 +1,14 @@
+--- a/renderer/wifi/phy.uc
++++ b/renderer/wifi/phy.uc
+@@ -440,1 +440,10 @@
+-return lookup_phys();
++let serving = lookup_phys();
++if (trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++	for (let path in serving) {
++		/* Match hardware path, never unstable PHY numbering. The QCA9887
++		 * scanner must not appear in capabilities or AP radio templates. */
++		if (!match(path, /(^|\/)c000000\.wifi(\+[0-9]+)?$/))
++			delete serving[path];
++	}
++}
++return serving;

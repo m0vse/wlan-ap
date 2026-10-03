@@ -1,0 +1,9 @@
+--- a/system/wifi_detect.sh
++++ b/system/wifi_detect.sh
+@@ -9,5 +9,6 @@
+ rm /etc/config/wireless
+ wifi config
++[ ! -x /usr/libexec/thor-scan-radio ] || /usr/libexec/thor-scan-radio
+ config_load wireless
+ config_foreach iface_del wifi-iface
+ config_foreach iface_del wifi-vlan

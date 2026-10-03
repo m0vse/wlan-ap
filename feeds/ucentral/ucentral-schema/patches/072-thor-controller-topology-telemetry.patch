@@ -1,0 +1,97 @@
+--- a/renderer/wifi/phy.uc
++++ b/renderer/wifi/phy.uc
+@@ -445,5 +445,8 @@
+ 		if (!match(path, /(^|\/)c000000\.wifi(\+[0-9]+)?$/))
+ 			delete serving[path];
+ 	}
++	let mode = trim(fs.readfile('/sys/module/ath11k/parameters/xv3_8_hw_mode') || '');
++	assert(mode in ['dual-4x4', 'single-8x8'], 'Thor active topology unavailable');
++	require('thor_topology_policy').validate_phys(serving, mode);
+ }
+ return serving;
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -70,6 +70,32 @@
+ 	}
+ }
+ 
++// A requested topology change is accepted for the next boot before any
++// service, live UCI, or active configuration changes are made.
++if (!boot_render && !custom_config &&
++    trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++ try {
++  let validated = schemareader.validate(inputjson, logs);
++  assert(validated && !length(filter(logs, m => substr(m, 0, 3) == '[E]')),
++         'Invalid topology configuration');
++  assert(!validated.strict || !length(logs), 'Strict topology configuration rejected');
++  assert(match(ARGV[0], /^\/etc\/ucentral\/ucentral\.cfg\.[0-9]+$/), 'Invalid controller config filename');
++  assert(system('/usr/libexec/thor-topology stage ' + ARGV[0]) == 0, 'Thor topology rejected');
++  let pending = json(fs.readfile('/etc/ucentral/thor-topology.pending') || '{}');
++  if (pending.reboot_required && pending.uuid == inputjson.uuid) {
++   ubus.call('ucentral', 'result', {uuid:inputjson.uuid, id:+ARGV[1] || 0,
++     status:{error:0, text:'Reboot required', reboot_required:true,
++             active_topology:pending.active, desired_topology:pending.desired}});
++   exit(0);
++  }
++ } catch (e) {
++  warn('Thor configuration rejected before network changes: ', e, '\n');
++  ubus.call('ucentral', 'result', {uuid:inputjson.uuid || 0,id:+ARGV[1] || 0,
++      status:{error:2,text:'Failed',rejected:['Invalid Thor radio topology']}});
++  exit(1);
++ }
++}
++
+ function wait_wireless_ready() {
+ 	for (let i = 0; i < 30; i++) {
+ 		let status = ubus.call('network.wireless', 'status');
+--- a/renderer/templates/radio.uc
++++ b/renderer/templates/radio.uc
+@@ -292,6 +292,13 @@
+ 	function match_mimo(available_ant, wanted_mimo) {
+ 		if (!radio.mimo)
+ 			return available_ant;
++
++		if (trim(require('fs').readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++			let requested = match(wanted_mimo, /^([1-8])x([1-8])$/);
++			assert(requested && requested[1] == requested[2] &&
++			       +requested[1] <= require('thor_topology_policy').chains(available_ant),
++			       'Requested Thor MIMO exceeds physical chain capability');
++		}
+ 
+ 		let shift = ((available_ant & 0xf0) == available_ant) ? 4 : 0;
+ 		let m = match(wanted_mimo, /^([0-9]+)x([0-9]+$)/);
+--- a/system/state.uc
++++ b/system/state.uc
+@@ -98,6 +98,22 @@
+ 	}
+ }
+ 
++if (trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++ try {
++  state.unit.cambium ??= {};
++  let pending = json(fs.readfile('/etc/ucentral/thor-topology.pending') || '{}');
++  let active = trim(fs.readfile('/sys/module/ath11k/parameters/xv3_8_hw_mode') || '');
++  state.unit.cambium.radio_topology = {active, desired:pending.desired || active,
++       reboot_required:pending.reboot_required || false};
++  let info = fs.stat('/tmp/cambium-rrm/latest.json');
++  if (info && info.size > 0 && info.size <= 131072)
++   state.unit.cambium.scanner = json(fs.readfile('/tmp/cambium-rrm/latest.json'));
++ } catch (e) {
++  state.exceptions ??= {};
++  state.exceptions.thor_measurement = {message:'Thor measurement unavailable'};
++ }
++}
++
+ printf("%.J\n", state);
+ 
+ let msg = {
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -117,6 +117,7 @@
+  * before DHCP.  Explicit factory reset is the supported deprovision path. */
+ let files = [
+ 	"/etc/config", "/etc/config-shadow",
++	"/etc/ucentral/thor-topology.pending.json", "/etc/ucentral/thor-topology.pending",
+ 	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+ 	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
+ 	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",

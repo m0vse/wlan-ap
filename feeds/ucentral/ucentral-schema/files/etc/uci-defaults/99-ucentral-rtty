@@ -1,6 +1,11 @@
 #!/bin/sh
-uci add rtty rtty
-uci set rtty.@rtty[-1].id=$(cat /sys/class/net/eth0/address | tr -d :)
-uci set rtty.@rtty[-1].description="$(cat /tmp/sysinfo/model)"
-uci set rtty.@rtty[-1].ssl=1
-uci set rtty.@rtty[-1].port='5912'
+. /lib/functions/system.sh
+serial=$(get_mac_label | tr -d ':' | tr 'a-z' 'A-Z')
+[ -n "$serial" ] || exit 1
+uci -q get rtty.@rtty[0] >/dev/null || uci add rtty rtty >/dev/null
+uci set rtty.@rtty[0].id="$serial"
+uci set rtty.@rtty[0].description="$(cat /tmp/sysinfo/model)"
+uci set rtty.@rtty[0].ssl=1
+uci set rtty.@rtty[0].port=5912
+uci set rtty.@rtty[0].enable=0
+uci commit rtty

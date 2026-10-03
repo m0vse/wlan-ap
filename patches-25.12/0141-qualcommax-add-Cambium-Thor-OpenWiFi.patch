@@ -1,0 +1,2131 @@
+diff --git a/include/image-commands.mk b/include/image-commands.mk
+index ca9e527c64..14eecdf494 100644
+--- a/include/image-commands.mk
++++ b/include/image-commands.mk
+@@ -481,6 +481,8 @@ define Build/cambium-ab-ubi
+ 		'vol_name=rootfs_data' 'vol_size=1MiB' 'vol_flags=autoresize' \
+ 		'[cambium_device_data]' 'mode=ubi' 'vol_id=3' 'vol_type=dynamic' \
+ 		'vol_name=cambium_device_data' 'vol_size=1015808' \
++		'[certificates]' 'mode=ubi' 'vol_id=4' 'vol_type=dynamic' \
++		'vol_name=certificates' 'vol_size=2539520' \
+ 		> $@.ini
+ 	$(STAGING_DIR_HOST)/bin/ubinize \
+ 		$(if $(SOURCE_DATE_EPOCH),-Q $(SOURCE_DATE_EPOCH)) \
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+index 46a7111c1b..21feee2393 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq807x
+@@ -8,6 +8,9 @@ touch /etc/config/ubootenv
+ board=$(board_name)
+ 
+ case "$board" in
++cambiumnetworks,xv3-8)
++	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
++	;;
+ aliyun,ap8220|\
+ compex,wpq873|\
+ edgecore,eap102|\
+diff --git a/package/cambium/cambium-rrm-agent/Makefile b/package/cambium/cambium-rrm-agent/Makefile
+new file mode 100644
+index 0000000000..60f3f0924c
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/Makefile
+@@ -0,0 +1,45 @@
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=cambium-rrm-agent
++PKG_RELEASE:=11
++PKG_LICENSE:=GPL-2.0-only
++PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/cambium-rrm-agent
++  SECTION:=utils
++  CATEGORY:=Utilities
++  TITLE:=Cambium access point radio measurements
++  DEPENDS:=+iw
++  PKGARCH:=all
++endef
++
++define Package/cambium-rrm-agent/description
++  Measures what the radio resource planner needs on every Cambium family:
++  each radio's channel, busy time, noise and clients, and the networks heard
++  by the family's dedicated scanning radio where it has one (the XV3-8's).
++  The latest measurement is kept as JSON in /tmp/cambium-rrm/latest.json
++  and included in OpenWiFi vendor telemetry.
++  A dedicated scanning radio is kept in the Wi-Fi configuration as a
++  disabled radio named "scan", so it never serves clients.
++endef
++
++define Package/cambium-rrm-agent/conffiles
++/etc/config/cambium_rrm
++endef
++
++define Build/Compile
++endef
++
++define Package/cambium-rrm-agent/install
++	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config $(1)/etc/hotplug.d/ieee80211 \
++		$(1)/lib/functions
++	$(INSTALL_BIN) ./files/cambium-rrm-agent $(1)/usr/sbin/
++	$(INSTALL_DATA) ./files/cambium-rrm.sh $(1)/lib/functions/cambium-rrm.sh
++	$(INSTALL_BIN) ./files/cambium-rrm-agent.init $(1)/etc/init.d/cambium-rrm-agent
++	$(INSTALL_CONF) ./files/cambium_rrm.config $(1)/etc/config/cambium_rrm
++	$(INSTALL_DATA) ./files/20-cambium-scan-radio $(1)/etc/hotplug.d/ieee80211/
++endef
++
++$(eval $(call BuildPackage,cambium-rrm-agent))
+diff --git a/package/cambium/cambium-rrm-agent/files/20-cambium-scan-radio b/package/cambium/cambium-rrm-agent/files/20-cambium-scan-radio
+new file mode 100644
+index 0000000000..82f89a2154
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/files/20-cambium-scan-radio
+@@ -0,0 +1,44 @@
++#!/bin/sh
++# Keep the family's dedicated scanning radio out of service: OpenWrt's
++# wifi-detect (10-wifi-detect) adds every radio it finds to
++# /etc/config/wireless, on every boot. Give the scanning radio one disabled
++# section named "scan" with no networks, so wifi-detect leaves it alone and
++# netifd never starts anything on it.
++
++[ "$ACTION" = add ] || exit 0
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++. "${CAMBIUM_RRM_LIB:-/lib/functions/cambium-rrm.sh}"
++
++driver=$(rrm_scan_driver) || exit 0
++dev=$(readlink -f "${RRM_SYSROOT:-/sys}$DEVPATH/device") || exit 0
++[ "$(basename "$(readlink "$dev/driver")")" = "$driver" ] || exit 0
++# The path as wifi-detect (/usr/share/hostap/wifi-detect.uc) writes it: it
++# drops "platform/" from PCI device paths, and matches paths exactly, so the
++# scan section must use the same form for wifi-detect to leave the radio be.
++path=${dev#${RRM_SYSROOT:-/sys}/devices/}
++case "$path" in platform/*/pci*) path=${path#platform/} ;; esac
++
++changed=
++for section in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
++	[ "$section" = scan ] && continue
++	# Either form, with or without "platform/".
++	case "$(uci -q get "wireless.$section.path")" in
++	"$path"|"platform/$path") ;;
++	*) continue ;;
++	esac
++	# Drop the default section wifi-detect made, and any networks on it.
++	for iface in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.device='$section'$/\1/p"); do
++		uci -q delete "wireless.$iface"
++	done
++	uci -q delete "wireless.$section"
++	changed=1
++done
++if [ "$(uci -q get wireless.scan.path)" != "$path" ] || [ "$(uci -q get wireless.scan.disabled)" != 1 ]; then
++	uci -q set wireless.scan=wifi-device
++	uci -q set wireless.scan.type=mac80211
++	uci -q set wireless.scan.path="$path"
++	uci -q set wireless.scan.disabled=1
++	changed=1
++fi
++[ -z "$changed" ] || uci -q commit wireless
++exit 0
+diff --git a/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent b/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent
+new file mode 100644
+index 0000000000..b7cd8c69d4
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent
+@@ -0,0 +1,75 @@
++#!/bin/sh
++# Cambium RRM measurement agent: what the radio resource planner needs from
++# each access point, on every family.
++#
++#   cambium-rrm-agent --once    measure once and write the result
++#   cambium-rrm-agent --loop    measure every cambium_rrm.agent.interval seconds
++#
++# Each measurement records every radio's driver, operating channel, width,
++# survey (channel active, busy, receive and transmit time, noise) and client
++# count, and the neighbouring networks: from a dedicated scanning radio at
++# every measurement where the family has one (its scan0 interface exists
++# only while it scans), otherwise from the serving radios' own scans at
++# cambium_rrm.agent.scan_times. The result, one file for OpenWiFi to
++# collect, is $RRM_OUT/latest.json; uCentral sends it
++# through authenticated uCentral telemetry.
++#
++# Test hooks: CAMBIUM_RRM_LIB, CAMBIUM_SYSTEM_FUNCTIONS and those of the
++# library (/lib/functions/cambium-rrm.sh).
++
++. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
++. "${CAMBIUM_RRM_LIB:-/lib/functions/cambium-rrm.sh}"
++
++# One measurement at a time: a run by hand waits for the service's current
++# one (they would share the scanning interface and the output files). The
++# lock records its run's process: a lock whose process is gone is stale.
++lock=$RRM_OUT/lock
++owned= sleeper=
++trap '[ -z "$owned" ] || rm -rf "$lock"' EXIT
++trap '[ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null; exit 0' INT TERM
++run() {
++	local waited=0 pid
++	mkdir -p "$RRM_OUT"
++	until mkdir "$lock" 2>/dev/null; do
++		pid=$(cat "$lock/pid" 2>/dev/null)
++		if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
++			rm -rf "$lock"
++		elif [ -z "$pid" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
++			rm -rf "$lock"  # a lock that never recorded its process
++		elif [ "$waited" -ge 60 ]; then
++			echo "cambium-rrm-agent: another measurement is still running" >&2
++			return 1
++		else
++			sleep 2
++			waited=$((waited + 2))
++		fi
++	done
++	owned=1
++	echo $$ > "$lock/pid"
++	rrm_measure
++	rm -rf "$lock"
++	owned=
++}
++
++case "${1:-}" in
++--once)
++	run
++	;;
++--loop)
++	while :; do
++		run
++		interval=$(uci -q get cambium_rrm.agent.interval)
++		case "$interval" in ''|*[!0-9]*) interval=300 ;; esac
++		[ "$interval" -ge 60 ] || interval=60
++		# In the background, so a stop signal is acted on at once.
++		sleep "$interval" &
++		sleeper=$!
++		wait "$sleeper"
++		sleeper=
++	done
++	;;
++*)
++	echo "usage: $0 --once | --loop" >&2
++	exit 2
++	;;
++esac
+diff --git a/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent.init b/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent.init
+new file mode 100644
+index 0000000000..d6b503764c
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/files/cambium-rrm-agent.init
+@@ -0,0 +1,18 @@
++#!/bin/sh /etc/rc.common
++
++START=99
++STOP=10
++USE_PROCD=1
++
++start_service() {
++	[ -s /tmp/ucentral-network.ready ] || return 0
++	[ "$(uci -q get cambium_rrm.agent.enabled)" = 1 ] || return 0
++	procd_open_instance
++	procd_set_param command /usr/sbin/cambium-rrm-agent --loop
++	procd_set_param respawn 3600 5 5
++	procd_close_instance
++}
++
++service_triggers() {
++	procd_add_reload_trigger cambium_rrm
++}
+diff --git a/package/cambium/cambium-rrm-agent/files/cambium-rrm.sh b/package/cambium/cambium-rrm-agent/files/cambium-rrm.sh
+new file mode 100644
+index 0000000000..868caa501c
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/files/cambium-rrm.sh
+@@ -0,0 +1,337 @@
++#!/bin/sh
++# Cambium RRM measurement library, shared by cambium-rrm-agent and the
++# scanning-radio hotplug step. See cambium-rrm-agent for what is measured.
++#
++# Family modules (/lib/functions/cambium-rrm-*.sh) add "BOARD:DRIVER" to
++# RRM_SCAN_RADIOS for boards with a dedicated scanning radio. Callers
++# provide board_name().
++#
++# Neighbouring networks come from the dedicated scanning radio at every
++# measurement, where there is one. Elsewhere they come from scans by the
++# serving radios at the times in cambium_rrm.agent.scan_times: each such
++# scan takes its radio off its channel for a few seconds, so a radio with
++# clients waits, except at the day's last scan time.
++#
++# Test hooks: RRM_SYS, RRM_NET, RRM_OUT, RRM_MODULES.
++
++RRM_SYS=${RRM_SYS:-/sys/class/ieee80211}
++RRM_NET=${RRM_NET:-/sys/class/net}
++RRM_OUT=${RRM_OUT:-/tmp/cambium-rrm}
++RRM_SCAN_RADIOS=${RRM_SCAN_RADIOS:-}
++
++for _rrm_module in "${RRM_MODULES:-/lib/functions}"/cambium-rrm-*.sh; do
++	[ -f "$_rrm_module" ] && . "$_rrm_module"
++done
++unset _rrm_module
++
++# The driver of this board's dedicated scanning radio, if it has one.
++rrm_scan_driver() {
++	local board entry
++	board=$(board_name)
++	for entry in $RRM_SCAN_RADIOS; do
++		[ "${entry%%:*}" = "$board" ] && { echo "${entry#*:}"; return 0; }
++	done
++	return 1
++}
++
++rrm_phy_driver() {
++	basename "$(readlink "$RRM_SYS/$1/device/driver")"
++}
++
++# The phy of the scanning radio, if this board has one and it is present.
++rrm_scan_phy() {
++	local driver p
++	driver=$(rrm_scan_driver) || return 1
++	for p in "$RRM_SYS"/*; do
++		[ -e "$p" ] || continue
++		[ "$(rrm_phy_driver "${p##*/}")" = "$driver" ] && { echo "${p##*/}"; return 0; }
++	done
++	return 1
++}
++
++# JSON string escaping for values from iw (SSIDs above all).
++rrm_json_str() {
++	printf '%s' "$1" | awk '
++	function esc(s,   out, i, c) {
++		# Character by character: backslashes in gsub replacements differ
++		# between awks (BusyBox left them unescaped). Drops control characters.
++		out = ""
++		for (i = 1; i <= length(s); i++) {
++			c = substr(s, i, 1)
++			if (c == "\\") out = out "\\\\"
++			else if (c == "\"") out = out "\\\""
++			else if (c !~ /[[:cntrl:]]/) out = out c
++		}
++		return out
++	}
++	BEGIN { ORS = "" } { print esc($0) }'
++}
++
++# One JSON object per serving radio, comma-separated.
++rrm_radios_json() {
++	local scan_phy=$1 first=1 phy driver ifaces iface freq width chan clients survey txpower signal
++	iw dev > "$RRM_OUT/iw-dev.txt" 2>/dev/null
++	# "phy interface freq clients" per serving radio, for rrm_active_scan.
++	: > "$RRM_OUT/radios.txt"
++	for p in "$RRM_SYS"/*; do
++		[ -e "$p" ] || continue
++		phy=${p##*/}
++		[ "$phy" = "$scan_phy" ] && continue
++		driver=$(rrm_phy_driver "$phy")
++		# Interfaces of this phy, with the operating channel of the first.
++		ifaces=$(awk -v phy="phy#${phy#phy}" '
++			/^phy#/ { on = ($1 == phy) }
++			on && $1 == "Interface" { print $2 }' "$RRM_OUT/iw-dev.txt")
++		iface=$(echo "$ifaces" | head -n 1)
++		freq= width= chan= clients=0 survey=null txpower= signal=null
++		if [ -n "$iface" ]; then
++			set -- $(awk -v want="$iface" '
++				$1 == "Interface" { on = ($2 == want) }
++				on && $1 == "channel" {
++					gsub(/[(]/, "", $3)
++					w = $0; sub(/.*width: /, "", w); sub(/,.*/, "", w)
++					print $2, $3, w; exit
++				}' "$RRM_OUT/iw-dev.txt")
++			chan=${1:-} freq=${2:-} width=${3:-}${4:+ $4}
++			# The transmit power the radio is really using (after the
++			# country's limits), for the power planner.
++			txpower=$(awk -v want="$iface" '
++				$1 == "Interface" { on = ($2 == want) }
++				on && $1 == "txpower" { printf "%.1f", $2 + 0; exit }' "$RRM_OUT/iw-dev.txt")
++			# Clients over all this radio's networks, and how strongly the
++			# radio hears them: weakest, median and strongest.
++			for i in $ifaces; do
++				iw dev "$i" station dump 2>/dev/null
++			done > "$RRM_OUT/stations.txt"
++			clients=$(grep -c '^Station' "$RRM_OUT/stations.txt")
++			signal=$(awk '/^\tsignal:/ { print $2 + 0 }' "$RRM_OUT/stations.txt" | sort -n | awk '
++				{ v[++n] = $1 }
++				END {
++					if (!n) { print "null"; exit }
++					printf "{\"min\": %d, \"median\": %d, \"max\": %d}", v[1], v[int((n + 1) / 2)], v[n]
++				}')
++			survey=$(iw dev "$iface" survey dump 2>/dev/null | awk '
++				/^Survey data/ { use = 0 }
++				/frequency:/ && /\[in use\]/ { use = 1 }
++				use && /noise:/ { noise = $2 }
++				use && /channel active time:/ { active = $4 }
++				use && /channel busy time:/ { busy = $4 }
++				use && /channel receive time:/ { rx = $4 }
++				use && /channel transmit time:/ { tx = $4 }
++				END {
++					if (active == "") { print "null"; exit }
++					printf "{\"noise\": %s, \"active_ms\": %s, \"busy_ms\": %s, \"rx_ms\": %s, \"tx_ms\": %s}",
++						(noise == "" ? "null" : noise), active, (busy == "" ? "null" : busy),
++						(rx == "" ? "null" : rx), (tx == "" ? "null" : tx)
++				}')
++		fi
++		[ -n "$iface" ] && echo "$phy $iface ${freq:-0} $clients" >> "$RRM_OUT/radios.txt"
++		[ -n "$first" ] || printf ',\n'
++		first=
++		# Each interface's address (BSSID), so OpenWISP can tell this radio's
++		# networks in other APs' scans from outside ones.
++		printf '    {"phy": "%s", "driver": "%s", "interfaces": [%s], "bssids": [%s], "channel": %s, "freq": %s, "width": %s, "txpower": %s, "clients": %s, "client_signal": %s, "survey": %s}' \
++			"$phy" "$(rrm_json_str "$driver")" \
++			"$(for i in $ifaces; do printf '"%s",' "$(rrm_json_str "$i")"; done | sed 's/,$//')" \
++			"$(for i in $ifaces; do
++				a=$(cat "$RRM_NET/$i/address" 2>/dev/null) && [ -n "$a" ] && printf '"%s",' "$(rrm_json_str "$a")"
++			done | sed 's/,$//')" \
++			"${chan:-null}" "${freq:-null}" "$([ -n "$width" ] && printf '"%s"' "$width" || echo null)" \
++			"${txpower:-null}" "$clients" "${signal:-null}" "${survey:-null}"
++	done
++	echo
++}
++
++# Scan with the scanning radio into $RRM_OUT/scan.txt. The interface is
++# created for the scan and removed afterwards.
++rrm_scan() {
++	local phy=$1 tries=0
++	iw dev scan0 info >/dev/null 2>&1 || iw phy "$phy" interface add scan0 type managed || return 1
++	ip link set scan0 up || { iw dev scan0 del; return 1; }
++	# A scan is refused while the radio is still starting; retry briefly.
++	until iw dev scan0 scan > "$RRM_OUT/scan.txt" 2> "$RRM_OUT/scan.err"; do
++		tries=$((tries + 1))
++		[ "$tries" -lt 3 ] || break
++		sleep 2
++	done
++	# The survey now holds every channel the scan visited.
++	iw dev scan0 survey dump > "$RRM_OUT/scan-survey.txt" 2>/dev/null
++	ip link set scan0 down
++	iw dev scan0 del
++	[ "$tries" -lt 3 ]
++}
++
++# One JSON object per channel in a survey by RADIO at TIME, comma-separated:
++# its noise and its cumulative active and busy time. After a scan the survey
++# covers every channel the scan visited, so these show how busy each channel
++# is, not only the one the AP is on.
++rrm_channels_json() { # rrm_channels_json SURVEY-FILE RADIO TIME
++	awk -v radio="$2" -v time="$3" '
++	function chan(f) {
++		if (f == 2484) return 14
++		if (f >= 2412 && f <= 2472) return (f - 2407) / 5
++		if (f >= 5000 && f < 5925) return (f - 5000) / 5
++		if (f >= 5955 && f <= 7115) return (f - 5950) / 5
++		return "null"
++	}
++	function flush() {
++		if (f == "" || a == "" || a == 0) { f = ""; return }
++		printf "%s    {\"radio\": \"%s\", \"time\": %s, \"freq\": %d, \"channel\": %s, \"noise\": %s, \"active_ms\": %s, \"busy_ms\": %s}",
++			(n++ ? ",\n" : ""), radio, time, f, chan(f), (noise == "" ? "null" : noise), a, (b == "" ? "null" : b)
++		f = ""
++	}
++	/^Survey data/ { flush(); noise = ""; a = ""; b = "" }
++	/frequency:/ { f = $2 + 0 }
++	/noise:/ { noise = $2 }
++	/channel active time:/ { a = $4 }
++	/channel busy time:/ { b = $4 }
++	END { flush() }' "$1" 2>/dev/null
++}
++
++# The MAC addresses of this AP's own Wi-Fi interfaces (its BSSIDs).
++rrm_own_bssids() {
++	local n
++	for n in "$RRM_NET"/*; do
++		[ -e "$n/phy80211" ] && cat "$n/address"
++	done 2>/dev/null | tr 'A-F' 'a-f' | tr '\n' ' '
++}
++
++# One JSON object per network in a scan by RADIO at TIME, comma-separated.
++# The AP's own networks are included, marked "own": hearing them shows they
++# are on the air.
++rrm_neighbours_json() { # rrm_neighbours_json SCAN-FILE RADIO TIME
++	awk -v own=" $(rrm_own_bssids) " -v radio="$2" -v time="$3" '
++	function esc(s,   out, i, c) {
++		# Character by character: backslashes in gsub replacements differ
++		# between awks (BusyBox left them unescaped). Drops control characters.
++		out = ""
++		for (i = 1; i <= length(s); i++) {
++			c = substr(s, i, 1)
++			if (c == "\\") out = out "\\\\"
++			else if (c == "\"") out = out "\\\""
++			else if (c !~ /[[:cntrl:]]/) out = out c
++		}
++		return out
++	}
++	function chan(f) {
++		if (f == 2484) return 14
++		if (f >= 2412 && f <= 2472) return (f - 2407) / 5
++		if (f >= 5000 && f < 5925) return (f - 5000) / 5
++		if (f >= 5955 && f <= 7115) return (f - 5950) / 5
++		return "null"
++	}
++	function flush() {
++		if (bssid == "") return
++		printf "%s    {\"radio\": \"%s\", \"time\": %s, \"bssid\": \"%s\", \"ssid\": \"%s\", \"freq\": %s, \"channel\": %s, \"signal\": %s, \"last_seen_ms\": %s, \"own\": %s}",
++			(n++ ? ",\n" : ""), radio, time, bssid, esc(ssid), (freq == "" ? "null" : freq), (freq == "" ? "null" : chan(freq)),
++			(signal == "" ? "null" : signal), (seen == "" ? "null" : seen),
++			(index(own, " " tolower(bssid) " ") ? "true" : "false")
++		bssid = ""
++	}
++	/^BSS / { flush(); bssid = substr($2, 1, 17); ssid = ""; freq = ""; signal = ""; seen = "" }
++	/^\tfreq:/ { freq = int($2) }
++	/^\tsignal:/ { signal = $2 + 0 }
++	/^\tlast seen:/ { seen = $3 }
++	/^\tSSID:/ {
++		ssid = substr($0, index($0, "SSID:") + 6)
++		# iw prints the null bytes of a hidden network as \x00: no name.
++		if (ssid ~ /^(\\x00)+$/) ssid = ""
++	}
++	END { flush() }' "$1"
++}
++
++# The scan time due now, as "DATE HH:MM [final]": the latest time in
++# scan_times that has passed within the last hour. "final" marks the day's
++# last scan time.
++rrm_scan_due() {
++	date '+%Y-%m-%d %H:%M' | awk -v times="$(uci -q get cambium_rrm.agent.scan_times)" '{
++		split($2, a, ":"); now = a[1] * 60 + a[2]
++		n = split(times, t, " "); best = -1; max = -1
++		for (i = 1; i <= n; i++) {
++			if (split(t[i], b, ":") != 2) continue
++			m = b[1] * 60 + b[2]
++			if (m > max) max = m
++			if (m <= now && now - m < 60 && m > best) best = m
++		}
++		if (best < 0) exit 1
++		printf "%s %02d:%02d%s\n", $1, int(best / 60), best % 60, (best == max ? " final" : "")
++	}'
++}
++
++# Each serving radio scans in turn, leaving its channel for a few seconds.
++# Its networks go to $RRM_OUT/active-PHY.json, kept until its next scan.
++rrm_active_scan() { # rrm_active_scan [final]
++	local phy iface freq clients tries now
++	while read -r phy iface freq clients; do
++		if [ "$clients" -gt 0 ] && [ "${1:-}" != final ]; then
++			logger -t cambium-rrm "$phy has $clients clients: its scan waits for the last scan time"
++			continue
++		fi
++		tries=0
++		until iw dev "$iface" scan ap-force > "$RRM_OUT/scan-$phy.txt" 2> "$RRM_OUT/scan-$phy.err"; do
++			tries=$((tries + 1))
++			[ "$tries" -lt 3 ] || break
++			sleep 5
++		done
++		if [ "$tries" -ge 3 ]; then
++			logger -t cambium-rrm "$phy scan failed: $(head -n 1 "$RRM_OUT/scan-$phy.err")"
++			continue
++		fi
++		now=$(date +%s)
++		rrm_neighbours_json "$RRM_OUT/scan-$phy.txt" "$phy" "$now" > "$RRM_OUT/active-$phy.json"
++		iw dev "$iface" survey dump > "$RRM_OUT/survey-$phy.txt" 2>/dev/null
++		rrm_channels_json "$RRM_OUT/survey-$phy.txt" "$phy" "$now" > "$RRM_OUT/active-channels-$phy.json"
++	done < "$RRM_OUT/radios.txt"
++}
++
++rrm_measure() {
++	local scan_phy= neighbours= channels= radios due f now tmp
++	mkdir -p "$RRM_OUT"
++	scan_phy=$(rrm_scan_phy) || scan_phy=
++	radios=$(rrm_radios_json "$scan_phy")
++	if [ -n "$scan_phy" ]; then
++		if rrm_scan "$scan_phy"; then
++			now=$(date +%s)
++			neighbours=$(rrm_neighbours_json "$RRM_OUT/scan.txt" "$scan_phy" "$now")
++			channels=$(rrm_channels_json "$RRM_OUT/scan-survey.txt" "$scan_phy" "$now")
++		fi
++	else
++		if due=$(rrm_scan_due) && [ "$due" != "$(cat "$RRM_OUT/scan-due" 2>/dev/null)" ]; then
++			echo "$due" > "$RRM_OUT/scan-due"
++			case "$due" in
++			*" final") rrm_active_scan final ;;
++			*) rrm_active_scan ;;
++			esac
++		fi
++		for f in "$RRM_OUT"/active-phy*.json; do
++			[ -s "$f" ] || continue
++			neighbours="${neighbours:+$neighbours,
++}$(cat "$f")"
++		done
++		for f in "$RRM_OUT"/active-channels-*.json; do
++			[ -s "$f" ] || continue
++			channels="${channels:+$channels,
++}$(cat "$f")"
++		done
++	fi
++	tmp=$RRM_OUT/latest.json.$$
++	{
++		printf '{\n  "version": 1,\n  "time": %s,\n' "$(date +%s)"
++		printf '  "board": "%s",\n  "hostname": "%s",\n' "$(rrm_json_str "$(board_name)")" \
++			"$(rrm_json_str "$(cat /proc/sys/kernel/hostname 2>/dev/null)")"
++		printf '  "scan_radio": %s,\n' "$([ -n "$scan_phy" ] && printf '"%s"' "$scan_phy" || echo null)"
++		printf '  "radios": [\n%s\n  ],\n' "$radios"
++		if [ -n "$neighbours" ]; then
++			printf '  "neighbours": [\n%s\n  ],\n' "$neighbours"
++		else
++			printf '  "neighbours": null,\n'
++		fi
++		if [ -n "$channels" ]; then
++			printf '  "channels": [\n%s\n  ]\n}\n' "$channels"
++		else
++			printf '  "channels": null\n}\n'
++		fi
++	} > "$tmp" && mv "$tmp" "$RRM_OUT/latest.json"
++}
++
++# OpenWiFi carries measurements through authenticated uCentral state.
+diff --git a/package/cambium/cambium-rrm-agent/files/cambium_rrm.config b/package/cambium/cambium-rrm-agent/files/cambium_rrm.config
+new file mode 100644
+index 0000000000..e24e66c62b
+--- /dev/null
++++ b/package/cambium/cambium-rrm-agent/files/cambium_rrm.config
+@@ -0,0 +1,10 @@
++config agent 'agent'
++	option enabled '1'
++	# Seconds between measurements.
++	option interval '300'
++	# Local times (HH:MM, space-separated) at which the serving radios scan
++	# for neighbouring networks, e.g. '02:00 03:00 04:00'. Each scan takes
++	# a radio off its channel for a few seconds; a radio with clients waits,
++	# except at the last time. Empty: no such scans. Not used on an AP with
++	# a dedicated scanning radio, which scans at every measurement.
++	option scan_times ''
+diff --git a/package/cambium/cambium-thor-support/Makefile b/package/cambium/cambium-thor-support/Makefile
+new file mode 100644
+index 0000000000..5b2279e29e
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/Makefile
+@@ -0,0 +1,46 @@
++include $(TOPDIR)/rules.mk
++
++PKG_NAME:=cambium-thor-support
++PKG_RELEASE:=12
++PKG_LICENSE:=GPL-2.0-only
++PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/cambium-thor-support
++  SECTION:=utils
++  CATEGORY:=Utilities
++  TITLE:=Cambium Thor family access point support
++  DEPENDS:=@TARGET_qualcommax_ipq807x +uboot-envtools +cambium-ab +cambium-board-data +cambium-rrm-agent +ucentral-schema +ucode-mod-uci
++  PKGARCH:=all
++endef
++
++define Package/cambium-thor-support/description
++  The Thor (XV3-8 family) module for cambium-ab (board table, firmware bank
++  layout and U-Boot boot commands), radio topology settings and management
++  bridge defaults for Cambium Thor access points.
++endef
++
++define Package/cambium-thor-support/conffiles
++/etc/config/xv3_8_radio
++endef
++
++define Build/Compile
++endef
++
++define Package/cambium-thor-support/install
++	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/uci-defaults $(1)/etc/config $(1)/etc/hotplug.d/openwisp \
++		$(1)/lib/functions $(1)/usr/libexec $(1)/usr/share/ucentral
++	$(INSTALL_BIN) ./files/thor-topology $(1)/usr/libexec/
++	$(INSTALL_BIN) ./files/thor-scan-radio $(1)/usr/libexec/
++	$(INSTALL_BIN) ./files/thor-topology.init $(1)/etc/init.d/thor-topology
++	$(INSTALL_DATA) ./files/thor-topology-main.uc ./files/thor_topology_policy.uc $(1)/usr/share/ucentral/
++	$(INSTALL_DATA) ./files/cambium-rrm-thor.sh $(1)/lib/functions/
++	$(INSTALL_BIN) ./files/thor-radio-settings $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/thor-radio-settings.init $(1)/etc/init.d/thor-radio-settings
++	$(INSTALL_DATA) ./files/xv3_8_radio.config $(1)/etc/config/xv3_8_radio
++	$(INSTALL_BIN) ./files/15_thor_radio_settings ./files/19_cambium_openwifi_identity $(1)/etc/uci-defaults/
++	$(INSTALL_DATA) ./files/cambium-ab-thor.sh $(1)/lib/functions/cambium-ab-thor.sh
++endef
++
++$(eval $(call BuildPackage,cambium-thor-support))
+diff --git a/package/cambium/cambium-thor-support/files/15_thor_radio_settings b/package/cambium/cambium-thor-support/files/15_thor_radio_settings
+new file mode 100755
+index 0000000000..525e9fc364
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/15_thor_radio_settings
+@@ -0,0 +1,12 @@
++#!/bin/sh
++
++[ -r /lib/functions/system.sh ] && . /lib/functions/system.sh
++
++[ "$(board_name)" = 'cambiumnetworks,xv3-8' ] || exit 0
++
++/etc/init.d/thor-topology enable
++/etc/init.d/cambium-rrm-agent enable
++/etc/init.d/thor-radio-settings enable
++/usr/sbin/thor-radio-settings sync
++
++exit 0
+diff --git a/package/cambium/cambium-thor-support/files/19_cambium_openwifi_identity b/package/cambium/cambium-thor-support/files/19_cambium_openwifi_identity
+new file mode 100644
+index 0000000000..36f6ff87d4
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/19_cambium_openwifi_identity
+@@ -0,0 +1,10 @@
++#!/bin/sh
++# Keep the qualified upstream board and shared Thor image identity for A/B.
++[ -d "${UCENTRAL_DIR:=/etc/ucentral}" ] || exit 0
++board=${CAMBIUM_BOARD_NAME:-}
++[ -n "$board" ] || { . /lib/functions/system.sh; board=$(board_name); }
++case "$board" in
++ cambiumnetworks,xv3-8) compatible=cambium_xv3-8 ;;
++ *) exit 0 ;;
++esac
++printf '%s\n' "$compatible" > "$UCENTRAL_DIR/compatible"
+diff --git a/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh b/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
+new file mode 100644
+index 0000000000..f9e8bd95a4
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
+@@ -0,0 +1,69 @@
++#!/bin/sh
++# Cambium A/B module for the Thor family (IPQ8074). See cambium-ab.sh.
++#
++# The XV3-8 has two 96 MiB NAND firmware banks, rootfs (slot 0) at 0x0 and
++# rootfs_1 (slot 1) at 0x6000000. Its stock U-Boot default is
++# "aq_load_fw&&bootipq": the Aquantia PHY firmware must be loaded before any
++# boot. The persistent FIT selects the bank through its configuration rather
++# than U-Boot bootargs: config@hk02 appends ubi.mtd=rootfs (as the validated
++# single-bank installs do) and config@hk02-bank1 appends ubi.mtd=rootfs_1.
++
++case " ${AB_FAMILIES:-} " in
++*" thor "*) ;;
++*) AB_FAMILIES="${AB_FAMILIES:+$AB_FAMILIES }thor" ;;
++esac
++
++ab_thor_board() {
++	AB_NAME=Thor
++	AB_ENV=thor
++	# The sysupgrade tar keeps the directory installed XV3-8 images expect.
++	AB_IMAGE_DIR=sysupgrade-cambiumnetworks_xv3-8
++	AB_VAULT=1
++	# OpenWiFi reserves its writable identity store in each newly formatted bank.
++	AB_CERTIFICATE_LEBS=20
++	AB_STOCK_BOOTCMD='aq_load_fw&&bootipq'
++	AB_BANK_SIZE=06000000
++	AB_SLOT1_OFFSET=0x6000000
++	AB_BANK_LEBS=724
++	AB_PROTECTED='0:ETHPHYFW 0:ART'
++	case "$1" in
++	cambiumnetworks,xv3-8)
++		# Installed, converted and bank-switched by sysupgrade on hardware.
++		AB_MODEL=XV3-8; AB_SKU=00000013; AB_FIT=config@hk02; AB_QUALIFIED=1
++		# Managed on the VLAN-1 bridge once OpenWISP's trunk template has
++		# applied.
++		AB_LAN='br-lan.1 br-lan'
++		# Every serving radio must be up: they are the IPQ8074's own
++		# (the QCA9887 scanning radio on PCIe does not count), three in
++		# dual-4x4 mode and two in single-8x8 (2.4 GHz plus one 8x8
++		# 5 GHz), as the ath11k driver was started.
++		AB_RADIO_DEVICE=soc@0/c000000.wifi
++		AB_RADIOS=3
++		if [ "$(cat "${AB_SYS_MODULE:-/sys/module}/ath11k/parameters/xv3_8_hw_mode" 2>/dev/null)" = single-8x8 ]; then
++			AB_RADIOS=2
++		fi
++		;;
++	*) return 1 ;;
++	esac
++}
++
++# Boot slot $1: the validated single-bank Thor command, with the bank and
++# its FIT configuration selected.
++ab_thor_boot_command() {
++	local mtdparts part config
++	case "$1" in
++	0) mtdparts="$(ab_bank_hex)@0x0(rootfs)"; part=rootfs; config=$AB_FIT ;;
++	1) mtdparts="$(ab_bank_hex)@$AB_SLOT1_OFFSET(fs)"; part=fs; config=$AB_FIT-bank1 ;;
++	*) echo "cambium-ab: invalid slot $1" >&2; return 1 ;;
++	esac
++	printf 'aq_load_fw; nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts "mtdparts=nand0:%s" && ubi part %s && ubi read 0x60000000 kernel && bootm 0x60000000#%s\n' \
++		"$mtdparts" "$part" "$config"
++}
++
++# One-OEM/one-OpenWrt guarded boot of OpenWrt slot $1: restore the stock
++# default first, as the validated Thor one-shots did, and fall back to it.
++ab_thor_guarded_command() {
++	local boot
++	boot=$(ab_thor_boot_command "$1") || return 1
++	echo "setenv changing_bootcmd; setenv bootcmd \"aq_load_fw&&bootipq\"; saveenv; $boot; bootipq"
++}
+diff --git a/package/cambium/cambium-thor-support/files/cambium-rrm-thor.sh b/package/cambium/cambium-thor-support/files/cambium-rrm-thor.sh
+new file mode 100644
+index 0000000000..68d35ce7eb
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/cambium-rrm-thor.sh
+@@ -0,0 +1,11 @@
++#!/bin/sh
++# Cambium RRM module for the Thor family. See cambium-rrm.sh.
++#
++# The XV3-8 has a dedicated scanning radio: the QCA9887 on PCIe 1, driven by
++# ath10k. The measurement agent may scan with it at any time without
++# affecting clients on the three serving radios.
++
++case " ${RRM_SCAN_RADIOS:-} " in
++*" cambiumnetworks,xv3-8:ath10k_pci "*) ;;
++*) RRM_SCAN_RADIOS="${RRM_SCAN_RADIOS:+$RRM_SCAN_RADIOS }cambiumnetworks,xv3-8:ath10k_pci" ;;
++esac
+diff --git a/package/cambium/cambium-thor-support/files/thor-radio-settings b/package/cambium/cambium-thor-support/files/thor-radio-settings
+new file mode 100755
+index 0000000000..b723d8e739
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-radio-settings
+@@ -0,0 +1,139 @@
++#!/bin/sh
++
++. /lib/functions.sh
++. /lib/functions/system.sh
++
++config_file=xv3_8_radio
++module_file=/etc/modules.d/ath11k-ahb
++
++board_supported() {
++	[ "$(board_name 2>/dev/null)" = 'cambiumnetworks,xv3-8' ]
++}
++
++valid_mode() {
++	case "$1" in
++		dual-4x4|single-8x8) return 0 ;;
++		*) return 1 ;;
++	esac
++}
++
++valid_limit() {
++	case "$1" in
++		''|*[!0-9]*) return 1 ;;
++	esac
++	[ "$1" -ge 1 ] && [ "$1" -le 512 ]
++}
++
++load_settings() {
++	mode=$(uci -q get "$config_file.main.mode") || mode=dual-4x4
++	max_clients=$(uci -q get "$config_file.main.max_clients_per_radio") || max_clients=128
++	valid_mode "$mode" || {
++		echo "Invalid XV3-8 radio mode: $mode" >&2
++		return 1
++	}
++	valid_limit "$max_clients" || {
++		echo "Invalid XV3-8 client limit: $max_clients (expected 1..512)" >&2
++		return 1
++	}
++}
++
++write_module_setting() {
++	local temporary
++	temporary="${module_file}.tmp.$$"
++	umask 022
++	{
++		printf 'ath11k xv3_8_hw_mode=%s\n' "$mode"
++		printf 'ath11k_ahb\n'
++	} >"$temporary" || return 1
++	chmod 0644 "$temporary"
++	if ! cmp -s "$temporary" "$module_file" 2>/dev/null; then
++		mv "$temporary" "$module_file"
++	else
++		rm -f "$temporary"
++	fi
++}
++
++apply_device_limit() {
++	local section="$1" type path
++	config_get type "$section" type
++	config_get path "$section" path
++	[ "$type" = mac80211 ] || return 0
++	case "$path" in
++		platform/soc@0/c000000.wifi*)
++			uci -q set "wireless.$section.maxassoc=$max_clients"
++			;;
++	esac
++}
++
++sync_settings() {
++	load_settings || return 1
++	write_module_setting || return 1
++	config_load wireless
++	config_foreach apply_device_limit wifi-device
++	uci -q commit wireless
++	logger -t thor-radio-settings \
++		"staged mode=$mode max_clients_per_radio=$max_clients"
++}
++
++show_settings() {
++	local active reboot_required
++	load_settings || return 1
++	active=unavailable
++	[ ! -r /sys/module/ath11k/parameters/xv3_8_hw_mode ] || \
++		active=$(cat /sys/module/ath11k/parameters/xv3_8_hw_mode)
++	if [ "$active" = "$mode" ]; then
++		reboot_required=no
++	else
++		reboot_required=yes
++	fi
++	printf 'configured_mode=%s\n' "$mode"
++	printf 'active_mode=%s\n' "$active"
++	printf 'reboot_required=%s\n' "$reboot_required"
++	printf 'max_clients_per_radio=%s\n' "$max_clients"
++}
++
++set_mode() {
++	valid_mode "$1" || {
++		echo 'Mode must be dual-4x4 or single-8x8.' >&2
++		return 1
++	}
++	uci -q set "$config_file.main=settings"
++	uci -q set "$config_file.main.mode=$1"
++	uci -q commit "$config_file"
++	sync_settings || return 1
++	echo 'Radio topology staged; reboot required.'
++}
++
++set_limit() {
++	valid_limit "$1" || {
++		echo 'Client limit must be an integer from 1 to 512.' >&2
++		return 1
++	}
++	uci -q set "$config_file.main=settings"
++	uci -q set "$config_file.main.max_clients_per_radio=$1"
++	uci -q commit "$config_file"
++	sync_settings || return 1
++	echo 'Client limit staged; reload Wi-Fi to apply it.'
++}
++
++board_supported || {
++	echo 'This command is only supported on the Cambium XV3-8.' >&2
++	exit 1
++}
++
++case "${1:-show}" in
++	show) show_settings ;;
++	sync) sync_settings ;;
++	set-mode)
++		[ "$#" -eq 2 ] || { echo 'Usage: thor-radio-settings set-mode MODE' >&2; exit 2; }
++		set_mode "$2"
++		;;
++	set-client-limit)
++		[ "$#" -eq 2 ] || { echo 'Usage: thor-radio-settings set-client-limit NUMBER' >&2; exit 2; }
++		set_limit "$2"
++		;;
++	*)
++		echo 'Usage: thor-radio-settings {show|sync|set-mode MODE|set-client-limit NUMBER}' >&2
++		exit 2
++		;;
++esac
+diff --git a/package/cambium/cambium-thor-support/files/thor-radio-settings.init b/package/cambium/cambium-thor-support/files/thor-radio-settings.init
+new file mode 100755
+index 0000000000..238db22b5f
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-radio-settings.init
+@@ -0,0 +1,16 @@
++#!/bin/sh /etc/rc.common
++
++START=12
++USE_PROCD=1
++
++start_service() {
++	/usr/sbin/thor-radio-settings sync
++}
++
++reload_service() {
++	/usr/sbin/thor-radio-settings sync
++}
++
++service_triggers() {
++	procd_add_reload_trigger xv3_8_radio
++}
+diff --git a/package/cambium/cambium-thor-support/files/thor-scan-radio b/package/cambium/cambium-thor-support/files/thor-scan-radio
+new file mode 100755
+index 0000000000..001f1e17e8
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-scan-radio
+@@ -0,0 +1,21 @@
++#!/bin/sh
++[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = cambiumnetworks,xv3-8 ] || exit 0
++for phy in /sys/class/ieee80211/*; do
++ [ "$(basename "$(readlink -f "$phy/device/driver")")" = ath10k_pci ] || continue
++ dev=$(readlink -f "$phy/device") || continue
++ path=${dev#/sys/devices/}
++ case "$path" in platform/*/pci*) path=${path#platform/} ;; esac
++ for section in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
++  case "$(uci -q get wireless.$section.path)" in "$path"|"platform/$path") ;; *) continue ;; esac
++  for iface in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)\.device='$section'$/\1/p"); do
++   uci -q delete wireless.$iface
++  done
++  uci -q delete wireless.$section
++ done
++ uci set wireless.scan=wifi-device
++ uci set wireless.scan.type=mac80211
++ uci set wireless.scan.path="$path"
++ uci set wireless.scan.disabled=1
++ uci commit wireless
++ done
++exit 0
+diff --git a/package/cambium/cambium-thor-support/files/thor-topology b/package/cambium/cambium-thor-support/files/thor-topology
+new file mode 100644
+index 0000000000..f632fddb3b
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-topology
+@@ -0,0 +1,2 @@
++#!/bin/sh
++exec /usr/bin/ucode -- /usr/share/ucentral/thor-topology-main.uc "$@"
+diff --git a/package/cambium/cambium-thor-support/files/thor-topology-main.uc b/package/cambium/cambium-thor-support/files/thor-topology-main.uc
+new file mode 100644
+index 0000000000..1498c1198e
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-topology-main.uc
+@@ -0,0 +1,87 @@
++#!/usr/bin/ucode
++REQUIRE_SEARCH_PATH = ['/usr/share/ucentral/*.uc', ...REQUIRE_SEARCH_PATH];
++import * as fs from 'fs';
++import * as uci from 'uci';
++import * as schema from 'schemareader';
++let policy = require('thor_topology_policy');
++// Offline fixtures use a private root. Firmware always uses the normal paths.
++let root = getenv('THOR_ROOT') || '';
++function path(name) { return root + name; }
++function read(name) { return fs.readfile(path(name)); }
++let pending = '/etc/ucentral/thor-topology.pending.json';
++let marker = '/etc/ucentral/thor-topology.pending';
++let modefile = '/etc/modules.d/ath11k-ahb';
++let config;
++function document(source) {
++ let raw = json(read(source) || '');
++ let logs = [];
++ let validated = schema.validate(raw, logs);
++ assert(validated && !length(filter(logs, m => substr(m, 0, 3) == '[E]')),
++        'Topology requires a valid saved controller configuration');
++ return {raw, validated};
++}
++function clear_pending() { fs.unlink(path(pending)); fs.unlink(path(marker)); }
++function stage(source) {
++ assert(match(source, /^\/etc\/ucentral\/ucentral\.cfg\.[0-9]+$/),
++        'Unexpected controller configuration path');
++ let doc = document(source);
++ let active = trim(read('/sys/module/ath11k/parameters/xv3_8_hw_mode') || '');
++ let previous = config.get('xv3_8_radio', 'main', 'mode') || 'dual-4x4';
++ let desired = policy.select_mode(doc.validated, previous);
++ assert(active in ['dual-4x4', 'single-8x8'], 'Active Thor topology is unavailable');
++ if (active == desired) { clear_pending(); return; }
++ assert(fs.writefile(path(pending + '.tmp'), sprintf('%J', doc.raw)), 'Cannot stage topology document');
++ assert(fs.rename(path(pending + '.tmp'), path(pending)), 'Cannot commit topology document');
++ assert(fs.writefile(path(marker), sprintf('%J', {source, uuid: doc.raw.uuid, active, desired, reboot_required: true})),
++        'Cannot record pending topology');
++ // Existing active configuration and live UCI are unchanged until the next boot.
++}
++function boot() {
++ fs.unlink(path("/tmp/thor-topology.failed"));
++ let source, change = json(read(marker) || '{}');
++ if (fs.stat(path(marker))) {
++  assert(fs.stat(path(pending)), 'Pending topology document is missing');
++  source = pending;
++ } else {
++  source = '/etc/ucentral/ucentral.active';
++  if (fs.stat(path(source)) || fs.readlink(path(source))) {
++   assert(length(read(source) || ''), 'Saved active configuration is missing or empty');
++   if (json(read(source))?.uuid == 1) source = '/rom/etc/ucentral/ucentral.cfg.0000000001';
++  } else if (fs.stat(path('/etc/ucentral/ucentral.cfg.0000000002')))
++   source = '/etc/ucentral/ucentral.cfg.0000000002';
++  else source = '/rom/etc/ucentral/ucentral.cfg.0000000001';
++ }
++ let doc = document(source);
++ let desired = policy.select_mode(doc.validated, config.get('xv3_8_radio', 'main', 'mode'));
++ if (fs.stat(path(marker))) {
++  assert(match(change.source, /^\/etc\/ucentral\/ucentral\.cfg\.[0-9]+$/), 'Invalid pending controller path');
++  assert(doc.raw.uuid == change.uuid && desired == change.desired, 'Pending topology identity changed');
++  assert(fs.writefile(path(change.source), sprintf('%J', doc.raw)), 'Cannot retain accepted controller document');
++  fs.unlink(path('/etc/ucentral/ucentral.active'));
++  assert(fs.symlink(path(change.source), path('/etc/ucentral/ucentral.active')), 'Cannot select accepted controller document');
++  clear_pending();
++ }
++ config.set('xv3_8_radio', 'main', 'settings');
++ config.set('xv3_8_radio', 'main', 'mode', desired);
++ assert(config.commit('xv3_8_radio'), 'Cannot persist selected topology');
++ if (fs.stat(path('/etc/config-shadow/xv3_8_radio')))
++  assert(fs.writefile(path('/etc/config-shadow/xv3_8_radio'), read('/etc/config/xv3_8_radio')), 'Cannot retain shadow topology');
++ assert(fs.writefile(path(modefile + '.tmp'), 'ath11k xv3_8_hw_mode=' + desired + '\nath11k_ahb\n'), 'Cannot stage module mode');
++ assert(fs.rename(path(modefile + '.tmp'), path(modefile)), 'Cannot select module mode');
++ assert(fs.chmod(path(modefile), 0644), 'Cannot protect module mode');
++ fs.writefile(path('/tmp/thor-topology.desired'), desired);
++}
++try {
++ if (trim(read('/tmp/sysinfo/board_name') || '') != 'cambiumnetworks,xv3-8') exit(0);
++ if (!fs.stat(path('/tmp/.uci')))
++  assert(fs.mkdir(path('/tmp/.uci'), 0700), 'Cannot prepare early UCI staging');
++ config = uci.cursor(path('/etc/config'), path('/tmp/.uci'));
++ assert(config, 'Cannot load early UCI configuration');
++ if (ARGV[0] == 'stage') stage(ARGV[1]);
++ else if (ARGV[0] == 'boot') boot();
++ else die('Expected boot or stage');
++} catch (e) {
++ fs.writefile(path('/tmp/thor-topology.failed'), 'Thor topology validation failed');
++ warn('Thor topology failed closed: ', e, '\n');
++ exit(1);
++}
+diff --git a/package/cambium/cambium-thor-support/files/thor-topology.init b/package/cambium/cambium-thor-support/files/thor-topology.init
+new file mode 100644
+index 0000000000..6dc50bcf93
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor-topology.init
+@@ -0,0 +1,4 @@
++#!/bin/sh /etc/rc.common
++# Before S09 board-data import and S10 kmodloader; no networking/reboot here.
++START=08
++start() { /usr/libexec/thor-topology boot; }
+diff --git a/package/cambium/cambium-thor-support/files/thor_topology_policy.uc b/package/cambium/cambium-thor-support/files/thor_topology_policy.uc
+new file mode 100644
+index 0000000000..ecf22c00e0
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/thor_topology_policy.uc
+@@ -0,0 +1,55 @@
++// Thor's ath11k topology is selected at module load, not by antenna masks.
++function select_mode(config, previous) {
++ let selected = null, five = [];
++ for (let radio in config.radios || []) {
++  if (radio.enable == false) continue;
++  assert(radio.band in ['2G', '5G', '5G-lower', '5G-upper'], 'Unsupported Thor serving band');
++  let request = radio.mimo ? match(radio.mimo, /^([1-8])x([1-8])$/) : null;
++  if (radio.mimo)
++   assert(request && request[1] == request[2], 'Invalid Thor MIMO request');
++  if (radio.band == '2G') {
++   assert(!request || +request[1] <= 4, 'Thor 2GHz supports at most four chains');
++   continue;
++  }
++  push(five, radio);
++  let mode = request && +request[1] > 4 ? 'single-8x8' :
++             request || radio.band != '5G' ? 'dual-4x4' : null;
++  if (mode) {
++   assert(!selected || selected == mode, 'Conflicting Thor 5GHz topologies');
++   selected = mode;
++  }
++ }
++ selected ||= previous || 'dual-4x4';
++ assert(selected in ['dual-4x4', 'single-8x8'], 'Invalid persisted Thor topology');
++ if (selected == 'single-8x8')
++  assert(length(five) <= 1 && (!length(five) || five[0].band == '5G'),
++         'Combined 8x8 needs one full-band 5G configuration; split settings conflict');
++ return selected;
++};
++
++function chains(mask) {
++ let count = 0;
++ for (let bit = 0; bit < 16; bit++)
++  if (mask & (1 << bit)) count++;
++ return count;
++};
++
++function validate_phys(phys, mode) {
++ let two = [], five = [];
++ for (let path, phy in phys) {
++  if ('2G' in phy.band) push(two, phy);
++  if ('5G' in phy.band) push(five, phy);
++ }
++ assert(length(two) == 1 && length(five) == (mode == 'single-8x8' ? 1 : 2),
++        'Thor serving PHY layout does not match selected topology');
++ for (let phy in two)
++  assert(chains(phy.tx_ant_avail) == 4 && chains(phy.rx_ant_avail) == 4,
++         'Thor 2GHz does not advertise four chains');
++ for (let phy in five)
++  assert(chains(phy.tx_ant_avail) == (mode == 'single-8x8' ? 8 : 4) &&
++         chains(phy.rx_ant_avail) == (mode == 'single-8x8' ? 8 : 4),
++         'Thor 5GHz chain capability does not match actual topology');
++ return phys;
++};
++
++return { select_mode, chains, validate_phys };
+diff --git a/package/cambium/cambium-thor-support/files/xv3_8_radio.config b/package/cambium/cambium-thor-support/files/xv3_8_radio.config
+new file mode 100644
+index 0000000000..f7be94e8c1
+--- /dev/null
++++ b/package/cambium/cambium-thor-support/files/xv3_8_radio.config
+@@ -0,0 +1,3 @@
++config settings 'main'
++	option mode 'dual-4x4'
++	option max_clients_per_radio '128'
+diff --git a/package/kernel/mac80211/patches/ath11k/950-wifi-ath11k-implement-CE-interrupt-enable-disable-for-AHB.patch b/package/kernel/mac80211/patches/ath11k/950-wifi-ath11k-implement-CE-interrupt-enable-disable-for-AHB.patch
+new file mode 100644
+index 0000000000..61fc21fc9a
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/950-wifi-ath11k-implement-CE-interrupt-enable-disable-for-AHB.patch
+@@ -0,0 +1,57 @@
++From a7ab5c835e4253b6577e4137367c05bfddd79fa2 Mon Sep 17 00:00:00 2001
++From: Julius Bairaktaris <julius@bairaktaris.de>
++Date: Mon, 27 Jul 2026 00:19:07 +0200
++Subject: [PATCH] wifi: ath11k: implement CE interrupt enable/disable for AHB
++
++ath11k_core_reset() calls ath11k_hif_ce_irq_disable() right before it
++powers the target down, but ath11k_ahb_hif_ops_ipq8074 never set the
++ce_irq_enable/ce_irq_disable pair, and ath11k_hif_ce_irq_disable() does
++nothing when the op is NULL. On AHB the copy engine interrupts and their
++tasklets therefore stay live across rproc_shutdown(), where the register
++space they touch is no longer accessible.
++
++Wire the ops up. The sequence is the one ath11k_ahb_stop() already runs,
++factored into a helper and reused, so behaviour on the stop path is
++unchanged. wcn6750 is not affected: it uses the pcic ops, which
++implement the pair already.
++
++Assisted-by: Claude:claude-opus-5
++Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
++Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
++Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Link: https://patch.msgid.link/20260726221908.104873-2-julius@bairaktaris.de
++Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
++---
++ drivers/net/wireless/ath/ath11k/ahb.c | 9 ++++++++-
++ 1 file changed, 8 insertions(+), 1 deletion(-)
++
++--- a/drivers/net/wireless/ath/ath11k/ahb.c
+++++ b/drivers/net/wireless/ath/ath11k/ahb.c
++@@ -400,12 +400,17 @@ static void ath11k_ahb_ext_irq_disable(s
++ 	ath11k_ahb_sync_ext_irqs(ab);
++ }
++ 
++-static void ath11k_ahb_stop(struct ath11k_base *ab)
+++static void ath11k_ahb_ce_irq_disable_sync(struct ath11k_base *ab)
++ {
++ 	if (!test_bit(ATH11K_FLAG_CRASH_FLUSH, &ab->dev_flags))
++ 		ath11k_ahb_ce_irqs_disable(ab);
++ 	ath11k_ahb_sync_ce_irqs(ab);
++ 	ath11k_ahb_kill_tasklets(ab);
+++}
+++
+++static void ath11k_ahb_stop(struct ath11k_base *ab)
+++{
+++	ath11k_ahb_ce_irq_disable_sync(ab);
++ 	timer_delete_sync(&ab->rx_replenish_retry);
++ 	ath11k_ce_cleanup_pipes(ab);
++ }
++@@ -795,6 +800,8 @@ static const struct ath11k_hif_ops ath11
++ 	.map_service_to_pipe = ath11k_ahb_map_service_to_pipe,
++ 	.power_down = ath11k_ahb_power_down,
++ 	.power_up = ath11k_ahb_power_up,
+++	.ce_irq_enable = ath11k_ahb_ce_irqs_enable,
+++	.ce_irq_disable = ath11k_ahb_ce_irq_disable_sync,
++ };
++ 
++ static const struct ath11k_hif_ops ath11k_ahb_hif_ops_wcn6750 = {
+diff --git a/package/kernel/mac80211/patches/ath11k/951-wifi-ath11k-disable-interrupts-during-firmware-crash-recovery.patch b/package/kernel/mac80211/patches/ath11k/951-wifi-ath11k-disable-interrupts-during-firmware-crash-recovery.patch
+new file mode 100644
+index 0000000000..996ce9b5b0
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/951-wifi-ath11k-disable-interrupts-during-firmware-crash-recovery.patch
+@@ -0,0 +1,72 @@
++From f7a74e131d3f0de04335dbe278bfb82bdafcdb3e Mon Sep 17 00:00:00 2001
++From: Julius Bairaktaris <julius@bairaktaris.de>
++Date: Mon, 27 Jul 2026 00:19:08 +0200
++Subject: [PATCH] wifi: ath11k: disable interrupts during firmware crash recovery
++
++On IPQ8074 a firmware assert reboots the SoC:
++
++  Unable to handle kernel read from unreadable memory at virtual address 0
++  pc : ath11k_hal_srng_access_begin+0xc/0x60 [ath11k]
++  lr : ath11k_dp_rx_process_mon_status+0x15c/0xd84 [ath11k]
++  Call trace:
++   ath11k_hal_srng_access_begin+0xc/0x60 [ath11k]
++   ath11k_dp_rx_process_mon_rings+0xa0/0x5d4 [ath11k]
++   ath11k_dp_service_srng+0x1f4/0x348 [ath11k]
++   ath11k_ahb_ext_grp_napi_poll+0x34/0xd4 [ath11k_ahb]
++   __napi_poll+0x38/0x188
++   net_rx_action+0x120/0x2c0
++
++ath11k_core_reconfigure_on_crash() tears the data path down with
++ath11k_dp_pdev_free(), ath11k_dp_free() and ath11k_hal_srng_clear(),
++which memsets the ring list. The DP NAPI is still running while that
++happens, so it services a ring whose address pointer has just been
++cleared.
++
++That function used to disable the interrupts first, until
++commit d455e805de70 ("wifi: ath11k: rearrange IRQ enable/disable in reset path")
++moved the disable into ath11k_core_reset(). reset_work is only queued
++from mhi.c and from the debugfs hw-restart handler, so AHB parts never
++run it on a real firmware crash. Their recovery goes QMI server exit ->
++restart_work -> ath11k_core_reconfigure_on_crash() ->
++ath11k_core_qmi_firmware_ready(), and nothing disables the interrupts
++anywhere along it.
++
++Disable them again on the crash path. The reset path has already done
++so by the time it gets here, hence the ab->is_reset check.
++
++This is also why the debugfs hw-restart trigger never showed the
++problem: it goes through ath11k_core_reset(), the one path that still
++had the disable.
++
++Tested-on: IPQ8074 hw2.0 AHB WLAN.HK.2.12-01460-QCAHKSWPL_SILICONZ-1
++
++Fixes: d455e805de70 ("wifi: ath11k: rearrange IRQ enable/disable in reset path")
++Assisted-by: Claude:claude-opus-5
++Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
++Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
++Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
++Link: https://patch.msgid.link/20260726221908.104873-3-julius@bairaktaris.de
++Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
++---
++ drivers/net/wireless/ath/ath11k/core.c | 10 ++++++++++
++ 1 file changed, 10 insertions(+)
++
++--- a/drivers/net/wireless/ath/ath11k/core.c
+++++ b/drivers/net/wireless/ath/ath11k/core.c
++@@ -2394,6 +2394,16 @@ static int ath11k_core_reconfigure_on_cr
++ 
++ 	mutex_lock(&ab->core_lock);
++ 	ath11k_thermal_unregister(ab);
+++
+++	/*
+++	 * ath11k_core_reset() already disabled the interrupts on the reset
+++	 * path; only the firmware crash path reaches here with them live.
+++	 */
+++	if (!ab->is_reset) {
+++		ath11k_hif_irq_disable(ab);
+++		ath11k_hif_ce_irq_disable(ab);
+++	}
+++
++ 	ath11k_dp_pdev_free(ab);
++ 	ath11k_cfr_deinit(ab);
++ 	ath11k_spectral_deinit(ab);
+diff --git a/package/kernel/mac80211/patches/ath11k/952-ath11k-xv3-8-configurable-radio-mode.patch b/package/kernel/mac80211/patches/ath11k/952-ath11k-xv3-8-configurable-radio-mode.patch
+new file mode 100644
+index 0000000000..a57db3e46e
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/952-ath11k-xv3-8-configurable-radio-mode.patch
+@@ -0,0 +1,102 @@
++From 0000000000000000000000000000000000000952 Mon Sep 17 00:00:00 2001
++Subject: [PATCH] wifi: ath11k: allow XV3-8 radio topology selection
++
++The Cambium XV3-8 can expose its IPQ8074 radio complex as either a 4x4
++2.4 GHz PHY plus one 8x8 5 GHz PHY, or as a 4x4 2.4 GHz PHY plus two
++4x4 5 GHz PHYs.  Firmware advertises both DBS and DBS-SBS hardware modes,
++but ath11k normally gives DBS-SBS the higher priority.
++
++Add a board-scoped, read-only module parameter so userspace can persist the
++topology to use on the next boot.  Keep dual-4x4 as the default.  Refuse to
++initialize the radios when firmware does not advertise the requested mode;
++silently booting a different topology would apply WLAN configuration to the
++wrong physical radios.
++
++--- a/drivers/net/wireless/ath/ath11k/core.c
+++++ b/drivers/net/wireless/ath/ath11k/core.c
++@@ -38,6 +38,11 @@ bool ath11k_ftm_mode;
++ module_param_named(ftm_mode, ath11k_ftm_mode, bool, 0444);
++ MODULE_PARM_DESC(ftm_mode, "Boots up in factory test mode");
++ 
+++char *ath11k_xv3_8_hw_mode = "dual-4x4";
+++module_param_named(xv3_8_hw_mode, ath11k_xv3_8_hw_mode, charp, 0444);
+++MODULE_PARM_DESC(xv3_8_hw_mode,
+++		 "Cambium XV3-8 radio topology: dual-4x4 or single-8x8");
+++
++ static struct ath11k_hw_params ath11k_hw_params[] = {
++ 	{
++ 		.hw_rev = ATH11K_HW_IPQ8074,
++--- a/drivers/net/wireless/ath/ath11k/core.h
+++++ b/drivers/net/wireless/ath/ath11k/core.h
++@@ -63,6 +63,7 @@ struct ath11k_skb_rxcb {
++ 
++ extern unsigned int ath11k_frame_mode;
++ extern bool ath11k_ftm_mode;
+++extern char *ath11k_xv3_8_hw_mode;
++ 
++ #define ATH11K_SCAN_TIMEOUT_HZ (20 * HZ)
++ 
++--- a/drivers/net/wireless/ath/ath11k/wmi.c
+++++ b/drivers/net/wireless/ath/ath11k/wmi.c
++@@ -4752,10 +4752,26 @@ static int ath11k_wmi_tlv_hw_mode_caps(s
++ {
++ 	struct wmi_tlv_svc_rdy_ext_parse *svc_rdy_ext = data;
++ 	struct wmi_hw_mode_capabilities *hw_mode_caps;
++-	enum wmi_host_hw_mode_config_type mode, pref;
+++	enum wmi_host_hw_mode_config_type mode, pref, requested;
++ 	u32 i;
+++	bool requested_found = false;
++ 	int ret;
++ 
+++	requested = WMI_HOST_HW_MODE_MAX;
+++	if (of_machine_is_compatible("cambiumnetworks,xv3-8")) {
+++		if (!strcmp(ath11k_xv3_8_hw_mode, "dual-4x4"))
+++			requested = WMI_HOST_HW_MODE_DBS_SBS;
+++		else if (!strcmp(ath11k_xv3_8_hw_mode, "single-8x8"))
+++			requested = WMI_HOST_HW_MODE_DBS;
+++		else
+++			ath11k_warn(soc,
+++				    "invalid XV3-8 radio mode '%s', using dual-4x4\n",
+++				    ath11k_xv3_8_hw_mode);
+++
+++		if (requested == WMI_HOST_HW_MODE_MAX)
+++			requested = WMI_HOST_HW_MODE_DBS_SBS;
+++	}
+++
++ 	svc_rdy_ext->n_hw_mode_caps = 0;
++ 	svc_rdy_ext->hw_mode_caps = (struct wmi_hw_mode_capabilities *)ptr;
++ 
++@@ -4773,13 +4788,30 @@ static int ath11k_wmi_tlv_hw_mode_caps(s
++ 		mode = hw_mode_caps->hw_mode_id;
++ 		pref = soc->wmi_ab.preferred_hw_mode;
++ 
++-		if (ath11k_hw_mode_pri_map[mode] < ath11k_hw_mode_pri_map[pref]) {
+++		if (requested != WMI_HOST_HW_MODE_MAX && mode == requested) {
++			svc_rdy_ext->pref_hw_mode_caps = *hw_mode_caps;
++			soc->wmi_ab.preferred_hw_mode = mode;
+++			requested_found = true;
+++		} else if (requested == WMI_HOST_HW_MODE_MAX &&
+++			   ath11k_hw_mode_pri_map[mode] <
+++			   ath11k_hw_mode_pri_map[pref]) {
+++			svc_rdy_ext->pref_hw_mode_caps = *hw_mode_caps;
+++			soc->wmi_ab.preferred_hw_mode = mode;
++ 		}
++ 		i++;
++ 	}
++ 
+++	if (requested != WMI_HOST_HW_MODE_MAX && !requested_found) {
+++		ath11k_err(soc,
+++			  "requested XV3-8 radio mode '%s' is not supported by firmware\n",
+++			  ath11k_xv3_8_hw_mode);
+++		return -EOPNOTSUPP;
+++	}
+++
+++	if (requested != WMI_HOST_HW_MODE_MAX)
+++		ath11k_info(soc, "XV3-8 radio mode %s selected (hardware mode %d)\n",
+++			    ath11k_xv3_8_hw_mode, requested);
+++
++ 	ath11k_dbg(soc, ATH11K_DBG_WMI, "preferred_hw_mode:%d\n",
++ 		   soc->wmi_ab.preferred_hw_mode);
++ 	if (soc->wmi_ab.preferred_hw_mode == WMI_HOST_HW_MODE_MAX)
++-- 
++2.51.0
+diff --git a/package/kernel/qca-ssdk/patches/950-qca-ssdk-recognize-aqr111c.patch b/package/kernel/qca-ssdk/patches/950-qca-ssdk-recognize-aqr111c.patch
+new file mode 100644
+index 0000000000..16ea6303c4
+--- /dev/null
++++ b/package/kernel/qca-ssdk/patches/950-qca-ssdk-recognize-aqr111c.patch
+@@ -0,0 +1,20 @@
++--- a/include/hsl/phy/hsl_phy.h
+++++ b/include/hsl/phy/hsl_phy.h
++@@ -607,6 +607,7 @@
++ #define AQUANTIA_PHY_109        0x03a1b502
++ #define AQUANTIA_PHY_111        0x03a1b610
++ #define AQUANTIA_PHY_111B0      0x03a1b612
+++#define AQUANTIA_PHY_111C       0x03a1b7e2
++ #define AQUANTIA_PHY_112        0x03a1b660
++ #define AQUANTIA_PHY_113C_A0    0x31c31C10
++ #define AQUANTIA_PHY_113C_A1    0x31c31C11
++--- a/src/hsl/phy/hsl_phy.c
+++++ b/src/hsl/phy/hsl_phy.c
++@@ -265,6 +265,7 @@
++ 		case AQUANTIA_PHY_109:
++ 		case AQUANTIA_PHY_111:
++ 		case AQUANTIA_PHY_111B0:
+++		case AQUANTIA_PHY_111C:
++ 		case AQUANTIA_PHY_112:
++ 		case AQUANTIA_PHY_113C_A0:
++ 		case AQUANTIA_PHY_113C_A1:
+diff --git a/target/linux/generic/pending-6.12/950-net-phy-aquantia-add-aqr111c.patch b/target/linux/generic/pending-6.12/950-net-phy-aquantia-add-aqr111c.patch
+new file mode 100644
+index 0000000000..fbe5cc3847
+--- /dev/null
++++ b/target/linux/generic/pending-6.12/950-net-phy-aquantia-add-aqr111c.patch
+@@ -0,0 +1,54 @@
++Subject: [PATCH] net: phy: aquantia: add Thor AQR111C for kernel 6.12
++
++Uses the existing AQR111 callbacks from the destination kernel.
++
++--- a/drivers/net/phy/aquantia/aquantia_main.c
+++++ b/drivers/net/phy/aquantia/aquantia_main.c
++@@ -25,6 +25,7 @@
++ #define PHY_ID_AQR405	0x03a1b4b0
++ #define PHY_ID_AQR111	0x03a1b610
++ #define PHY_ID_AQR111B0	0x03a1b612
+++#define PHY_ID_AQR111C	0x03a1b7e0
++ #define PHY_ID_AQR112	0x03a1b662
++ #define PHY_ID_AQR412	0x03a1b712
++ #define PHY_ID_AQR113	0x31c31c40
++@@ -989,6 +990,31 @@
++ {
++ 	PHY_ID_MATCH_MODEL(PHY_ID_AQR111),
++ 	.name		= "Aquantia AQR111",
+++	.probe		= aqr107_probe,
+++	.get_rate_matching = aqr107_get_rate_matching,
+++	.config_init	= aqr107_config_init,
+++	.config_aneg    = aqr_config_aneg,
+++	.config_intr	= aqr_config_intr,
+++	.handle_interrupt = aqr_handle_interrupt,
+++	.read_status	= aqr107_read_status,
+++	.get_tunable    = aqr107_get_tunable,
+++	.set_tunable    = aqr107_set_tunable,
+++	.suspend	= aqr107_suspend,
+++	.resume		= aqr107_resume,
+++	.get_sset_count	= aqr107_get_sset_count,
+++	.get_strings	= aqr107_get_strings,
+++	.get_stats	= aqr107_get_stats,
+++	.get_features   = aqr111_get_features,
+++	.link_change_notify = aqr107_link_change_notify,
+++	.led_brightness_set = aqr_phy_led_brightness_set,
+++	.led_hw_is_supported = aqr_phy_led_hw_is_supported,
+++	.led_hw_control_set = aqr_phy_led_hw_control_set,
+++	.led_hw_control_get = aqr_phy_led_hw_control_get,
+++	.led_polarity_set = aqr_phy_led_polarity_set,
+++},
+++{
+++	PHY_ID_MATCH_MODEL(PHY_ID_AQR111C),
+++	.name		= "Aquantia AQR111C",
++ 	.probe		= aqr107_probe,
++ 	.get_rate_matching = aqr107_get_rate_matching,
++ 	.config_init	= aqr107_config_init,
++@@ -1244,6 +1270,7 @@
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQCS109) },
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR405) },
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR111) },
+++	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR111C) },
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR111B0) },
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR112) },
++ 	{ PHY_ID_MATCH_MODEL(PHY_ID_AQR412) },
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-installer.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-installer.dts
+new file mode 100644
+index 0000000000..ace7a6ee94
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-installer.dts
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/*
++ * Thor RAM installer: OpenWrt goes into rootfs, so only rootfs and the U-Boot
++ * environment (for the guarded first boot) are writable. rootfs_1 keeps the
++ * stock firmware read-only.
++ */
++#include "ipq8074-xv3-8.dts"
++
++/ {
++	model = "Cambium Networks XV3-8";
++
++	chosen {
++		bootargs-append = " ubi.mtd=rootfs root=/dev/ubiblock0_1 rootfstype=squashfs rootwait";
++	};
++};
++
++&rootfs {
++	/delete-property/ read-only;
++};
++
++&appsblenv {
++	/delete-property/ read-only;
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent-bank1.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent-bank1.dts
+new file mode 100644
+index 0000000000..8822ffe2e0
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent-bank1.dts
+@@ -0,0 +1,10 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/* Thor A/B persistent tree for bank 1 (config@hk02-bank1). */
++#include "ipq8074-xv3-8-persistent.dts"
++
++/ {
++	chosen {
++		bootargs-append = " ubi.mtd=rootfs_1 root=/dev/ubiblock0_1 rootfstype=squashfs rootwait";
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent.dts
+new file mode 100644
+index 0000000000..280dc02d15
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-persistent.dts
+@@ -0,0 +1,18 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/*
++ * Thor A/B persistent tree for bank 0 (config@hk02): both 96 MiB firmware
++ * banks and the U-Boot environment are writable, and the root is appended
++ * here, as on the validated single-bank installs, so their committed boot
++ * command keeps working. ipq8074-xv3-8-persistent-bank1.dts is the same tree
++ * rooted in bank 1. It includes the QCA9887 scanning radio and the
++ * auxiliary 1 GbE port. ART, 0:ETHPHYFW and the other NOR partitions stay
++ * read-only.
++ */
++#include "ipq8074-xv3-8-installer.dts"
++#include "ipq8074-xv3-8-scan-radio.dtsi"
++/* Auxiliary port enabled in the kernel-6.12 base tree. */
++
++&rootfs_1 {
++	/delete-property/ read-only;
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-scan-radio.dtsi b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-scan-radio.dtsi
+new file mode 100644
+index 0000000000..acfb00812e
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8-scan-radio.dtsi
+@@ -0,0 +1,30 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/*
++ * The XV3-8's dedicated scanning radio: a QCA9887-class ath10k device
++ * (168c:0050) on PCIe 1, as the stock firmware sets it up (PCIe domain 1,
++ * PERST# on GPIO61). It serves no clients. Its calibration and MAC are the
++ * 0x844-byte block at ART offset 0x33000, read in place.
++ */
++
++&pcie_qmp1 {
++	status = "okay";
++};
++
++&pcie1 {
++	status = "okay";
++
++	perst-gpios = <&tlmm 61 GPIO_ACTIVE_LOW>;
++
++	pcie@0 {
++		scan_radio: wifi@0,0 {
++			status = "okay";
++
++			compatible = "qcom,ath10k";
++			reg = <0x00010000 0 0 0 0>;
++
++			nvmem-cell-names = "calibration";
++			nvmem-cells = <&caldata_qca9887>;
++		};
++	};
++};
+diff --git a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8.dts b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8.dts
+new file mode 100644
+index 0000000000..d568b5862d
+--- /dev/null
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq8074-xv3-8.dts
+@@ -0,0 +1,386 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++
++/dts-v1/;
++
++#include "ipq8074.dtsi"
++#include "ipq8074-hk-cpu.dtsi"
++#include "ipq8074-ess.dtsi"
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	model = "Cambium Networks XV3-8";
++	compatible = "cambiumnetworks,xv3-8", "qcom,ipq8074";
++
++	aliases {
++		serial0 = &blsp1_uart5;
++		ethernet0 = &dp6_syn;
++		label-mac-device = &dp6_syn;
++		led-boot = &led_orange;
++		led-failsafe = &led_red;
++		led-running = &led_green;
++		led-upgrade = &led_orange;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	cambium-platform {
++		board-sku = <19>;
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			gpios = <&tlmm 57 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++			debounce-interval = <60>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_orange: led-orange {
++			color = <LED_COLOR_ID_ORANGE>;
++			function = LED_FUNCTION_STATUS;
++			gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led_green: led-green {
++			color = <LED_COLOR_ID_GREEN>;
++			function = LED_FUNCTION_STATUS;
++			gpios = <&tlmm 28 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led_red: led-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_STATUS;
++			gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++
++		led_blue: led-blue {
++			color = <LED_COLOR_ID_BLUE>;
++			function = LED_FUNCTION_STATUS;
++			gpios = <&tlmm 32 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++	};
++};
++
++&blsp1_uart5 {
++	status = "okay";
++};
++
++&blsp1_spi1 {
++	status = "okay";
++
++	flash@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <50000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "0:SBL1";
++				reg = <0x000000 0x050000>;
++				read-only;
++			};
++
++			partition@50000 {
++				label = "0:MIBIB";
++				reg = <0x050000 0x010000>;
++				read-only;
++			};
++
++			partition@60000 {
++				label = "0:BOOTCONFIG";
++				reg = <0x060000 0x020000>;
++				read-only;
++			};
++
++			partition@80000 {
++				label = "0:BOOTCONFIG1";
++				reg = <0x080000 0x020000>;
++				read-only;
++			};
++
++			partition@a0000 {
++				label = "0:QSEE";
++				reg = <0x0a0000 0x180000>;
++				read-only;
++			};
++
++			partition@220000 {
++				label = "0:QSEE_1";
++				reg = <0x220000 0x180000>;
++				read-only;
++			};
++
++			partition@3a0000 {
++				label = "0:DEVCFG";
++				reg = <0x3a0000 0x010000>;
++				read-only;
++			};
++
++			partition@3b0000 {
++				label = "0:DEVCFG_1";
++				reg = <0x3b0000 0x010000>;
++				read-only;
++			};
++
++			partition@3c0000 {
++				label = "0:APDP";
++				reg = <0x3c0000 0x010000>;
++				read-only;
++			};
++
++			partition@3d0000 {
++				label = "mfginfo";
++				reg = <0x3d0000 0x010000>;
++				read-only;
++			};
++
++			partition@3e0000 {
++				label = "0:RPM";
++				reg = <0x3e0000 0x040000>;
++				read-only;
++			};
++
++			partition@420000 {
++				label = "0:RPM_1";
++				reg = <0x420000 0x040000>;
++				read-only;
++			};
++
++			partition@460000 {
++				label = "0:CDT";
++				reg = <0x460000 0x010000>;
++				read-only;
++			};
++
++			partition@470000 {
++				label = "0:CDT_1";
++				reg = <0x470000 0x010000>;
++				read-only;
++			};
++
++			partition@480000 {
++				label = "oldappsblenv";
++				reg = <0x480000 0x010000>;
++				read-only;
++			};
++
++			partition@490000 {
++				label = "0:APPSBL";
++				reg = <0x490000 0x0a0000>;
++				read-only;
++			};
++
++			partition@530000 {
++				label = "0:APPSBL_1";
++				reg = <0x530000 0x0a0000>;
++				read-only;
++			};
++
++			art: partition@5d0000 {
++				label = "0:ART";
++				reg = <0x5d0000 0x040000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					macaddr_base: mac-address@40 {
++						compatible = "mac-base";
++						reg = <0x40 0x6>;
++						#nvmem-cell-cells = <1>;
++					};
++
++					/* The PCIe QCA9887 scanning radio's calibration and MAC. */
++					caldata_qca9887: calibration@33000 {
++						reg = <0x33000 0x844>;
++					};
++				};
++			};
++
++			ethphyfw: partition@610000 {
++				label = "0:ETHPHYFW";
++				reg = <0x610000 0x080000>;
++				read-only;
++
++				nvmem-layout {
++					compatible = "fixed-layout";
++					#address-cells = <1>;
++					#size-cells = <1>;
++
++					/* Skip the 40-byte Qualcomm MBN header. */
++					aqr_fw: firmware@28 {
++						reg = <0x28 0x4c002>;
++					};
++				};
++			};
++
++			partition@690000 {
++				label = "0:APDP_1";
++				reg = <0x690000 0x010000>;
++				read-only;
++			};
++
++			appsblenv: partition@6a0000 {
++				label = "0:APPSBLENV";
++				reg = <0x6a0000 0x010000>;
++				read-only;
++			};
++
++			partition@6b0000 {
++				label = "config";
++				reg = <0x6b0000 0x950000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&qpic_bam {
++	status = "okay";
++};
++
++&qpic_nand {
++	status = "okay";
++
++	nand@0 {
++		reg = <0>;
++		nand-ecc-strength = <4>;
++		nand-ecc-step-size = <512>;
++		nand-bus-width = <8>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			rootfs: partition@0 {
++				label = "rootfs";
++				reg = <0x0000000 0x6000000>;
++				read-only;
++			};
++
++			rootfs_1: partition@6000000 {
++				label = "rootfs_1";
++				reg = <0x6000000 0x6000000>;
++				read-only;
++			};
++
++			partition@c000000 {
++				label = "0:NVRAM";
++				reg = <0xc000000 0x3000000>;
++				read-only;
++			};
++
++			partition@f000000 {
++				label = "crashLog";
++				reg = <0xf000000 0x1000000>;
++				read-only;
++			};
++		};
++	};
++};
++
++&edma {
++	status = "okay";
++};
++
++/* Kernel 6.12 uses qca-ssdk/qca-nss-dp instead of the 6.18 DSA bindings. */
++&switch {
++ status = "okay";
++ switch_lan_bmp = <(ESS_PORT4 | ESS_PORT6)>;
++ switch_mac_mode = <MAC_MODE_PSGMII>;
++ switch_mac_mode2 = <MAC_MODE_USXGMII>;
++ qcom,port_phyinfo {
++  port@4 { port_id = <4>; phy_address = <3>; };
++  port@6 {
++   port_id = <6>;
++   phy_address = <8>;
++   /* SSDK parses this node independently of the Linux MDIO PHY node. */
++   ethernet-phy-ieee802.3-c45;
++   port_mac_sel = "QGMAC_PORT";
++  };
++ };
++};
++&dp4 {
++ status = "okay";
++ phy-handle = <&qca8075_3>;
++ label = "lan";
++ nvmem-cells = <&macaddr_base 0>;
++ nvmem-cell-names = "mac-address";
++};
++&dp6_syn {
++ status = "okay";
++ phy-handle = <&aqr_phy>;
++ phy-mode = "usxgmii";
++ label = "lan-multigig";
++ nvmem-cells = <&macaddr_base 1>;
++ nvmem-cell-names = "mac-address";
++};
++
++&tlmm {
++	mdio_pins: mdio-pins {
++		mdc {
++			pins = "gpio68";
++			function = "mdc";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		mdio {
++			pins = "gpio69";
++			function = "mdio";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++	};
++};
++
++&mdio {
++	status = "okay";
++	pinctrl-0 = <&mdio_pins>;
++	pinctrl-names = "default";
++
++	qca8075_package: ethernet-phy-package@0 {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		compatible = "qcom,qca8075-package";
++		reg = <0>;
++
++		qca8075_3: ethernet-phy@3 {
++			compatible = "ethernet-phy-ieee802.3-c22";
++			reg = <3>;
++		};
++	};
++
++	aqr_phy: ethernet-phy@8 {
++		compatible = "ethernet-phy-ieee802.3-c45";
++		reg = <8>;
++		nvmem-cells = <&aqr_fw>;
++		nvmem-cell-names = "firmware";
++	};
++
++};
++
++&wifi {
++	status = "okay";
++};
+diff --git a/target/linux/qualcommax/image/ipq807x.mk b/target/linux/qualcommax/image/ipq807x.mk
+index f356bbbca5..bbbd13438b 100644
+--- a/target/linux/qualcommax/image/ipq807x.mk
++++ b/target/linux/qualcommax/image/ipq807x.mk
+@@ -564,3 +564,72 @@ define Device/zyxel_nwa210ax
+ 	IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE) | zyxel-nwa210ax-fit
+ endef
+ TARGET_DEVICES += zyxel_nwa210ax
++
++define Device/cambiumnetworks_thor-persistent
++	$(call Device/FitImage)
++	$(call Device/UbiFit)
++	# Thor U-Boot 2016.01 on this unit loads an uncompressed FIT reliably.
++	# One configuration per firmware bank: config@hk02 is rooted in rootfs
++	# (bank 0, as the single-bank installs expect) and config@hk02-bank1 in
++	# rootfs_1.
++	KERNEL = kernel-bin | cambium-family-fit none
++	CAMBIUM_FIT_BOARDS := hk02:hk02:ipq8074-xv3-8-persistent \
++		hk02-bank1:hk02-bank1:ipq8074-xv3-8-persistent-bank1
++	DEVICE_VENDOR := Cambium Networks
++	DEVICE_MODEL := Thor family
++	DEVICE_VARIANT := persistent
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	DEVICE_DTS := ipq8074-xv3-8-persistent ipq8074-xv3-8-persistent-bank1
++	DEVICE_DTS_CONFIG := config@hk02
++	# XV3-8 only: the XE5-8 flash layout has not been captured yet.
++	SUPPORTED_DEVICES := cambiumnetworks,xv3-8
++	# Keep the sysupgrade layout the installed XV3-8 images expect.
++	BOARD_NAME := cambiumnetworks_xv3-8
++	SOC := ipq8074
++	IMAGE_SIZE := 98304k
++	# A/B banks: kernel (0), rootfs (1), rootfs_data (2) and the per-bank
++	# device-data vault (3); the cambium-ab sysupgrade writes the inactive one.
++	IMAGES := factory.ubi sysupgrade.bin
++	IMAGE/factory.ubi := cambium-ab-ubi
++	IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++	# The QCA9887 scanning radio (PCIe 1) needs ath10k and its firmware.
++	DEVICE_PACKAGES := uboot-envtools cambium-board-data cambium-thor-support \
++		kmod-ath10k-ct ath10k-firmware-qca9887-ct
++endef
++TARGET_DEVICES += cambiumnetworks_thor-persistent
++# RAM installer for a stock firmware without ubiformat: only rootfs and the
++# U-Boot environment are writable, so it can write the factory image into
++# rootfs and arm its guarded first boot.
++define Device/cambiumnetworks_thor-installer
++	$(call Device/FitImage)
++	KERNEL = kernel-bin | fit none $$(KDIR)/image-$$(DEVICE_DTS).dtb
++	DEVICE_VENDOR := Cambium Networks
++	DEVICE_MODEL := Thor family
++	DEVICE_VARIANT := RAM installer
++	BLOCKSIZE := 128k
++	PAGESIZE := 2048
++	DEVICE_DTS := ipq8074-xv3-8-installer
++	DEVICE_DTS_CONFIG := config@hk02
++	SUPPORTED_DEVICES := cambiumnetworks,xv3-8
++	SOC := ipq8074
++	IMAGES :=
++	DEVICE_PACKAGES := cambium-board-data ubi-utils uboot-envtools cambium-thor-support
++endef
++TARGET_DEVICES += cambiumnetworks_thor-installer
++
++# Read-only RAM recovery for the qualified XV3-8 only.
++define Device/cambiumnetworks_thor-recovery
++	$(call Device/FitImage)
++	DEVICE_VENDOR := Cambium Networks
++	DEVICE_MODEL := XV3-8 RAM recovery
++	DEVICE_DTS := ipq8074-xv3-8
++	DEVICE_DTS_CONFIG := config@hk02
++	KERNEL = kernel-bin | cambium-family-fit none
++	CAMBIUM_FIT_BOARDS := hk02:hk02:ipq8074-xv3-8
++	SUPPORTED_DEVICES := cambiumnetworks,xv3-8
++	SOC := ipq8074
++	IMAGES :=
++	DEVICE_PACKAGES := cambium-board-data cambium-thor-support
++endef
++TARGET_DEVICES += cambiumnetworks_thor-recovery
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+index 3c0e123141..2c769af573 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/board.d/02_network
+@@ -11,6 +11,9 @@ ipq807x_setup_interfaces()
+ 	local board="$1"
+ 
+ 	case "$board" in
++	cambiumnetworks,xv3-8)
++		ucidef_set_interfaces_lan_wan "lan" "lan-multigig"
++		;;
+ 	aliyun,ap8220|\
+ 	edgecore,eap102|\
+ 	tplink,deco-x80-5g|\
+@@ -88,6 +91,9 @@ ipq807x_setup_macs()
+ 	local label_mac=""
+ 
+ 	case "$board" in
++	cambiumnetworks,xv3-8)
++		label_mac=$(get_mac_label_dt)
++		;;
+ 	aliyun,ap8220)
+ 		wan_mac=$(mtd_get_mac_text product_info 0x4b)
+ 		lan_mac=$(macaddr_add "$wan_mac" 1)
+diff --git a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index df4907c517..6977988e82 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq807x/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -7,8 +7,12 @@
+ board=$(board_name)
+ 
+ case "$FIRMWARE" in
++"IPQ8074/cal-ahb-c000000.wifi.bin"|\
+ "ath11k/IPQ8074/hw2.0/cal-ahb-c000000.wifi.bin")
+ 	case "$board" in
++	cambiumnetworks,xv3-8)
++		caldata_extract "0:ART" 0x1000 0x20000
++		;;
+ 	aliyun,ap8220)
+ 		caldata_extract "0:art" 0x1000 0x20000
+ 		addr=$(mtd_get_mac_text product_info 0x4b)
+diff --git a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+index 1ddc73f09e..f7152307c0 100644
+--- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
+@@ -1,7 +1,7 @@
+ PART_NAME=firmware
+ REQUIRE_IMAGE_METADATA=1
+ 
+-RAMFS_COPY_BIN='fw_printenv fw_setenv head'
++RAMFS_COPY_BIN='fw_printenv fw_setenv head seq sha256sum tr'
+ RAMFS_COPY_DATA='/etc/fw_env.config /var/lock/fw_printenv.lock'
+ 
+ xiaomi_initramfs_prepare() {
+@@ -147,6 +147,10 @@ linksys_mx_pre_upgrade() {
+ }
+ 
+ platform_check_image() {
++	if command -v ab_family >/dev/null && ab_family; then
++		cambium_ab_check_image "$1"
++		return
++	fi
+ 	return 0;
+ }
+ 
+@@ -164,6 +168,10 @@ platform_pre_upgrade() {
+ }
+ 
+ platform_do_upgrade() {
++	if command -v ab_family >/dev/null && ab_family; then
++		cambium_ab_do_upgrade "$1"
++		return
++	fi
+ 	case "$(board_name)" in
+ 	aliyun,ap8220)
+ 		active="$(fw_printenv -n active)"

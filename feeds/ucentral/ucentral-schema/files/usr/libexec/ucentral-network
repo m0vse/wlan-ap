@@ -16,6 +16,8 @@ fail() {
 	exit 1
 }
 
+[ ! -e /tmp/thor-topology.failed ] || fail 'Thor pre-module topology validation failed'
+
 # A dangling active symlink is an error, not an unconfigured device.
 active=/etc/ucentral/ucentral.active
 if [ -e "$active" ] || [ -L "$active" ]; then
@@ -38,8 +40,15 @@ tries=60
 while :; do
 	/sbin/wifi config || fail 'Radio configuration detection failed'
 	rm -f /etc/ucentral/capabilities.json
-	/usr/share/ucentral/capabilities.uc > /tmp/ucentral-capabilities.log 2>&1 ||
+	if ! /usr/share/ucentral/capabilities.uc > /tmp/ucentral-capabilities.log 2>&1; then
+		if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'cambiumnetworks,xv3-8' ]; then
+			tries=$((tries - 1))
+			[ "$tries" -gt 0 ] || fail 'Thor serving topology/chain capabilities unavailable'
+			sleep 1
+			continue
+		fi
 		fail 'Capability detection failed'
+	fi
 	[ "$(cat /etc/ucentral/platform 2>/dev/null)" = ap ] || break
 	grep -q '"wifi"' /etc/ucentral/capabilities.json && break
 	tries=$((tries - 1))

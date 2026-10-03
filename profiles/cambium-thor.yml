@@ -1,0 +1,15 @@
+---
+profile: cambiumnetworks_thor-persistent
+target: qualcommax
+subtarget: ipq807x
+description: Build OpenWiFi for the qualified Cambium Thor XV3-8
+image: bin/targets/qualcommax/ipq807x/openwrt-qualcommax-ipq807x-cambiumnetworks_thor-persistent-squashfs-sysupgrade.bin
+include:
+  - ucentral-ap
+diffconfig: |
+  CONFIG_TARGET_MULTI_PROFILE=y
+  CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+  CONFIG_TARGET_ROOTFS_INITRAMFS=y
+  CONFIG_TARGET_DEVICE_qualcommax_ipq807x_DEVICE_cambiumnetworks_thor-persistent=y
+  CONFIG_TARGET_DEVICE_qualcommax_ipq807x_DEVICE_cambiumnetworks_thor-installer=y
+  CONFIG_TARGET_DEVICE_qualcommax_ipq807x_DEVICE_cambiumnetworks_thor-recovery=y
