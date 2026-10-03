@@ -10,7 +10,7 @@ Actual target runtime under emulation:
   sudo qemu-ARCH -L ROOT ROOT/usr/bin/ucode -L ROOT/usr/lib/ucode \
     tests/boot-reporting/tests.uc PRIVATE_FIXTURE_DIRECTORY
 Create PRIVATE_FIXTURE_DIRECTORY with sudo mktemp -d, not an AP path.
-The module controls cover 58 assertions including unknown reason, request
+The module controls cover 82 assertions including unknown reason, request
 precedence/expiry/cancellation, bounded JSON/event queues, late evidence,
 reconnect/retry, invalid state/links, and pre/post-rename sync failures.
 
@@ -60,6 +60,31 @@ no gateway event deduplication or exactly-once/delivery guarantee.
 Unknown cause is exactly unexpected-shutdown. confirmed-crash needs panic
 text or a reviewed reset-cause hook. Nonfatal Oops is not a reboot cause.
 Power-failure/watchdog attribution requires reviewed hardware evidence.
+
+Radio dump metadata adapter (separate capture producer)
+Only root-private version1 manifests from /etc/ucentral/radio-crash are
+accepted, under the producer's nonblocking shared .lock and a successful
+durability confirmation. Each manifest is at most 4096 bytes; the matching
+private regular binary must have exactly the declared length (at most
+4MiB). IDs, source, driver, boolean completeness and optional producer
+digest are strictly bounded. The digest is a producer claim, not an
+independent binary verification: the adapter never reads binary data.
+
+The common collector uses smaller capacity-safe defaults: two 1MiB
+records plus one temporary, preserving at least 2MiB free space. The
+adapter's maximum accepted length is not a promise of overlay capacity.
+Invalid, locked or unconfirmed manifests do not block boot reporting.
+Immutable radio IDs deduplicate within the bounded seen ledger; source
+manifests and binaries are never deleted, released, acknowledged or
+uploaded here. Raw binary remains private on the AP.
+
+The crashlog summary is explicitly classified radio-coredump, describes
+complete versus partial retention and never changes the host reboot
+reason to confirmed-crash. The summary transport has the same no-ACK
+limitations as kernel reports. This adapter does not enable a devcoredump
+producer or collector service; producer/package/eligibility, normal
+managed-archive preservation and hardware proof are separate integration
+requirements. Explicit -n/factory reset still erases overlay evidence.
 
 No physical reboot, power-retention, kernel panic, gateway database or
 firmware-package acceptance is established by these offline controls.
