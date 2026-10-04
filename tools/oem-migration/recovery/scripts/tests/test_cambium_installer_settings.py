@@ -27,7 +27,7 @@ class SettingsTests(unittest.TestCase):
                        'image_sha256': hashlib.sha256(self.image.read_bytes()).hexdigest(),
                        'job_id': 'b'*64}
         self.put('binding.tsv', ''.join(f'{k}\t{v}\n' for k,v in self.values.items()))
-        self.put('est.json', '{"server":"issuer.example.invalid","tls_ca":"systembundle"}\n')
+        self.put('est.json', '{"server":"issuer.example.invalid","tls_ca":"/etc/ssl/certs/ca-certificates.crt"}\n')
         self.put('gateway.json', '{"DEFAULT":{"gateway":"controller.example.invalid"}}\n')
         # Synthetic fixture authorization; never a real batch credential.
         self.put('est-bootstrap.conf', 'user = "000456abcdef:' + 'X'*64 + '"\n')

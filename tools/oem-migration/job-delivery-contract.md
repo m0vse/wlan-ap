@@ -149,8 +149,8 @@ image and internal job digests are 64 lowercase hex. The job is an internal
 transaction identifier, not an operator-created AP enrollment key.
 `files.sha256` covers every other payload exactly once with flat whitelist names.
 
-`est.json` uses the native `server` hostname/optional port and `tls_ca` system
-bundle or `/etc/ucentral/insta.pem`. `gateway.json` contains the strict native
+`est.json` uses the native `server` hostname/optional port and `tls_ca` literal
+`/etc/ssl/certs/ca-certificates.crt` or `/etc/ucentral/insta.pem`. `gateway.json` contains the strict native
 `DEFAULT` gateway/operational identity/public trust settings, hostname validation
 enabled and no self-signed trust exception. DHCP224 overrides the private default;
 explicit operator policy remains authoritative and option138 is not used.
