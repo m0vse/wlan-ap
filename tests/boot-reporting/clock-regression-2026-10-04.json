@@ -1,0 +1,23 @@
+{
+  "issue": "A plausible restored OpenWrt boot clock incorrectly dated early crash/reboot events before NTP.",
+  "shared_package_release": 4,
+  "families": ["sage", "jaguar", "cheetah", "thor", "gambit"],
+  "behaviour": {
+    "capture": "Immediate durable collection remains independent of clock/network state.",
+    "clock_proof": "Root-private volatile marker matching this kernel boot ID, written by ntpd stratum/periodic hooks only for stratum 1..15; unsync removes proof.",
+    "transmission": "Deferred while clock is unverified or implausible.",
+    "early_same_boot": "Estimated collection time reconstructed from synchronised wall clock and recorded uptime; explicitly labelled synchronised-uptime-estimate.",
+    "old_boot_without_anchor": "Explicitly labelled upload-time; no invented historic timestamp.",
+    "legacy_pending": "Unverified pending dates corrected before transmission, without rewriting already transmitted history.",
+    "no_server_ack": "Existing transmitted-unacknowledged semantics remain unchanged."
+  },
+  "verification": {
+    "existing_sage_ARM_runtime": "94 module assertions PASS; actual CLI/NTP marker, 7 helper assertions, private namespace shell/shutdown regression PASS.",
+    "existing_thor_AArch64_runtime": "94 module assertions PASS; actual CLI/NTP marker, 7 helper assertions, private namespace shell/shutdown regression PASS.",
+    "profile_closure": "All five family profiles include ucentral-ap, which includes ucentral-schema depending on the shared ucentral-boot-report package.",
+    "AP_operation": false,
+    "firmware_build": false,
+    "live_patch": false
+  },
+  "remaining_acceptance": "Next authorised firmware builds must include this package; validate real NTP hook and corrected event time after an operator-authorised reboot/crash. Previously uploaded stale timestamps are not altered."
+}

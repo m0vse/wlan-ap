@@ -7,8 +7,9 @@ function fixture(name) {
 	let root = base + '/' + name; fs.mkdir(root, 0o700); fs.mkdir(root + '/pstore', 0o700);
 	fs.writefile(root + '/boot-id', A); fs.writefile(root + '/uptime', '100.0 0'); fs.writefile(root + '/version', 'TEST-synthetic-firmware');
 	let p = { directory: root + '/history', state: root + '/history/history.json', lock: root + '/lock', pstore: root + '/pstore', boot_id: root + '/boot-id', uptime: root + '/uptime', version: root + '/version', cause: root + '/cause' };
-	let f = { root, p, now: 1791016870, online: false, accepted: true, sent: [], renamed: true, synced: true, cause: null, unlinks: [], sync_calls: 0, sync_fail_at: null };
+	let f = { root, p, now: 1791016870, clock_synced: true, online: false, accepted: true, sent: [], renamed: true, synced: true, cause: null, unlinks: [], sync_calls: 0, sync_fail_at: null };
 	f.app = reporter(p, {
+		clock_synced: () => f.clock_synced,
 		now: () => f.now, sync: function() { f.sync_calls++; return f.synced && f.sync_calls != f.sync_fail_at ? 0 : 1; },
 		rename: (a, b) => f.renamed && fs.rename(a, b), reset_cause: () => f.cause,
 		unlink: function(path) {
@@ -157,4 +158,33 @@ check('radio-does-not-turn-following-boot-into-confirmed-crash', reason(f) == 'u
 f = fixture('radio-publish-sync'); f.app.collect(); radio(f); f.sync_fail_at = f.sync_calls + 1; f.app.collect();
 check('radio-publication-sync-failure-does-not-report-unconfirmed-manifest', length(f.app.state().events) == 1 && !length(f.unlinks));
 f.sync_fail_at = null; f.app.collect(); check('radio-publication-sync-successful-retry-collects', length(f.app.state().events) == 2);
+f = fixture('stale-restored-clock'); f.clock_synced = false;
+fs.writefile(f.p.pstore + '/dmesg-ramoops-0', 'TEST Kernel panic: captured before NTP');
+f.app.collect(); f.online = true;
+check('plausible-restored-clock-not-trusted', f.app.state().events[0].date == null && f.app.state().events[1].date == null);
+check('pre-NTP-panic-durable-and-source-consumed', !fs.stat(f.p.pstore + '/dmesg-ramoops-0') && reason(f) == 'confirmed-crash');
+check('connected-before-NTP-does-not-send-stale-date', f.app.send() == 0 && !length(f.sent));
+let collected_at = f.now + 34000;
+f.now = collected_at + 200; fs.writefile(f.p.uptime, '300.0 0'); f.clock_synced = true;
+f.app.send();
+check('post-NTP-reconstructs-collection-time-from-uptime', f.app.state().events[0].date == collected_at && f.sent[1].params.date == collected_at);
+check('estimated-timestamp-explicitly-labelled', f.sent[1].params.info[0].timestamp_basis == 'synchronised-uptime-estimate');
+count = length(f.sent); f.app.send(); check('time-fix-does-not-duplicate-reports', count == length(f.sent));
+f = fixture('clock-unsync'); f.app.collect(); f.online = true; f.clock_synced = false;
+check('loss-of-clock-sync-keeps-queue-pending', f.app.send() == 0 && f.app.state().events[0].delivery == 'pending');
+f.clock_synced = true; f.app.send();
+check('verified-collection-time-preserved', f.sent[0].params.date == 1791016870 && f.sent[0].params.info[0].timestamp_basis == 'synchronised-collection-time');
+f = fixture('legacy-clock'); f.app.collect(); let legacy = f.app.state();
+delete legacy.events[0].clock_verified; delete legacy.events[0].observed_boot_id;
+legacy.events[0].date -= 35000; fs.writefile(f.p.state, sprintf('%J', legacy));
+f.now += 200; fs.writefile(f.p.uptime, '300.0 0'); f.online = true; f.app.send();
+check('pending-legacy-boot-date-corrected-with-same-boot-anchor', f.sent[0].params.date == 1791016870);
+f = fixture('clock-other-boot'); f.clock_synced = false; f.app.collect(); reboot(f);
+f.now = 1791050000; f.clock_synced = true; f.online = true; f.app.send();
+check('old-boot-without-anchor-uses-labelled-upload-time', f.sent[0].params.date == f.now && f.sent[0].params.info[0].timestamp_basis == 'upload-time');
+f = fixture('clock-retry'); f.clock_synced = false; f.app.collect();
+f.clock_synced = true; f.now += 500; fs.writefile(f.p.uptime, '200.0 0'); f.online = true; f.accepted = false; f.app.send();
+let corrected_date = f.app.state().events[0].date;
+f.now += 100; fs.writefile(f.p.uptime, '300.0 0'); f.accepted = true; f.app.send();
+check('corrected-time-durable-across-send-retry', f.app.state().events[0].date == corrected_date && f.sent[1].params.date == corrected_date);
 print(sprintf('%J\n', { passed: true, count: length(results), cases: results, synthetic: 'TEST-only private filesystem/clock/transport/reset-cause fixtures; no AP or controller access', directory: base }));
