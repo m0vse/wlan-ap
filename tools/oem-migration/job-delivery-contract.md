@@ -134,10 +134,15 @@ default; EST trust/configuration remains separate from gateway discovery.
    unique calibration/identity and reviewed recovery set. Stock migration clears
    legacy configuration through its existing bridge/sysupgrade route; candidate
    identity handoff must survive independently of the discarded configuration.
-4. Boot the candidate and reload the sole native client using the reviewed native
-   identity interface. Verify ordinary gateway acceptance binds the expected
-   serial and candidate TLS leaf to the current session, with evidence that
-   distinguishes it from a stale connection. Issuance alone is insufficient.
+4. Boot the candidate and validate intended leaf/key/serial/trust and durable
+   copies, then restart the sole native client using the reviewed identity
+   interface. Require a fresh verified native connection and configuration newly
+   received and applied by that same restarted session. Process/session and
+   configuration timing must reject stale connected flags and preexisting files.
+   Issuance alone is insufficient. Local evidence does not claim independent
+   gateway DER fingerprint or VERIFIED observation; the portal may corroborate
+   gateway serial/VERIFIED/issuer/expiry later. No Root token, service account or
+   new acceptance API is needed on the AP for that separate corroboration.
 5. Commit the durable candidate identity and then the qualified bank transaction
    only after acceptance evidence is persisted. Any failure must preserve or
    restore the prior identity/client and qualified source-bank recovery.

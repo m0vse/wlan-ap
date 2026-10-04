@@ -54,10 +54,15 @@ certificate paths, persistence and client reload must follow the reviewed native
 integration contract. Those target interfaces remain pending confirmation; do
 not substitute a bespoke lifecycle service, nonce hook or certificate store.
 
-Commit the candidate identity and bank transaction only after verified ordinary
-gateway acceptance binds the expected canonical serial and candidate TLS leaf
-to the current session. Persist sufficient acceptance evidence to distinguish
-that session from a stale connection. Issuance alone does not complete migration.
+Commit the candidate identity and bank transaction only after intended
+certificate/key/trust and persistence checks, a sole-client restart, a fresh
+verified native connection and configuration newly received and applied by that
+same session. Record enough process/session and configuration timing evidence
+to reject stale connected flags or preexisting configuration. Issuance alone
+does not complete migration. Local native evidence does not claim an
+independently observed gateway DER fingerprint or VERIFIED state; the portal may
+corroborate gateway serial/VERIFIED/issuer/expiry separately. Do not add Root
+tokens, service accounts or an acceptance API on the AP for that corroboration.
 Preserve prior identity and source-bank recovery until acceptance and restore the
 prior identity/client on failure through the qualified rollback path. Native EST
 integration, durable certificate persistence, renewal and physical AP acceptance
