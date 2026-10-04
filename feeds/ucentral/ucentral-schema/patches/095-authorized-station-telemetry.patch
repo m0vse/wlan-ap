@@ -1,0 +1,45 @@
+Keep authentication-only kernel station records out of connected-client
+telemetry. Missing driver authorization information remains unknown rather
+than being guessed from traffic counters, preserving legacy/mesh drivers.
+
+--- a/renderer/wifi/station.uc
++++ b/renderer/wifi/station.uc
+@@ -1,3 +1,4 @@
++import { station_authorized } from './station_authorization.uc';
+ let nl = require("nl80211");
+ let def = nl.const;
+ 
+@@ -61,6 +62,9 @@
+ 	}
+ 	let assocdev = [];
+ 	for (let sta in res) {
++		let authorized = station_authorized(sta.sta_info?.sta_flags);
++		if (authorized === false)
++			continue;
+ 		let assoc = {
+ 			bssid: wif.mac,
+ 			station: sta.mac,
+@@ -83,6 +87,8 @@
+ 			rx_rate: parse_bitrate(sta.sta_info?.rx_bitrate || {}),
+ 			tx_rate: parse_bitrate(sta.sta_info?.tx_bitrate || {}),
+ 		};
++		if (authorized !== null)
++			assoc.authorized = authorized;
+ 		if (global.tid_stats)
+ 			assoc.tid_stats = sta.sta_info?.tid_stats || [];
+ 		push(assocdev, assoc);
+--- a/state/interface.ssid.association.yml
++++ b/state/interface.ssid.association.yml
+@@ -19,6 +19,13 @@
+       description:
+         The MAC address of the station.
++    authorized:
++      type: boolean
++      description:
++        Kernel controlled-port authorization. True means authorization is
++        complete. Explicitly unauthorized stations are excluded from
++        association telemetry. Absent means the driver did not provide
++        authorization information; it must not be inferred from counters.
+     dynamic_vlan:
+       type: number
+       description:
