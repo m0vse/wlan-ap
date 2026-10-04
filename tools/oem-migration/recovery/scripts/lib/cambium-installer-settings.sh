@@ -75,6 +75,7 @@ ow_settings_tree() {
     (cd "$tree" && sha256sum -c files.sha256 >/dev/null 2>&1) || return 1
     # Validate only the fixed native credential envelope here, never print it.
     # Native CA-owned firstboot validation owns JSON/trust semantics.
+    [ "$(wc -c < "$tree/est-bootstrap.conf")" -eq "$(( ${#OW_SERIAL} + 75 ))" ] || return 1
     awk -v serial="$OW_SERIAL" '
         NR==1 && length($0)==length(serial)+74 &&
         substr($0,1,length(serial)+9)=="user = \"" serial ":" &&

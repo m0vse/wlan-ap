@@ -125,6 +125,10 @@ class SettingsTests(unittest.TestCase):
         self.refused_before_staging()
         self.mounts.write_text(f'/dev/ubi0_5 {self.mount} ubifs ro 0 0\n'); self.refused_before_staging()
 
+    def test_credential_requires_exact_final_newline(self):
+        self.put('est-bootstrap.conf','user = "000456abcdef:'+'X'*64+'"')
+        self.manifest(); self.refused_before_staging()
+
     def test_bad_binding_and_wrong_credential_envelope_refused(self):
         self.put('est-bootstrap.conf','user = "000456abcdef:short"\n'); self.manifest(); self.refused_before_staging()
         self.put('est-bootstrap.conf','user = "000456abcdef:'+'X'*64+'"\n')
