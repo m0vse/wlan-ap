@@ -20,7 +20,7 @@ The backend evaluates `qualification.py` using trusted policy, authoritative
 inventory and verified runtime evidence. The AP's initial reader verifies exact
 source identity/layout without changing flash, environment, configuration or
 device identity. Unknown, unsupported, unqualified, cross-model or wrong-source
-jobs stop before persistent staging, backup or enrollment. The operations remain
+jobs stop before persistent staging, backup or writes. The operations remain
 `production-oem-migration` and `production-stock-openwrt-migration`; qualification
 for one cannot authorize the other. Routine renewal remains separate.
 
@@ -83,7 +83,7 @@ tools, layout, inactive geometry and boot guard, and the recovery digest binds
 the exact shared OEM recovery set. For stock OpenWrt, those digests bind its
 independently qualified stock release/updater bridge/runtime and stock rollback
 set. A stock job must not require OEM qualification. Verify the AP manufacturing
-identity and source/layout read-only against those contracts before enrollment
+identity and source/layout read-only against those contracts before staging
 or writing. The issuer also reevaluates current qualification before enrollment
 side effects; possessing a batch key cannot bypass current registry refusal.
 
@@ -95,14 +95,15 @@ integration inputs, not new executable flags on the existing family wrappers.
 The secret input must be a regular file owned by root, mode 0600, within a
 root-owned 0700 directory. Reject symlinks, shared/writable parent directories,
 wrong owner/mode and unapproved serial/source operation before copying the material
-to persistent AP storage or invoking enrollment. Never source or evaluate the
+to persistent AP storage. Outgoing OEM and stock firmware never invoke
+enrollment or generate a device key/CSR. Never source or evaluate the
 input as shell code. Do not print its contents, enable shell tracing, include it
 in receipts, or place it in public artifact hosting or ordinary backup archives.
 
 After successful admission, the reviewed transport stages the approved input
 into a private AP path without exposing credentials in arguments, URLs or logs.
-The AP generates its own key and CSR; no private device key is generated in the
-portal or copied from another AP. Native EST uses `/certificates/est.json` with
+On OpenWiFi first boot, the AP generates its own key and CSR; no private device
+key is generated in the portal or copied from another AP. Native EST uses `/certificates/est.json` with
 `server` and `tls_ca`, and the root-only curl configuration
 `/certificates/est-bootstrap.conf` with Basic username equal to the canonical
 serial and password equal to the shared approved batch enrollment key.
@@ -129,72 +130,73 @@ After installation, approved inventory/configuration and provisioned identity
 drive automatic onboarding. DHCP option 224 overrides the private gateway
 default; EST trust/configuration remains separate from gateway discovery.
 
-### Durable key and retry boundary
+### First-boot key and retry boundary
 
-No migration-owned key generation or retry adapter is implemented yet. Before
-submitting the first CSR, the native adapter must reuse the AP's valid existing
-unique key or generate one exactly once, publish it atomically to qualified
-private durable storage, flush it, then reread and validate that durable key.
-Only then derive and submit the CSR. Interrupted publication or an uncertain
-issuance response must not silently replace a key already bound by the issuer.
-Retries retain that same key and CSR identity. Temporary RAM and an overlay
-discarded by `sysupgrade -n` do not establish durability.
+Outgoing OEM and stock installers only validate exact model/source and policy,
+preserve critical recovery, stage protected enrollment authorization/settings,
+write the verified inactive bank and arm the qualified recoverable candidate.
+They must not request a certificate or require EST, OpenSSL, curl, ucode or a
+certificate issuer runtime on the outgoing firmware. Source capability contracts
+cover the actual reader, writer, authenticated delivery and recovery tools only.
+No enrollment runtime is packaged for old firmware.
 
-For the reviewed stock routes, a source directory such as
-`/root/.cambium-enrollment-source` is suitable only after verifying that its
-actual mount is writable persistent storage on the active bank. Sage may boot
-directly from UBIFS `rootfsACTIVE` without a separate overlay; do not require
-`rootfs_dataACTIVE` in that case. A SquashFS source instead needs a writable
-active-bank UBIFS overlay. Reject tmpfs, shared certificates and target-bank
-storage. Source inspection of inactive-only writers supports this boundary but
-does not prove key durability. Qualification requires sentinel and key-hash
-checks through reset/write/seed/sync/unmount/arm failures and rollback, plus
-runtime power-loss evidence for the exact source filesystem and bridge.
+Authorization staging must be bound to canonical factory serial, exact model,
+actual source operation/bank, candidate bank, transaction ID and verified image
+digest. It must survive the clean migration without overwriting the source or
+its recovery identity. Require atomic protected publication, durable flush and
+readback before arming the candidate. Preserve authenticated bridge closure,
+inactive-only geometry and the source's existing empty-store/rollback guards.
+The native lifecycle owner defines the fixed staged file schema and first-boot
+consume interface; wrappers must not introduce a parallel secret reader or
+certificate implementation. Nothing in this document enables an old seed that
+requires an already issued identity or source-generated private key.
 
-The qualified source-to-candidate handoff must preserve the key and native
-birth-certificate mount requirements, EST trust/bootstrap and issued identity
-through power loss and clean migration while retaining prior recovery identity.
-Do not overwrite that recovery identity before acceptance. In particular, the
-current Sage stock bridge requires an empty certificate store after services
-stop: simply pre-enrolling into `/certificates` violates its guard. A narrow
-handoff or bridge change requires family-specific qualification first.
+Once OpenWiFi boots and networking is ready, DHCP option 224 overrides the
+private gateway default. The minimal first-boot coordinator validates staged
+provenance against the running bank and actual factory identity, then invokes
+the native EST client. Before first contact it generates the unique AP-local key
+once, atomically persists that key and CSR intent in qualified private candidate
+storage, flushes them and rereads/validates them. Interrupted or uncertain
+issuance retries retain the same durable key and CSR identity. RAM alone is
+insufficient. Do not copy a donor key or generate the AP key in the portal.
 
-OEM preflight uses POSIX shell, not ucode. Neither OEM nor converted stock ucode,
-curl or crypto capabilities may be assumed from the target firmware's tools.
-Verify the exact source runtime capability or supply an authenticated reviewed
-helper in the qualified bundle; otherwise deny. The native lifecycle owner
-provides enrollment/import/acceptance executable interfaces. This document does
-not create a parallel enrollment implementation or enable any writer.
+Native EST must validate bootstrap trust, issued serial/key/issuer and secure
+durable certificate persistence. It then reconnects the native controller client.
+Only a fresh authenticated connection and configuration actually received and
+successfully applied in that session permit bank confirmation. Reject stale
+connection flags and old configuration files. Bounded retry and rollback retain
+the working source and do not erase an unrelated prior identity or interrupt
+normal native renewal. Cleanup follows durable confirmation, never issuance
+alone; remove only this AP's bootstrap copy, leaving the shared batch key usable
+by other approved members.
 
 ## AP execution sequence
 
-1. Complete read-only source and policy checks and authenticate the exact bundle.
-2. Generate the device's unique private key and CSR locally, then enroll through
-   native OpenWiFi EST using the reviewed bootstrap trust/authentication. Bind
-   enrollment to the actual device/CSR through the existing backend interface.
-   Preserve a resumable candidate handoff using native certificate persistence.
-3. Invoke only the qualified family/source adapter. Protect the running bank,
-   unique calibration/identity and reviewed recovery set. Stock migration clears
-   legacy configuration through its existing bridge/sysupgrade route; candidate
-   identity handoff must survive independently of the discarded configuration.
-4. Boot the candidate and validate intended leaf/key/serial/trust and durable
-   copies, then restart the sole native client using the reviewed identity
-   interface. Require a fresh verified native connection and configuration newly
-   received and applied by that same restarted session. Process/session and
-   configuration timing must reject stale connected flags and preexisting files.
-   Issuance alone is insufficient. Local evidence does not claim independent
-   gateway DER fingerprint or VERIFIED observation; the portal may corroborate
-   gateway serial/VERIFIED/issuer/expiry later. No Root token, service account or
-   new acceptance API is needed on the AP for that separate corroboration.
-5. Commit the durable candidate identity and then the qualified bank transaction
-   only after acceptance evidence is persisted. Any failure must preserve or
-   restore the prior identity/client and qualified source-bank recovery.
+1. Finish read-only source/model/policy checks and authenticate the exact bundle.
+2. Preserve minimal unique recovery and stage protected authorization/settings
+   with exact serial/model/source/job/candidate/image provenance. Generate no
+   key/CSR and make no enrollment request on outgoing OEM or stock firmware.
+3. Use the qualified family/source adapter to write and verify only the inactive
+   bank, preserving the source, calibration, factory identity and shared recovery
+   set. Complete durable staging/readback before arming the recoverable candidate.
+4. On OpenWiFi first boot after networking, validate staging provenance, resolve
+   DHCP224 over the private default, persist the unique local key/CSR intent and
+   enroll through the native EST client with interruption-safe same-key retries.
+5. Validate and persist the intended identity/trust, reconnect the sole native
+   controller client and require fresh authenticated connection plus successful
+   configuration apply from that session. Issuance alone is insufficient.
+6. Persist acceptance, confirm the bank transaction and clean this AP's bootstrap
+   authorization. Failures use bounded retries/qualified rollback; background
+   native renewal remains mandatory after acceptance.
 
-Native EST bootstrap/authentication, certificate paths, persistence, reload and
-acceptance interfaces remain pending confirmation with the lifecycle owner.
-Do not guess endpoints or retain bespoke nonce/store hooks as prerequisites.
-The target firmware must contain and validate the agreed native EST integration
-and bank guard before a migration is enabled. Source tests alone do not enable it.
+Gateway VERIFIED/serial/issuer/expiry may corroborate acceptance later. No Root
+API credential or new synchronous acceptance API belongs on the AP. Native
+first-boot and staging adapters must be reviewed against this sequence before
+family integration. Earlier source-side enrollment/key-seed helpers are
+superseded and must not be included by a new migration wrapper. Retain useful
+incoming identity persistence, controller configuration acceptance and native
+renewal work; do not blindly deploy obsolete source-enrollment coupling. Source
+fixtures alone do not enable production migration or lift the family build hold.
 
 ## Existing adapter insertion points
 
@@ -211,7 +213,7 @@ Paths below are repository-relative source references, not published bundle URLs
 Existing Cheetah stock operator bundles are local generated artifacts, not a
 canonical source adapter in this directory. Select its reviewed source with the
 family owner before publication. Existing wrappers do not yet implement the
-shared-enrollment identity handoff above. Do not substitute the historical
+protected authorization staging and first-boot enrollment above. Do not substitute the historical
 `e410-oem-install-openwrt.sh` for a production OEM writer, or invoke generic
 sysupgrade from OEM. Each OEM writer needs qualified tools, geometry, inactive
 capacity, image semantics, boot guard and recovery evidence first.
