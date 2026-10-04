@@ -13,6 +13,7 @@ reload_service() {
 }
 
 start_service() {
+	/usr/libexec/ucentral-installer-boot check || return 1
 	[ -e /tmp/ucentral-network.ready ] || return 1
 	[ -f /etc/ucentral/capabilities.json ] || {
 		mkdir -p /etc/ucentral/

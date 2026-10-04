@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=certificates
-PKG_RELEASE:=4
+PKG_RELEASE:=6
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -12,6 +12,7 @@ define Package/certificates
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=TIP DigiCer certificate store
+  DEPENDS:=+ucode +ucode-mod-fs +ucode-mod-ubus +openssl-util +flock +curl
 endef
 
 define Build/Prepare

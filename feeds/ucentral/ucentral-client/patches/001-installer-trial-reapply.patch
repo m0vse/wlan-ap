@@ -1,0 +1,33 @@
+--- a/config.c
++++ b/config.c
+@@ -51,10 +51,29 @@
+ 	return 0;
+ }
+ 
++static bool
++installer_reapply_allowed(uint32_t id)
++{
++	char command[384];
++	struct session_receipt receipt = session_capture(uuid_latest, id);
++	if (!receipt.sequence ||
++	    access("/root/.cambium-installer-identity/binding.tsv", R_OK))
++		return false;
++	/* The local native helper revalidates pending bank/job/seed, durable
++	 * identity, boot marker and sole fresh process. Ordinary reconnects
++	 * keep the existing already-applied shortcut. Numeric arguments only. */
++	snprintf(command, sizeof(command),
++		"/usr/libexec/ucentral-installer-identity reapply "
++		"/root/.cambium-installer-identity %u %u %u %" PRIu64
++		" >/dev/null 2>&1", (unsigned int)getpid(), receipt.generation,
++		receipt.sequence, receipt.uuid);
++	return system(command) == 0;
++}
++
+ static void
+ config_apply(uint32_t id)
+ {
+-	if (uuid_latest && (uuid_latest == uuid_applied)) {
++	if (uuid_latest && (uuid_latest == uuid_applied) && !installer_reapply_allowed(id)) {
+ 		configure_reply(0, "Already applied.", uuid_latest, id);
+ 		return;
+ 	}

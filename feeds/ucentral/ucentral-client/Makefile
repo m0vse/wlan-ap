@@ -1,13 +1,14 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-client
-PKG_RELEASE:=11
+PKG_RELEASE:=12
 
-PKG_SOURCE_URL=https://github.com/Telecominfraproject/wlan-ucentral-client.git
-PKG_MIRROR_HASH:=4a30937b23205acb20a80a5c05f5f1b09c10422b4cd2dabf90561680afeda153
+PKG_SOURCE_URL=https://github.com/m0vse/wlan-ucentral-client.git
+PKG_MIRROR_HASH:=9e053a67585f74e1839ff2add8ef568c4d92cd8f79e6283e00f4fd39656b726c
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_DATE:=2026-07-15
-PKG_SOURCE_VERSION:=cb48fe27b3516521f8de723596e8656dbf1f7c7b
+PKG_SOURCE_SUBMODULES:=skip
+PKG_SOURCE_DATE:=2026-10-04
+PKG_SOURCE_VERSION:=176cab2f4e977929ce3827badeedd438767dbb88
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>

@@ -1,0 +1,37 @@
+#!/bin/sh
+# The native boot path imports only the applicable pending candidate bank.
+set -eu
+operation=${1:-check}
+case "$operation" in import|check) ;; *) exit 1 ;; esac
+[ -f /lib/functions/cambium-ab.sh ] || exit 0
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+ab_family >/dev/null || exit 0
+target=$(ab_getenv "${AB_ENV}_installer_target") || target=
+job=$(ab_getenv "${AB_ENV}_installer_job") || job=
+image=$(ab_getenv "${AB_ENV}_installer_image") || image=
+[ -n "$target$job$image" ] || exit 0
+ab_identity >/dev/null || exit 1
+case "$target" in 0|1) ;; *) exit 1 ;; esac
+[ "$target" = "$AB_ACTIVE" ] || exit 0
+for value in "$job" "$image"; do
+ case "$value" in ''|*[!0-9a-f]*) exit 1 ;; esac
+ [ "${#value}" = 64 ] || exit 1
+done
+boot=$(cat /proc/sys/kernel/random/boot_id)
+case "$boot" in ''|*[!0-9a-f-]*) exit 1 ;; esac
+[ "${#boot}" = 36 ] || exit 1
+marker=/tmp/ucentral-installer-ready
+ready=$(printf '%s\n%s\n%s' "$job" "$image" "$boot")
+if [ "$operation" = import ]; then
+ [ -x /usr/libexec/ucentral-installer-identity ] || exit 1
+ /usr/libexec/ucentral-installer-identity import /root/.cambium-installer-identity || exit 1
+ [ ! -e "$marker" ] && [ ! -L "$marker" ] || {
+  [ -f "$marker" ] && [ ! -L "$marker" ] && [ "$(stat -c '%u:%a:%h' "$marker")" = 0:600:1 ] || exit 1
+ }
+ umask 077
+ printf '%s\n' "$ready" > "$marker"
+fi
+[ -f "$marker" ] && [ ! -L "$marker" ] &&
+[ "$(stat -c '%u:%a:%h' "$marker")" = 0:600:1 ] &&
+[ "$(cat "$marker")" = "$ready" ]

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Internal entry point for a qualified authenticated bridge; no secret argv.
+set -eu
+umask 077
+[ "$#" = 1 ] || exit 1
+[ "$(id -u)" = 0 ] || exit 1
+lock=/tmp/ucentral-installer-enrollment.lock
+[ ! -e "$lock" ] && [ ! -L "$lock" ] || {
+ [ -f "$lock" ] && [ ! -L "$lock" ] && [ "$(stat -c '%u:%a:%h' "$lock")" = 0:600:1 ] || exit 1
+}
+exec 9> "$lock"
+flock -n 9 || exit 1
+exec /usr/libexec/ucentral-installer-identity enroll-source "$1"
