@@ -18,6 +18,7 @@ stop_service() {
 }
 
 start_service() {
+	/usr/libexec/ucentral-installer-boot check || return 1
 	# Collect even while offline / before network-ready and identity guards.
 	/usr/libexec/ucentral-boot-report collect || logger -t boot-report 'boot collection unavailable'
 	[ -e /tmp/ucentral-network.ready ] || return 1

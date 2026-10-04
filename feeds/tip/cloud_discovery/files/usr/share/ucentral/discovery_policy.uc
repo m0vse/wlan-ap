@@ -18,7 +18,8 @@ function endpoint(value) {
 }
 
 export function select_controller(opt138, opt224, policy) {
-	let selected = endpoint(opt224 || opt138);
+	// Option 138 is excluded: it carries unrelated controller hints.
+	let selected = endpoint(opt224);
 	if (policy == null)
 		return selected;
 	/* Malformed local policy fails closed, not back to unrestricted DHCP. */
@@ -40,5 +41,7 @@ export function select_controller(opt138, opt224, policy) {
 		    candidate.dhcp_port == selected.dhcp_port)
 			return selected;
 	}
+	fallback.dhcp_policy_rejected = !!selected;
+	fallback.dhcp_source = 'policy-default';
 	return fallback;
 };

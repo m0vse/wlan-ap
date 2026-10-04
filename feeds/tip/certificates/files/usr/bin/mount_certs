@@ -43,6 +43,20 @@ if [ -f /lib/functions/cambium-ab.sh ]; then
 		else
 			mount -t ubifs "/dev/$cert_volume" /certificates || exit 1
 		fi
+		# Initial native enrollment needs a proven mounted empty store.
+		# This exception is confined to the active pending installer trial.
+		if [ "${1:-}" = --installer-empty ]; then
+			awk -v dev="/dev/$cert_volume" -v named="$AB_ACTIVE_UBI:certificates" '
+			 $2=="/certificates" {count++; if (($1==dev || $1==named) && $3=="ubifs" && ("," $4 ",") ~ /,rw,/) good++}
+			 index($2,"/certificates/")==1 {child++}
+			 END {exit !(count==1 && good==1 && !child)}' /proc/mounts || exit 1
+			[ "$(ab_getenv "${AB_ENV}_installer_target")" = "$AB_ACTIVE" ] || exit 1
+			for _value in "$(ab_getenv "${AB_ENV}_installer_job")" "$(ab_getenv "${AB_ENV}_installer_image")"; do
+				case "$_value" in ''|*[!0-9a-f]*) exit 1 ;; esac
+				[ "${#_value}" = 64 ] || exit 1
+			done
+			exit 0
+		fi
 		check_certificates
 		exit 1
 	fi

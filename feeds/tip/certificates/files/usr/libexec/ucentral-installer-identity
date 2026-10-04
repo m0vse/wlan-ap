@@ -1,0 +1,502 @@
+#!/usr/bin/ucode
+'use strict';
+import * as fs from 'fs';
+import * as libubus from 'ubus';
+const STORE = '/certificates';
+const RUNTIME = '/etc/ucentral';
+const JOURNAL = STORE + '/.installer-import';
+const PROC = '/proc';
+const SETTINGS = '/root/.cambium-installer-settings';
+const names = ['binding.tsv','files.sha256','est.json','gateway.json','est-bootstrap.conf','insta.pem','server-ca.pem'];
+const required = ['binding.tsv','files.sha256','est.json','gateway.json','est-bootstrap.conf'];
+const fields = ['format','serial','family','model','source_operation','source_release','source_contract_sha256','source_slot','target_slot','image_sha256','job_id'];
+const CONTEXT_COMMAND = ". /lib/functions/system.sh; . /lib/functions/cambium-ab.sh; ab_identity >/dev/null || exit 1; serial=$(get_mac_label_dt | tr -d ':' | tr 'A-F' 'a-f') || exit 1; native=$(get_mac_label | tr -d ':' | tr 'A-F' 'a-f') || exit 1; [ \"$serial\" = \"$native\" ] || exit 1; printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$serial\" \"$AB_FAMILY\" \"$AB_MODEL\" \"$AB_ACTIVE\" \"$(ab_getenv \"${AB_ENV}_installer_target\")\" \"$(ab_getenv \"${AB_ENV}_installer_job\")\" \"$(ab_getenv \"${AB_ENV}_installer_image\")\"";
+const MOUNT_COMMAND = ". /lib/functions/system.sh; . /lib/functions/cambium-ab.sh; ab_identity >/dev/null || exit 1; /usr/bin/mount_certs >/dev/null 2>&1 || :; volume=$(ab_ubi_volume \"$AB_ACTIVE_UBI\" certificates) || exit 1; awk -v dev=\"/dev/$volume\" -v named=\"$AB_ACTIVE_UBI:certificates\" '$2==\"/certificates\" {count++;if (($1==dev || $1==named) && $3==\"ubifs\" && (\",\" $4 \",\") ~ /,rw,/) good++} index($2,\"/certificates/\")==1 {child++} END {exit !(count==1 && good==1 && !child)}' /proc/mounts";
+function fail(message) { die(message); }
+function private_file(path, maximum) {
+    let info = fs.lstat(path);
+    if (info?.type != 'file' || info.uid != 0 || info.mode != 0600 ||
+        info.nlink != 1 || info.size < 1 || info.size > maximum)
+        fail('Unsafe installer identity file');
+    return info;
+}
+
+function output(command) {
+    let pipe = fs.popen(command);
+    if (!pipe) fail('Identity validation command could not start');
+    let value = trim(pipe.read('all') || '');
+    if (pipe.close()) fail('Identity validation command failed');
+    return value;
+}
+
+function hash_file(path) {
+    let value = split(output(`sha256sum ${path}`), ' ')[0];
+    if (!match(value, /^[0-9a-f]{64}$/)) fail('Invalid identity file digest');
+    return value;
+}
+
+function spki(path, certificate) {
+    let command = certificate ? `openssl x509 -in ${path} -pubkey -noout | openssl pkey -pubin -outform DER` :
+        `openssl pkey -in ${path} -pubout -outform DER`;
+    let value = split(output(command + ' | sha256sum'), ' ')[0];
+    if (!match(value, /^[0-9a-f]{64}$/)) fail('Invalid public key digest');
+    return value;
+}
+
+function object_file(path, maximum) {
+    private_file(path, maximum);
+    let value;
+    try { value = json(fs.readfile(path)); } catch (e) { fail('Invalid identity JSON'); }
+    if (type(value) != 'object') fail('Invalid identity JSON object');
+    return value;
+}
+
+function exact_keys(value, allowed, mandatory) {
+    for (let key in keys(value)) if (!(key in allowed)) fail('Unknown identity setting');
+    for (let key in mandatory) if (!exists(value, key)) fail('Missing identity setting');
+}
+
+function hostname(value) {
+    if (type(value) != 'string' || length(value) > 253 || !length(value)) return false;
+    for (let label in split(value, '.'))
+        if (!match(label, /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/)) return false;
+    return true;
+}
+
+function safe_native_file(path) {
+    let st = fs.lstat(path);
+    if (st?.type != 'file' || st.uid != 0 || st.nlink != 1 ||
+        !(st.mode in [0600, 0440]) || st.size < 1 || st.size > 131072)
+        fail('Unsafe native identity file');
+}
+
+function private_directory(path, create) {
+    let st = fs.lstat(path);
+    if (!st && create) {
+        if (!fs.mkdir(path, 0700)) fail('Cannot stage native identity');
+        st = fs.lstat(path);
+    }
+    if (path in [STORE,RUNTIME] && st?.type == 'directory' && st.uid == 0 && st.mode in [0755,0750] && fs.realpath(path) == path) {
+        if (!fs.chmod(path,0700)) fail('Cannot protect native identity directory');
+        st=fs.lstat(path);
+    }
+    if (st?.type != 'directory' || st.uid != 0 || st.mode != 0700 || fs.realpath(path) != path)
+        fail('Unsafe native identity transaction directory');
+}
+
+function publish(path, contents) {
+    // Fixed names inside a root-only directory; never follow an old temp link.
+    let temporary = path + '.installer-new';
+    if (fs.lstat(temporary)) {
+        let st = fs.lstat(temporary);
+        if (st?.type != 'file' || st.uid != 0 || st.mode != 0600 || st.nlink != 1 || st.size > 131072)
+            fail('Unsafe interrupted native staging file');
+        if (!fs.unlink(temporary)) fail('Cannot clear interrupted native staging');
+    }
+    if (fs.lstat(path)) {
+        safe_native_file(path);
+        if (fs.readfile(path) == contents) return;
+    }
+    let file = fs.open(temporary, 'w', 0600);
+    if (!file || !fs.chmod(temporary, 0600) || file.write(contents) != length(contents) ||
+        !file.flush() || !file.close() || system('sync') || !fs.rename(temporary, path) || system('sync'))
+        fail('Native identity publication failed');
+}
+
+function processes() {
+    let result = [];
+    for (let name in fs.lsdir(PROC)) {
+        if (!match(name, /^[1-9][0-9]*$/)) continue;
+        if (fs.readlink(PROC + '/' + name + '/exe') == '/usr/sbin/ucentral') push(result, +name);
+    }
+    return result;
+}
+
+function boot_id() {
+    let boot = trim(fs.readfile(PROC + '/sys/kernel/random/boot_id') ?? '');
+    if (!match(boot, /^[0-9a-f-]{36}$/)) fail('Missing boot identity');
+    return boot;
+}
+
+function option(args, name) {
+    let found = null;
+    for (let i = 0; i < length(args); i++) if (args[i] == name) {
+        if (found != null || i + 1 >= length(args)) fail('Invalid native client arguments');
+        found = args[++i];
+    }
+    return found;
+}
+function context_parts() {
+    let command = CONTEXT_COMMAND;
+    let pipe = fs.popen(command);
+    if (!pipe) fail('Native context unavailable');
+    let value = pipe.read('all');
+    if (pipe.close() || type(value) != 'string') fail('Native context unavailable');
+    return split(replace(value, /[\r\n]+$/, ''), '\t');
+}
+function validate(seed) {
+    if (!match(seed ?? '', /^\/[A-Za-z0-9_./-]+$/) ||
+        index(seed, '/..') >= 0 || fs.realpath(seed) != seed)
+        fail('Unsafe installer seed path');
+    let directory = fs.lstat(seed);
+    if (directory?.type != 'directory' || directory.uid != 0 || directory.mode != 0700)
+        fail('Unsafe installer seed directory');
+    let present = fs.lsdir(seed);
+    if (type(present) != 'array') fail('Installer identity directory unavailable');
+    for (let name in present) {
+        if (!(name in names)) fail('Unknown installer identity payload');
+        private_file(seed + '/' + name, 131072);
+    }
+    for (let name in required) if (!(name in present)) fail('Incomplete installer identity');
+    let binding_text = fs.readfile(seed + '/binding.tsv');
+    if (length(binding_text) > 1024 || substr(binding_text, -1) != '\n') fail('Invalid identity binding');
+    let binding = {};
+    let rows = split(binding_text, '\n'); pop(rows);
+    if (length(rows) != 11) fail('Invalid identity binding row count');
+    for (let i=0;i<length(rows);i++) {
+        let pair = split(rows[i], '\t');
+        if (pair[0] != fields[i]) fail('Invalid identity binding order');
+        if (length(pair) != 2 || !(pair[0] in fields) || exists(binding, pair[0])) fail('Invalid identity binding field');
+        binding[pair[0]] = pair[1];
+    }
+    if (binding.format != '2' || !match(binding.serial, /^[0-9a-f]{12}$/) ||
+        !((binding.family == 'sage' && binding.model in ['E410', 'E410B']) ||
+          (binding.family == 'jaguar' && binding.model in ['XV2-2', 'XV2-2T1', 'XE3-4']) ||
+          (binding.family == 'cheetah' && binding.model == 'XV2-21X') ||
+          (binding.family == 'thor' && binding.model == 'XV3-8')) ||
+        !(binding.source_slot + ':' + binding.target_slot in ['0:1', '1:0'])) fail('Invalid hardware identity binding');
+    for (let key in ['image_sha256', 'job_id', 'source_contract_sha256'])
+        if (!match(binding[key], /^[0-9a-f]{64}$/)) fail('Invalid identity binding digest');
+    let manifest_text = fs.readfile(seed + '/files.sha256');
+    if (length(manifest_text) > 4096 || substr(manifest_text, -1) != '\n') fail('Invalid identity manifest');
+    let manifest = {};
+    for (let row in split(trim(manifest_text), '\n')) {
+        let pair = match(row, /^([0-9a-f]{64})  ([A-Za-z0-9_.-]+)$/);
+        if (!pair || pair[2] == 'files.sha256' || !(pair[2] in present) || exists(manifest, pair[2]))
+            fail('Invalid identity manifest member');
+        manifest[pair[2]] = pair[1];
+    }
+    if (length(keys(manifest)) != length(present) - 1) fail('Incomplete identity manifest');
+    for (let name in keys(manifest)) if (hash_file(seed + '/' + name) != manifest[name]) fail('Identity manifest mismatch');
+    let est = object_file(seed + '/est.json', 2048);
+    exact_keys(est, ['server', 'tls_ca'], ['server', 'tls_ca']);
+    let endpoint = split(est.server ?? '', ':');
+    if (length(endpoint) > 2 || !hostname(endpoint[0]) ||
+        (length(endpoint) == 2 && (!match(endpoint[1], /^[1-9][0-9]{0,4}$/) || +endpoint[1] > 65535))) fail('Invalid EST endpoint');
+    if (!(est.tls_ca in ['systembundle','/etc/ssl/certs/ca-certificates.crt', '/etc/ucentral/insta.pem']) ||
+        (est.tls_ca == '/etc/ucentral/insta.pem' && !('insta.pem' in present))) fail('Missing independent EST HTTPS trust');
+    let gateway = object_file(seed + '/gateway.json', 2048);
+    exact_keys(gateway, ['server', 'port', 'cert', 'ca', 'hostname_validate', 'allow-self-signed', 'valid'],
+        ['server', 'port', 'cert', 'ca', 'hostname_validate']);
+    if (!hostname(gateway.server) || type(gateway.port) != 'int' || gateway.port < 1 || gateway.port > 65535 ||
+        gateway.cert != '/etc/ucentral/operational.pem' || gateway.hostname_validate != 1 ||
+        (exists(gateway, 'allow-self-signed') && gateway['allow-self-signed'] !== false) ||
+        (exists(gateway, 'valid') && type(gateway.valid) != 'bool') ||
+        !(gateway.ca in ['/etc/ssl/certs/ca-certificates.crt', '/etc/ucentral/server-ca.pem']) ||
+        (gateway.ca == '/etc/ucentral/server-ca.pem' && !('server-ca.pem' in present))) fail('Invalid strict gateway default');
+    if ('est-bootstrap.conf' in present) {
+        let credential = fs.readfile(seed + '/est-bootstrap.conf');
+        if (length(credential) != 87 || !match(credential, /^user = "[0-9a-f]{12}:[A-Za-z0-9_-]{64}"\n$/) ||
+            substr(credential, 8, 12) != binding.serial) fail('Invalid protected enrollment credential');
+    }
+    if (!(binding.source_operation in ['production-oem-migration','production-stock-openwrt-migration']) ||
+        !match(binding.source_release ?? '', /^[A-Za-z0-9._~-]{1,64}$/)) fail('Invalid source provenance');
+    return { binding, present, manifest, est, gateway, digest: hash_file(seed + '/files.sha256') };
+}
+function trusted_context(identity) {
+    let parts = context_parts();
+    let b = identity.binding;
+    if (length(parts) != 7 || parts[0] != b.serial || parts[1] != b.family ||
+        parts[2] != b.model || parts[3] != b.target_slot || parts[4] != b.target_slot ||
+        parts[5] != b.job_id || parts[6] != b.image_sha256)
+        fail('Installer trial does not match active hardware and pending transaction');
+}
+function current_identity(identity, stored_only) {
+    for (let directory in stored_only ? [STORE] : [STORE, RUNTIME]) {
+        for (let name in ['key.pem', 'operational.pem', 'operational.ca']) safe_native_file(directory + '/' + name);
+        if (spki(directory + '/key.pem', false) != identity.binding.spki_sha256 ||
+            spki(directory + '/operational.pem', true) != identity.binding.spki_sha256 ||
+            system(`openssl pkey -in ${directory}/key.pem -check -noout >/dev/null 2>&1`) ||
+            system(`openssl x509 -in ${directory}/operational.pem -checkend 0 -noout >/dev/null 2>&1`) ||
+            system(`openssl verify -purpose sslclient -CAfile ${directory}/operational.ca ${directory}/operational.pem >/dev/null 2>&1`) ||
+            output(`openssl x509 -in ${directory}/operational.pem -subject -noout -nameopt RFC2253`) != 'subject=CN=' + identity.binding.serial)
+            fail('Native identity no longer matches the staged AP');
+    }
+    if (!stored_only && hash_file(STORE + '/operational.pem') != hash_file(RUNTIME + '/operational.pem'))
+        fail('Runtime certificate is not durably stored');
+}
+
+function transaction(identity) {
+    let b = identity.binding;
+    private_directory(STORE, false);
+    let existing = fs.lstat(JOURNAL + '/transaction.json');
+    let marker=STORE+'/.cambium-ab-manifest';
+    if (!existing && fs.lstat(marker)) {
+        let m=fs.lstat(marker);
+        if(m.type!='file'||m.uid!=0||m.nlink!=1||m.size!=0||!(m.mode in [0600,0644,0440]))fail('Unsafe empty source-store marker');
+        if(!fs.unlink(marker)||system('sync'))fail('Cannot consume empty source-store marker');
+    }
+    let members=fs.lsdir(STORE);
+    if (!existing && length(members) && !(length(members)==1 && members[0]=='.installer-import'))
+        fail('An existing identity must not be replaced by onboarding');
+    if (!existing && fs.lstat(JOURNAL)) {
+        private_directory(JOURNAL,false);
+        for(let name in fs.lsdir(JOURNAL)) {
+            if(name!='transaction.json.installer-new')fail('Unknown interrupted onboarding journal');
+            let info=fs.lstat(JOURNAL+'/'+name);
+            if(info?.type!='file'||info.uid!=0||info.mode!=0600||info.nlink!=1||info.size>4096)
+                fail('Unsafe interrupted onboarding journal');
+        }
+    }
+    private_directory(JOURNAL, true);
+    let state = existing ? object_file(JOURNAL + '/transaction.json', 4096) : null;
+    if (state && (state.format != 2 || state.job != b.job_id || state.digest != identity.digest || state.serial != b.serial ||
+        state.target_slot != b.target_slot || state.source_slot != b.source_slot || state.image_sha256 != b.image_sha256))
+        fail('Another onboarding transaction owns this certificate store');
+    if (!state) state = {format:2,job:b.job_id,digest:identity.digest,serial:b.serial,source_slot:b.source_slot,
+        target_slot:b.target_slot,image_sha256:b.image_sha256,spki:null,committed:false,accepted:false};
+    if (state.boot != boot_id()) { state.boot=boot_id(); state.previous_pids=processes(); }
+    if (type(state.committed) != 'bool' || type(state.accepted) != 'bool' || type(state.previous_pids) != 'array')
+        fail('Invalid onboarding transaction');
+    publish(JOURNAL + '/transaction.json', sprintf('%J',state));
+    return state;
+}
+function bound_identity(seed) {
+    let identity = validate(seed);
+    let state = object_file(JOURNAL + '/transaction.json',4096);
+    if (state.job != identity.binding.job_id || state.digest != identity.digest || !match(state.spki ?? '', /^[0-9a-f]{64}$/))
+        fail('Onboarding identity is not durably bound');
+    identity.binding.spki_sha256=state.spki;
+    return identity;
+}
+function prepare_settings(seed) {
+    let identity=validate(seed);
+    trusted_context(identity);
+    if (system(MOUNT_COMMAND)) fail('Active native certificate volume is not mounted');
+    private_directory(RUNTIME,false);
+    if (fs.lstat(STORE+'/gateway.json') || fs.lstat(RUNTIME+'/gateway.flash'))
+        fail('Onboarding must not replace an explicit controller pin');
+    let state=transaction(identity);
+    for (let name in ['est.json','insta.pem','server-ca.pem','est-bootstrap.conf']) {
+        if (!(name in identity.present) || name=='est-bootstrap.conf' && state.accepted) continue;
+        for (let directory in [STORE,RUNTIME]) publish(directory+'/'+name,name=='est.json' && identity.est.tls_ca=='systembundle' ? sprintf('%J',{server:identity.est.server,tls_ca:'/etc/ssl/certs/ca-certificates.crt'}) : fs.readfile(seed+'/'+name));
+    }
+    for (let directory in [STORE,RUNTIME]) publish(directory+'/gateway.default.json',fs.readfile(seed+'/gateway.json'));
+    if (!fs.lstat(RUNTIME+'/gateway.json')) publish(RUNTIME+'/gateway.json',fs.readfile(seed+'/gateway.json'));
+    if (state.committed) {
+        identity.binding.spki_sha256=state.spki;
+        current_identity(identity,true);
+        for (let name in ['key.pem','cert.pem','operational.pem','operational.ca'])
+            publish(RUNTIME+'/'+name,fs.readfile(STORE+'/'+name));
+    }
+}
+function ensure_key_csr(identity,state) {
+    let key=STORE+'/key.pem', pending=STORE+'/key.pending.pem', csr=JOURNAL+'/csr.pem', intent=JOURNAL+'/issuance-intent.json';
+    if (!fs.lstat(key)) {
+        if (state.spki || fs.lstat(csr) || fs.lstat(intent)) fail('Issued key is missing; replacement generation refused');
+        if (!fs.lstat(pending) && system(`umask 077; openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ${pending} >/dev/null 2>&1`))
+            fail('Native key generation failed');
+        private_file(pending,131072);
+        if (system(`openssl pkey -in ${pending} -check -noout >/dev/null 2>&1`) || system('sync') || !fs.rename(pending,key) || system('sync'))
+            fail('Native key publication failed');
+    }
+    safe_native_file(key);
+    if (system(`openssl pkey -in ${key} -check -noout >/dev/null 2>&1`)) fail('Native key is corrupt');
+    let fingerprint=spki(key,false);
+    if (state.spki && state.spki!=fingerprint) fail('The original native key changed');
+    publish(RUNTIME+'/key.pem',fs.readfile(key));
+    if (!fs.lstat(csr)) {
+        if (fs.lstat(intent) || state.spki) fail('Original CSR missing after binding');
+        let temp=csr+'.pending';
+        if (fs.lstat(temp)) { private_file(temp,131072); if(!fs.unlink(temp))fail('CSR staging refused'); }
+        if (system(`umask 077; openssl req -new -key ${key} -subj /CN=${identity.binding.serial} -out ${temp} >/dev/null 2>&1`) ||
+            system('sync') || !fs.rename(temp,csr) || system('sync')) fail('Native CSR publication failed');
+    }
+    private_file(csr,131072);
+    if (system(`openssl req -in ${csr} -verify -noout >/dev/null 2>&1`) ||
+        output(`openssl req -in ${csr} -subject -noout -nameopt RFC2253`)!='subject=CN='+identity.binding.serial ||
+        split(output(`openssl req -in ${csr} -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum`),' ')[0]!=fingerprint)
+        fail('Native CSR no longer matches this AP');
+    let expected={job:state.job,serial:identity.binding.serial,spki:fingerprint,csr_sha256:hash_file(csr)};
+    if (fs.lstat(intent)) {
+        let original=object_file(intent,2048);
+        for(let name in keys(expected))if(original[name]!=expected[name])fail('Native issuance intent changed');
+    } else publish(intent,sprintf('%J',expected));
+    state.spki=fingerprint;
+    publish(JOURNAL+'/transaction.json',sprintf('%J',state));
+    identity.binding.spki_sha256=fingerprint;
+}
+function check_settings(seed) {
+    let identity=bound_identity(seed);trusted_context(identity);
+    if(system(MOUNT_COMMAND))fail('Native certificate volume unavailable');
+    let state=object_file(JOURNAL+'/transaction.json',4096);
+    if(!state.committed || state.boot!=boot_id())fail('Native first boot has not enrolled on this boot');
+    current_identity(identity);
+    private_file('/tmp/ucentral-installer-ready',2048);
+    if(fs.readfile('/tmp/ucentral-installer-ready')!=state.job+'\n'+identity.binding.image_sha256+'\n'+state.boot+'\n')
+        fail('Native first-boot ready marker is stale');
+}
+function enroll_settings(seed) {
+    // Networking and clock readiness are part of first boot, never installer work.
+    if (!fs.stat('/tmp/ucentral-network.ready') || !fs.stat('/tmp/ntp.set')) fail('Network and verified clock are not ready');
+    prepare_settings(seed);
+    let identity=validate(seed),state=object_file(JOURNAL+'/transaction.json',4096);
+    if (!state.committed) {
+        ensure_key_csr(identity,state);
+        // Native EST owns HTTPS, Basic bootstrap, PKCS10/PKCS7 and persistence.
+        if (system('/usr/bin/est_client enroll >/dev/null 2>&1')) fail('Native EST enrollment will retry with the original key and CSR');
+        for(let name in ['operational.pem','operational.ca']) {
+            safe_native_file(RUNTIME+'/'+name);
+            publish(STORE+'/'+name,fs.readfile(RUNTIME+'/'+name));
+        }
+        current_identity(identity);
+        for(let directory in [STORE,RUNTIME])if(!fs.lstat(directory+'/cert.pem'))publish(directory+'/cert.pem',fs.readfile(STORE+'/operational.pem'));
+        state.committed=true;
+        publish(JOURNAL+'/transaction.json',sprintf('%J',state));
+    } else { identity.binding.spki_sha256=state.spki;current_identity(identity); }
+    publish('/tmp/ucentral-installer-ready',state.job+'\n'+identity.binding.image_sha256+'\n'+state.boot+'\n');
+}
+
+function fresh_process(identity, state) {
+    let ready = '/tmp/ucentral-installer-ready';
+    private_file(ready, 2048);
+    if (fs.readfile(ready) != state.job + '\n' + identity.binding.image_sha256 + '\n' + state.boot + '\n')
+        fail('Native boot marker does not match the pending trial');
+    let pids = processes();
+    if (length(pids) != 1 || pids[0] in state.previous_pids) fail('A fresh sole native client is required');
+    let args = split(fs.readfile(PROC + '/' + pids[0] + '/cmdline') ?? '', '\x00');
+    for (let i = 1; i < length(args); i++) {
+        if (args[i] == '' && i == length(args) - 1) break;
+        if (args[i] in ['-h','-d','-r']) continue;
+        if (!(args[i] in ['-S','-s','-P','-c','-C','-f','-b']) || i + 1 >= length(args))
+            fail('Unknown or insecure native client arguments');
+        i++;
+    }
+    let gateway = object_file(RUNTIME + '/gateway.json', 2048);
+    if ('-i' in args || !('-h' in args) || option(args, '-S') != identity.binding.serial ||
+        option(args, '-c') != RUNTIME + '/operational.pem' || option(args, '-C') != gateway.ca ||
+        option(args, '-s') != gateway.server || +option(args, '-P') != gateway.port)
+        fail('Native client is not using the intended strict identity');
+    return pids[0];
+}
+function reapply(seed, pid, generation, sequence, uuid) {
+    for (let value in [pid, generation, sequence])
+        if (!match(value ?? '', /^[1-9][0-9]{0,9}$/) || +value > 4294967295)
+            fail('Invalid native reapply receipt');
+    if (!match(uuid ?? '', /^[1-9][0-9]{0,19}$/)) fail('Invalid native UUID');
+    if (length(uuid) == 20) {
+        let maximum = '18446744073709551615';
+        for (let i = 0; i < 20; i++) {
+            if (+substr(uuid, i, 1) > +substr(maximum, i, 1)) fail('Native UUID exceeds uint64');
+            if (+substr(uuid, i, 1) < +substr(maximum, i, 1)) break;
+        }
+    }
+    let identity = bound_identity(seed);
+    trusted_context(identity);
+    if (system(MOUNT_COMMAND)) fail('Active native certificate volume is not mounted');
+    private_directory(JOURNAL, false);
+    let state = object_file(JOURNAL + '/transaction.json', 2048);
+    if (!state.committed || state.job != identity.binding.job_id || state.digest != identity.digest ||
+        state.spki != identity.binding.spki_sha256 || state.boot != boot_id() || type(state.previous_pids) != 'array')
+        fail('Native import has not completed on this boot');
+    current_identity(identity);
+    if (fresh_process(identity, state) != +pid) fail('Native reapply process changed');
+    let path = JOURNAL + '/reapply.json';
+    let attempt = fs.lstat(path) ? object_file(path, 2048) : null;
+    if (attempt?.boot != state.boot) attempt = {boot:state.boot, count:0};
+    if (type(attempt.count) != 'int' || attempt.count < 0 || attempt.count >= 3 ||
+        (attempt.pid == +pid && attempt.generation == +generation))
+        fail('Native installer reapply already attempted for this session');
+    attempt.count++;
+    attempt.pid = +pid; attempt.generation = +generation;
+    attempt.sequence = +sequence; attempt.uuid = uuid;
+    publish(path, sprintf('%J', attempt));
+}
+function accepted(seed) {
+    let identity = bound_identity(seed);
+    trusted_context(identity);
+    if (system(MOUNT_COMMAND)) fail('Active native certificate volume is not mounted');
+    private_directory(JOURNAL, false);
+    let state = object_file(JOURNAL + '/transaction.json', 2048);
+    if (!state.committed || state.job != identity.binding.job_id || state.digest != identity.digest ||
+        state.spki != identity.binding.spki_sha256 || state.boot != boot_id() || type(state.previous_pids) != 'array')
+        fail('Native import has not completed on this boot');
+    current_identity(identity);
+    let pid = fresh_process(identity, state);
+    // Require a new configure received AND successfully applied by this
+    // process's current authenticated session, not a saved local UUID.
+    let status = libubus.connect()?.call('ucentral', 'status');
+    if (type(status?.connected) != 'int' || status.connected < 0 || exists(status ?? {}, 'disconnected') || status.client_pid != pid ||
+        !(status.connection_generation > 0) || !(status.config_received_sequence > 0) ||
+        status.config_applied_sequence != status.config_received_sequence ||
+        status.config_received_uuid != status.config_applied_uuid ||
+        status.config_received_uuid != status.latest || status.latest != status.active)
+        fail('Fresh native configuration has not been received and applied');
+    for (let directory in [STORE, RUNTIME]) {
+        let path = directory + '/est-bootstrap.conf';
+        if (fs.lstat(path)) {
+            private_file(path, 2048);
+            if (!fs.unlink(path)) fail('Cannot remove completed enrollment credential');
+        }
+    }
+    if (system('sync')) fail('Cannot persist enrollment completion');
+    state.accepted = true;
+    publish(JOURNAL + '/transaction.json', sprintf('%J', state));
+}
+function cleanup_confirmed(seed) {
+    if (seed != SETTINGS) fail('Cleanup is limited to the incoming seed');
+    let context = context_parts();
+    if (length(context) != 7 || context[4] != '' || context[5] != '' || context[6] != '')
+        fail('Installer pending state has not been cleared');
+    if (system(MOUNT_COMMAND)) fail('Confirmed native certificate volume is not mounted');
+    private_directory(JOURNAL, false);
+    let state = object_file(JOURNAL + '/transaction.json', 2048);
+    if (state.committed !== true || state.accepted !== true || context[3] != state.target_slot)
+        fail('Native trial has not been accepted');
+    let command = '. /lib/functions/system.sh; . /lib/functions/cambium-ab.sh; ab_identity >/dev/null || exit 1; ' +
+        '[ "$(ab_getenv "${AB_ENV}_ab_confirmed")" = "$AB_ACTIVE" ] && ' +
+        '[ "$(ab_getenv "${AB_ENV}_ab_state")" = confirmed ] && ' +
+        '[ "$(ab_getenv bootcmd)" = "run ${AB_ENV}_stable$AB_ACTIVE" ]';
+    if (system(command)) fail('Confirmed stable boot state has not been read back');
+    let proof_path = JOURNAL + '/completion.json';
+    let proof = fs.lstat(proof_path) ? object_file(proof_path, 4096) : null;
+    if (!proof) {
+        let identity = bound_identity(seed);
+        if (state.job != identity.binding.job_id || state.digest != identity.digest || state.spki != identity.binding.spki_sha256)
+            fail('Confirmed seed belongs to another transaction');
+        current_identity(identity, true);
+        proof = { binding: identity.binding, digest: identity.digest, manifest: identity.manifest };
+        publish(proof_path, sprintf('%J', proof));
+    }
+    let b = proof.binding;
+    if (type(b) != 'object' || type(proof.manifest) != 'object' ||
+        b.job_id != state.job || b.spki_sha256 != state.spki || proof.digest != state.digest ||
+        b.serial != context[0] || b.family != context[1] || b.model != context[2] || b.target_slot != context[3])
+        fail('Invalid confirmed cleanup proof');
+    current_identity({ binding: b }, true);
+    if (!fs.lstat(seed)) return;
+    private_directory(seed, false);
+    for (let name in fs.lsdir(seed)) {
+        if (!(name in names)) fail('Unknown confirmed seed member');
+        private_file(seed + '/' + name, 131072);
+        let expected = name == 'files.sha256' ? proof.digest : proof.manifest[name];
+        if (!match(expected ?? '', /^[0-9a-f]{64}$/) || hash_file(seed + '/' + name) != expected)
+            fail('Confirmed cleanup file has changed');
+    }
+    // Proof is durable before the first deletion, so interruption is resumable.
+    for (let name in fs.lsdir(seed)) if (!fs.unlink(seed + '/' + name)) fail('Confirmed seed cleanup failed');
+    if (!fs.rmdir(seed) || system('sync')) fail('Confirmed cleanup was not persisted');
+}
+
+try {
+ if(ARGV[0]=='reapply' && length(ARGV)==6){reapply(ARGV[1],ARGV[2],ARGV[3],ARGV[4],ARGV[5]);exit(0);}
+ if(length(ARGV)!=2 || ARGV[1]!=SETTINGS)fail('Invalid first-boot operation');
+ if(ARGV[0]=='validate-settings')validate(ARGV[1]);
+ else if(ARGV[0]=='prepare-settings')prepare_settings(ARGV[1]);
+ else if(ARGV[0]=='enroll-settings')enroll_settings(ARGV[1]);
+ else if(ARGV[0]=='check-settings')check_settings(ARGV[1]);
+ else if(ARGV[0]=='accepted')accepted(ARGV[1]);
+ else if(ARGV[0]=='cleanup-confirmed')cleanup_confirmed(ARGV[1]);
+ else fail('Invalid first-boot operation');
+ print('Native first-boot operation completed.\n');exit(0);
+}catch(e){warn('Native first-boot operation refused.\n');exit(1);}

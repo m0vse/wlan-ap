@@ -16,7 +16,7 @@ let est_server_override = getenv('EST_SERVER');
 // The installer credential is a separate Root-only curl configuration.
 // Normal boots may keep runtime identity in the overlay without mounting
 // the native certificate volume. Enrollment settings live on that volume.
-if ((ARGV[0] == 'enroll' || ARGV[0] == 'reenroll') && system('mount_certs'))
+if ((ARGV[0] == 'enroll' || ARGV[0] == 'reenroll') && system(ARGV[0]=='enroll' && fs.stat('/certificates/.installer-import/transaction.json') ? 'mount_certs --installer-empty' : 'mount_certs'))
     exit(1);
 
 let private_est = null;
@@ -132,6 +132,24 @@ if (getenv('CERT_PREFIX'))
 ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, "est_client");
 
 function generate_csr(cert) {
+    let cached = '/certificates/.installer-import/csr.pem';
+    if (private_est && !cert && fs.stat('/certificates/.installer-import/transaction.json')) {
+        let info = fs.lstat(cached);
+        let intent_info = fs.lstat('/certificates/.installer-import/issuance-intent.json');
+        if (info?.type != 'file' || info.uid != 0 || info.mode != 0600 || info.nlink != 1 ||
+            intent_info?.type != 'file' || intent_info.uid != 0 || intent_info.mode != 0600 || intent_info.nlink != 1)
+            return 1;
+        let intent;
+        try { intent = json(fs.readfile('/certificates/.installer-import/issuance-intent.json')); }
+        catch (e) { return 1; }
+        let hash = fs.popen(`sha256sum ${cached}`);
+        let actual = split(trim(hash.read('all') || ''), ' ')[0];
+        if (hash.close() || actual != intent?.csr_sha256 ||
+            system(`openssl req -in ${cached} -verify -noout >/dev/null 2>&1`)) return 1;
+        if (system(`umask 077; openssl req -in ${cached} -outform DER -out /tmp/csr.der`) ||
+            system('umask 077; openssl base64 -A -in /tmp/csr.der -out /tmp/csr.nohdr.p10')) return 1;
+        return 0;
+    }
 	{
         // Regenerate from the current identity; no stale temporary CSR reuse.
 		let subject;
@@ -174,7 +192,7 @@ function store_operational_cert(path, target) {
 	if (!match(target, /^[A-Za-z0-9_.-]+\.(pem|ca)$/))
 		return 1;
 	let staged = `/certificates/${target}.new`;
-	if (system('mount_certs') || system(`cp ${path} ${staged} && chmod 0440 ${staged}`) ||
+	if (system(private_est && fs.stat('/certificates/.installer-import/transaction.json') && !fs.stat('/certificates/cert.pem') ? 'mount_certs --installer-empty' : 'mount_certs') || system(`cp ${path} ${staged} && chmod 0440 ${staged}`) ||
 	    !fs.rename(staged, `/certificates/${target}`) || system('sync')) {
 		ulog(LOG_INFO, `Failed to persist ${target}\n`);
 		return 1;
