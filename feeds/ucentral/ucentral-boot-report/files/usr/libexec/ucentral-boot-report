@@ -46,12 +46,14 @@ try {
 		// step initially has stratum 16: await the subsequent valid stratum.
 		// Hooks are asynchronous: a late step must not erase a newer stratum.
 		if (action == 'step') exit(0);
-		if (action == 'unsync' || !match(stratum || '', /^([1-9]|1[0-5])$/)) {
+		let valid_stratum = match(stratum || '', /^([1-9]|1[0-5])$/);
+		if (action == 'unsync' || !valid_stratum || valid_stratum[0] != stratum) {
 			if (s) fs.unlink(path);
 			exit(0);
 		}
 		let id = trim(fs.readfile('/proc/sys/kernel/random/boot_id') || '');
-		if (!match(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) die('Invalid boot ID\n');
+		let valid_id = match(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
+		if (!valid_id || valid_id[0] != id) die('Invalid boot ID\n');
 		let f = fs.open(path, 'w', 0o600);
 		if (!f || !fs.chmod(path, 0o600)) die('Cannot mark synchronised clock\n');
 		if (f.write(id) != length(id) || !f.flush() || !f.close()) die('Clock marker write failed\n');
