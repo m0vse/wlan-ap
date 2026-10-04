@@ -140,6 +140,17 @@ issuance response must not silently replace a key already bound by the issuer.
 Retries retain that same key and CSR identity. Temporary RAM and an overlay
 discarded by `sysupgrade -n` do not establish durability.
 
+For the reviewed stock routes, a source directory such as
+`/root/.cambium-enrollment-source` is suitable only after verifying that its
+actual mount is writable persistent storage on the active bank. Sage may boot
+directly from UBIFS `rootfsACTIVE` without a separate overlay; do not require
+`rootfs_dataACTIVE` in that case. A SquashFS source instead needs a writable
+active-bank UBIFS overlay. Reject tmpfs, shared certificates and target-bank
+storage. Source inspection of inactive-only writers supports this boundary but
+does not prove key durability. Qualification requires sentinel and key-hash
+checks through reset/write/seed/sync/unmount/arm failures and rollback, plus
+runtime power-loss evidence for the exact source filesystem and bridge.
+
 The qualified source-to-candidate handoff must preserve the key and native
 birth-certificate mount requirements, EST trust/bootstrap and issued identity
 through power loss and clean migration while retaining prior recovery identity.
