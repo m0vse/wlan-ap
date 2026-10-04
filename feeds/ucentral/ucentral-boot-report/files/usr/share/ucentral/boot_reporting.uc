@@ -23,7 +23,8 @@ function reporter(p, io) {
 		return id;
 	}
 	function uptime() { return +split(read(p.uptime, 128) || '0', ' ')[0]; }
-	function stamp() { let t = io.now(); return t >= 1577836800 ? t : null; }
+	// A plausible year is not proof: OpenWrt restores a stale clock at boot.
+	function stamp() { let t = io.now(); return io.clock_synced() && t >= 1577836800 ? t : null; }
 	function state() {
 		if (!safe(p.directory, true) || !safe(p.state, false)) die('Unsafe history path\n');
 		let raw = read(p.state, max_state + 1);
@@ -127,6 +128,7 @@ function reporter(p, io) {
 					let panic = !!match(text, /Kernel panic -|Kernel panic:/);
 					let fault = !!match(text, /Oops:|BUG:/);
 					let event = { id: id + ':dump:' + key, method: 'crashlog', date: stamp(), source: name,
+						observed_boot_id: id, observed_uptime: uptime(), clock_verified: true,
 						capture_key: key, classification: panic ? 'kernel-panic' : fault ? 'kernel-fault' : 'kernel-dump',
 						truncated: meta.size > length(raw), sanitized: text != raw, text, delivery: 'pending' };
 					push(s.events, event); changed = true;
@@ -166,6 +168,7 @@ function reporter(p, io) {
 					complete: m.complete, truncated: m.truncated, binaryfile: m.binaryfile,
 					producer_sha256: m.sha256 };
 				push(s.events, { id: m.id + ':radio', method: 'crashlog', date: stamp(), source: 'devcoredump',
+					observed_boot_id: id, observed_uptime: uptime(), clock_verified: true,
 					capture_key: key, classification: 'radio-coredump', radio: metadata, truncated: m.truncated,
 					text: 'Radio coredump retained privately on the AP; this is not evidence of a host kernel panic. ' + sprintf('%J', metadata),
 					delivery: 'pending' });
@@ -187,6 +190,7 @@ function reporter(p, io) {
 					if (!now || !intent.date || (now >= intent.date && now - intent.date <= 300)) reason = intent.reason;
 				}
 				push(s.events, { id: id + ':boot', method: 'rebootLog', reason, date: stamp(), boot_id: id,
+					observed_boot_id: id, clock_verified: true,
 					initial_observation: !s.boot_id, previous_intent: intent || null, reset_evidence: evidence,
 					firmware: trim(read(p.version, 512) || ''), observed_uptime: uptime(), delivery: 'pending' });
 				s.boot_id = id; s.reason = reason; delete s.intent; changed = true;
@@ -215,8 +219,24 @@ function reporter(p, io) {
 		return locked(function() {
 			let s = state(), sent = 0;
 			if (!io.connected()) return 0;
+			let now = stamp();
+			// Capture and sync remain independent of NTP/network availability.
+			// Only transmission waits for a trustworthy wall clock.
+			if (now == null) return 0;
+			let id = boot_id(), up = uptime();
 			for (let event in s.events) {
 				if (event.delivery != 'pending') continue;
+				if (!event.clock_verified || event.date == null) {
+					let observed_id = event.observed_boot_id || event.boot_id;
+					let observed_up = event.observed_uptime;
+					let anchored = observed_id == id && index(['int', 'double'], type(observed_up)) >= 0 && observed_up >= 0 && observed_up <= up;
+					let corrected = anchored ? int(now - up + observed_up) : now;
+					if (corrected < 1577836800) { corrected = now; anchored = false; }
+					event.date = corrected;
+					event.timestamp_basis = anchored ? 'synchronised-uptime-estimate' : 'upload-time';
+					event.clock_verified = true;
+					save(s);
+				}
 				let details = { report_id: event.id, source: event.source || 'kernel-boot-id',
 					classification: event.classification, initial_observation: event.initial_observation,
 					radio: event.radio,
@@ -224,7 +244,7 @@ function reporter(p, io) {
 					firmware: event.firmware, observed_uptime: event.observed_uptime, truncated: event.truncated,
 					late_kernel_evidence: event.late_kernel_evidence,
 					sanitized: event.sanitized, evicted_local_reports: s.evicted || 0,
-					timestamp_basis: event.date ? 'collection-time' : 'upload-time', delivery: 'no-server-ack' };
+					timestamp_basis: event.timestamp_basis || 'synchronised-collection-time', delivery: 'no-server-ack' };
 				let params = event.method == 'crashlog' ? { loglines: [sprintf('OpenWiFi crash evidence %J', details), event.text] } :
 					{ type: event.reason, date: event.date || io.now(), info: [details] };
 				if (!io.send({ method: event.method, params })) break;
