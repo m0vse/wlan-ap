@@ -186,6 +186,14 @@ unchanged protected volume geometry. Restoration may reclaim only the inactive
 the environment, selects a boot, reboots or touches bootloader code. No production
 entrypoint loads it and no model becomes qualified by its presence.
 
+The frozen source contract selects either resize or inactive remove/recreate.
+The reviewed Sage 4.2.3.3-r10 tree includes `ubirmvol`/`ubimkvol`/`ubiupdatevol`
+but no `ubirsvol`, so its adapter must use the independently qualified recreate
+path. Required tools are checked before any reclamation. Removal/recreation
+addresses only the exact inactive root ID/name and validates the new geometry;
+failures retain the source bank and leave boot state untouched. Fixtures cover
+every mutation boundary; hardware interruption proof remains separate.
+
 The qualified caller must additionally establish exact manufacturing identity,
 OEM version/tools, authenticated frozen payloads, FIT/UBIFS semantics, private
 critical recovery, guarded selection/defaults and incoming identity handoff.

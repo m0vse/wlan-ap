@@ -142,6 +142,16 @@ csp_stage_pair() (
     # Subshell prevents state leakage into another transaction.
     local kernel=$1 root=$2 root_lebs=$3 root_format=$4 before after current kh rh overlay_id overlay_lebs
     [ "${CSP_WRITE_ADMISSION:-}" = qualified ] || csp_fail 'caller has not admitted this exact production transaction' || exit 1
+    # The frozen source contract chooses one reviewed resize mechanism.
+    # Never discover a missing required utility after reclaiming a volume.
+    case "${CSP_ROOT_RESIZE_MODE:-resize}" in
+        resize) command -v ubirsvol >/dev/null 2>&1 || exit 1 ;;
+        recreate) ;; # Reviewed OEM release has remove/create, not ubirsvol.
+        *) csp_fail 'unqualified root resize mechanism'; exit 1 ;;
+    esac
+    for current in ubiupdatevol ubirmvol ubimkvol sync sha256sum head awk cat wc sort; do
+        command -v "$current" >/dev/null 2>&1 || exit 1
+    done
     # Test-only filesystem roots never authorize live writes. Tests replace all
     # destructive commands, while an installer must use fixed real roots.
     csp_payload_check "$kernel" "$root" "$root_lebs" "$root_format" || exit 1
@@ -155,8 +165,17 @@ csp_stage_pair() (
         ubirmvol "${CSP_DEV:-/dev}/ubi0" -n "$CSP_OVERLAY_ID" || exit 1
     fi
     if [ "$current" != "$root_lebs" ]; then
-        ubiupdatevol -t "${CSP_DEV:-/dev}/ubi0_$CSP_ROOT_ID" || exit 1
-        ubirsvol "${CSP_DEV:-/dev}/ubi0" -n "$CSP_ROOT_ID" -s "$((root_lebs * 126976))" || exit 1
+        if [ "${CSP_ROOT_RESIZE_MODE:-resize}" = recreate ]; then
+            # Exact inactive ID/name only; the source bank and shared volumes
+            # remain present even if either operation fails. Never arm here.
+            ubirmvol "${CSP_DEV:-/dev}/ubi0" -n "$CSP_ROOT_ID" || exit 1
+            ubimkvol "${CSP_DEV:-/dev}/ubi0" -n "$CSP_ROOT_ID" -N "rootfs$CSP_TARGET" -s "$((root_lebs * 126976))" || exit 1
+            [ "$(csp_read ubi0_$CSP_ROOT_ID name)" = "rootfs$CSP_TARGET" ] || exit 1
+            [ "$(csp_read ubi0_$CSP_ROOT_ID usable_eb_size)" = 126976 ] || exit 1
+        else
+            ubiupdatevol -t "${CSP_DEV:-/dev}/ubi0_$CSP_ROOT_ID" || exit 1
+            ubirsvol "${CSP_DEV:-/dev}/ubi0" -n "$CSP_ROOT_ID" -s "$((root_lebs * 126976))" || exit 1
+        fi
     fi
     [ "$(csp_read ubi0_$CSP_ROOT_ID reserved_ebs)" = "$root_lebs" ] || exit 1
     [ "$(csp_hash "$kernel")" = "$kh" ] && [ "$(csp_hash "$root")" = "$rh" ] || exit 1

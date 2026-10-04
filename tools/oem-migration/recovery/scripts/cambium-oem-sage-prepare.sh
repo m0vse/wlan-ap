@@ -132,7 +132,7 @@ printf 'evidence=%s\nmodel=%s\nproduct=%s\nrunning_bank=%s\ninactive_bank=%s\nke
 	"$(if [ "$live" = 1 ]; then echo live; else echo offline; fi)" "$model" "$products" "$active" "$candidate" "$((rootlebs * 126976))"
 printf 'write_enabled=no\nqualification=layout-only\n'
 printf 'remaining=OEM release/updater qualification, authenticated image, boot guard/watchdog, recovery access\n'
-for tool in fw_setenv ubiupdatevol sha256sum openssl; do
+for tool in fw_setenv ubiupdatevol ubirmvol ubimkvol ubirsvol sha256sum; do
 	if command -v "$tool" >/dev/null 2>&1; then printf 'tool_%s=present-unqualified\n' "$tool"
 	else printf 'tool_%s=missing\n' "$tool"; fi
 done

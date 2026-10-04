@@ -26,7 +26,7 @@ dev = base / 'dev'
 if command == 'ubirmvol':
     volume = int(args[2])
     node = sysdir / ('ubi0_' + str(volume))
-    assert node.joinpath('name').read_text().strip() == 'rootfs_data' + os.environ['TARGET']
+    assert node.joinpath('name').read_text().strip() in ('rootfs_data' + os.environ['TARGET'], 'rootfs' + os.environ['TARGET'])
     import shutil
     shutil.rmtree(node)
     (dev / ('ubi0_' + str(volume))).unlink()
@@ -43,7 +43,7 @@ elif command == 'ubirsvol':
     (sysdir / ('ubi0_' + str(volume)) / 'reserved_ebs').write_text(str(size // 126976))
 elif command == 'ubimkvol':
     volume, name, size = int(args[2]), args[4], int(args[6])
-    assert name == 'rootfs_data' + os.environ['TARGET']
+    assert name in ('rootfs_data' + os.environ['TARGET'], 'rootfs' + os.environ['TARGET'])
     node = sysdir / ('ubi0_' + str(volume))
     node.mkdir()
     for key, value in [('name', name), ('reserved_ebs', str(size // 126976)), ('usable_eb_size', '126976')]:
@@ -96,7 +96,7 @@ class PairWriterTests(unittest.TestCase):
                       if i not in (2 * self.target, 2 * self.target + 1, 6 - self.target)]
         self.protected = {p: hashlib.sha256(p.read_bytes()).digest() for p in protected}
 
-    def run_writer(self, lebs=372, fmt='ubifs', fail=0, corrupt=False, admission='qualified'):
+    def run_writer(self, lebs=372, fmt='ubifs', fail=0, corrupt=False, admission='qualified', resize='resize'):
         import os
         env = dict(os.environ, FIXTURE=str(self.base), TARGET=str(self.target),
                    FAIL_STEP=str(fail), CORRUPT=str(int(corrupt)))
@@ -104,7 +104,7 @@ class PairWriterTests(unittest.TestCase):
 set -u
 . "$1"
 CSP_SYS="$FIXTURE/sys" CSP_DEV="$FIXTURE/dev" CSP_CMDLINE="$FIXTURE/cmdline" CSP_MOUNTS="$FIXTURE/mounts"
-CSP_ACTIVE="$2" CSP_FS_MTD=11 CSP_WRITE_ADMISSION="$5"
+CSP_ACTIVE="$2" CSP_FS_MTD=11 CSP_WRITE_ADMISSION="$5" CSP_ROOT_RESIZE_MODE="$6"
 ubirmvol() { python3 "$FIXTURE/mock.py" ubirmvol "$@"; }
 ubiupdatevol() { python3 "$FIXTURE/mock.py" ubiupdatevol "$@"; }
 ubirsvol() { python3 "$FIXTURE/mock.py" ubirsvol "$@"; }
@@ -112,7 +112,7 @@ ubimkvol() { python3 "$FIXTURE/mock.py" ubimkvol "$@"; }
 sync() { python3 "$FIXTURE/mock.py" sync; }
 csp_stage_pair "$FIXTURE/kernel" "$FIXTURE/root" "$3" "$4"
 '''
-        return subprocess.run(['sh', '-c', script, 'test', str(LIB), str(self.active), str(lebs), fmt, admission],
+        return subprocess.run(['sh', '-c', script, 'test', str(LIB), str(self.active), str(lebs), fmt, admission, resize],
                               env=env, text=True, capture_output=True)
 
     def assert_protected(self):
@@ -164,6 +164,27 @@ csp_stage_pair "$FIXTURE/kernel" "$FIXTURE/root" "$3" "$4"
                 result = self.run_writer(lebs=285, fmt='squashfs', fail=fail)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn('inactive_pair_staged=', result.stdout)
+                self.assert_protected()
+
+    def test_oem_recreate_uses_only_existing_remove_create_tools(self):
+        self.fixture(source='oem',free=0)
+        (self.base/'root').write_bytes(b'hsqs'+b'squashfs payload')
+        result=self.run_writer(lebs=285,fmt='squashfs',resize='recreate')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertNotIn('ubirsvol',(self.base/'events').read_text())
+        self.assert_protected()
+
+    def test_every_recreate_failure_preserves_working_source(self):
+        for fail in range(1,7):
+            with self.subTest(fail=fail):
+                import shutil
+                for path in self.base.iterdir():
+                    shutil.rmtree(path) if path.is_dir() else path.unlink()
+                self.fixture(source='oem',free=0)
+                (self.base/'root').write_bytes(b'hsqs'+b'squashfs payload')
+                result=self.run_writer(lebs=285,fmt='squashfs',resize='recreate',fail=fail)
+                self.assertNotEqual(result.returncode,0)
+                self.assertNotIn('inactive_pair_staged=',result.stdout)
                 self.assert_protected()
 
     def test_readback_corruption_never_reports_completion(self):
