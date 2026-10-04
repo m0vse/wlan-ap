@@ -11,11 +11,6 @@ import * as math from 'math';
 import * as fs from 'fs';
 import { select_controller } from '/usr/share/ucentral/discovery_policy.uc';
 
-// Opted-in private identity owns gateway state; even direct invocation must
-// not run stock discovery/EST against its committed generation.
-if (fs.stat('/usr/libexec/ucentral-private-pki') &&
-    system('/usr/libexec/ucentral-private-pki cloud-guard'))
-	exit(1);
 
 const DISCOVER = 0;
 const VALIDATING = 1;

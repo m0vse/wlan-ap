@@ -6,17 +6,35 @@ import { ulog_open, ulog, ULOG_SYSLOG, ULOG_STDIO, LOG_DAEMON, LOG_INFO } from '
 import * as fs from 'fs';
 import * as libuci from 'uci';
 
-if (fs.stat('/usr/libexec/ucentral-private-pki') &&
-    system('/usr/libexec/ucentral-private-pki cloud-guard'))
-	exit(1);
 
 let store_operational_pem = false;
 let store_operational_ca = false;
 let est_server = 'est.certificates.open-lan.org';
 let cert_prefix = 'operational';
 let est_server_override = getenv('EST_SERVER');
+// Public endpoint/trust policy persists with the native certificate volume.
+// The installer credential is a separate Root-only curl configuration.
+// Normal boots may keep runtime identity in the overlay without mounting
+// the native certificate volume. Enrollment settings live on that volume.
+if ((ARGV[0] == 'enroll' || ARGV[0] == 'reenroll') && system('mount_certs'))
+    exit(1);
+
+let private_est = null;
+if (fs.stat('/certificates/est.json')) {
+    let info = fs.lstat('/certificates/est.json');
+    if (info?.type != 'file' || info.uid != 0 || (info.mode & 022))
+        exit(1);
+    try { private_est = json(fs.readfile('/certificates/est.json')); }
+    catch (e) { exit(1); }
+    if (!match(private_est?.server ?? '', /^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?$/) ||
+        !match(private_est?.tls_ca ?? '', /^\/[A-Za-z0-9_./-]+$/) ||
+        fs.stat(private_est.tls_ca)?.type != 'file')
+        exit(1);
+}
+
 
 function cert_prefix_determine() {
+	if (private_est) return 'operational';
 	let cloud_config = fs.readfile('/tmp/cloud.json');
 	if (cloud_config) {
 		let cloud = json(cloud_config);
@@ -72,6 +90,7 @@ function discover_est_server_via_caa() {
 }
 
 function set_est_server() {
+	if (private_est) { est_server = private_est.server; return 0; }
 	if (est_server_override) {
 		est_server = est_server_override;
 		return 0;
@@ -113,10 +132,18 @@ if (getenv('CERT_PREFIX'))
 ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, "est_client");
 
 function generate_csr(cert) {
-	if (!fs.stat('/tmp/csr.nohdr.p10')) {
-		let pipe = fs.popen(`openssl x509 -in ${cert} -noout -subject`);
-		let subject = pipe.read("all");
-		pipe.close();
+	{
+        // Regenerate from the current identity; no stale temporary CSR reuse.
+		let subject;
+        if (private_est && !cert) {
+            let serial = libuci.cursor().get('ucentral', 'config', 'serial');
+            if (!match(serial ?? '', /^[0-9a-f]{12}$/)) return 1;
+            subject = `subject=CN = ${serial}`;
+        } else {
+            let pipe = fs.popen(`openssl x509 -in ${cert} -noout -subject`);
+            subject = pipe.read('all');
+            if (pipe.close() || !subject) return 1;
+        }
 		subject = rtrim(subject);
 		subject = replace(subject, 'subject=', '/');
 		subject = replace(subject, ' = ', '=');
@@ -161,7 +188,7 @@ function valid_renewal_candidate(path, previous, ca) {
 	if (!match(ca ?? '', /^\/etc\/ucentral\/[A-Za-z0-9_.-]+\.(pem|ca)$/) ||
 	    fs.stat(ca)?.type != 'file')
 		return false;
-	if (system(`openssl x509 -checkend 0 -noout -in ${path} && openssl verify -CAfile ${ca} ${path} && openssl pkey -in /etc/ucentral/key.pem -noout`))
+	if (system(`openssl x509 -checkend 0 -noout -in ${path} && openssl verify -purpose sslclient -CAfile ${ca} ${path} && openssl pkey -in /etc/ucentral/key.pem -noout`))
 		return false;
 	let candidate = fs.popen(`openssl x509 -in ${path} -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum`);
 	let key = fs.popen('openssl pkey -in /etc/ucentral/key.pem -pubout -outform DER | sha256sum');
@@ -171,7 +198,13 @@ function valid_renewal_candidate(path, previous, ca) {
 	let key_status = key.close();
 	if (candidate_status || key_status || !candidate_hash || candidate_hash != key_hash)
 		return false;
-	let new_subject = fs.popen(`openssl x509 -in ${path} -subject -noout -nameopt RFC2253`);
+	if (private_est && !previous) {
+        let serial = libuci.cursor().get('ucentral', 'config', 'serial');
+        let subject = fs.popen(`openssl x509 -in ${path} -subject -noout -nameopt RFC2253`);
+        let value = trim(subject.read('all') || '');
+        return !subject.close() && match(serial ?? '', /^[0-9a-f]{12}$/) && value == `subject=CN=${serial}`;
+    }
+    let new_subject = fs.popen(`openssl x509 -in ${path} -subject -noout -nameopt RFC2253`);
 	let old_subject = fs.popen(`openssl x509 -in ${previous} -subject -noout -nameopt RFC2253`);
 	let next = new_subject.read('all');
 	let old = old_subject.read('all');
@@ -205,8 +238,15 @@ function call_est_server(path, cert, target) {
 	if (set_est_server())
 		return 1;
 
-	let curl_cmd = 'curl -m 10 -X POST https://' + est_server + '/.well-known/est/' + path + ' -d @/tmp/csr.nohdr.p10 -H "Content-Type: application/pkcs10" --cert ' + cert + ' --key /etc/ucentral/key.pem --cacert /etc/ucentral/insta.pem -o /tmp/operational.nohdr.p7';
-	ulog(LOG_INFO, `Executing: ${curl_cmd}\n`);
+	let credential = `--cert ${cert} --key /etc/ucentral/key.pem`;
+    if (private_est && path == 'simpleenroll') {
+        let info = fs.lstat('/certificates/est-bootstrap.conf');
+        if (info?.type != 'file' || info.uid != 0 || (info.mode & 077)) return 1;
+        credential = '--config /certificates/est-bootstrap.conf';
+    }
+    let tls_ca = private_est?.tls_ca ?? '/etc/ucentral/insta.pem';
+    let curl_cmd = `curl --fail --silent --show-error -m 10 -X POST https://${est_server}/.well-known/est/${path} -d @/tmp/csr.nohdr.p10 -H 'Content-Type: application/pkcs10' ${credential} --cacert ${tls_ca} -o /tmp/operational.nohdr.p7`;
+	ulog(LOG_INFO, 'Contacting configured EST service\n');
 	let ret = system(curl_cmd);
 	if (ret) {
 		ulog(LOG_INFO, `Failed to request operational certificate (exit code: ${ret})\n`);
@@ -228,10 +268,16 @@ function simpleenroll() {
 	}
 
 	ulog(LOG_INFO, 'Operational certificate not found, enrolling...\n');
-	if (call_est_server('simpleenroll', '/etc/ucentral/cert.pem', '/etc/ucentral/' + cert_prefix + '.pem'))
+	let target = private_est ? '/tmp/native-initial.pem' : '/etc/ucentral/' + cert_prefix + '.pem';
+	if (call_est_server('simpleenroll', private_est ? null : '/etc/ucentral/cert.pem', target))
 		return 1;
 
-	ulog(LOG_INFO, 'Operational cert acquired\n');
+	if (private_est) {
+        if (!valid_renewal_candidate(target, null, '/etc/ucentral/' + cert_prefix + '.ca') ||
+            system(`cp ${target} /etc/ucentral/${cert_prefix}.pem && chmod 0440 /etc/ucentral/${cert_prefix}.pem`))
+            return 1;
+    }
+    ulog(LOG_INFO, 'Operational cert acquired\n');
 	store_operational_pem = true;
 	return 0;
 }
@@ -263,7 +309,10 @@ function simplereenroll() {
 		return 1;
 	let current = '/etc/ucentral/' + cert_prefix + '.pem';
 	let staged = '/tmp/' + cert_prefix + '.pem';
-	if (!valid_renewal_candidate(staged, current, gateway?.ca ?? '/etc/ucentral/' + cert_prefix + '.ca')) {
+	// Client issuer trust is independent of the gateway server TLS trust.
+    let issuer_ca = private_est ? '/etc/ucentral/' + cert_prefix + '.ca' :
+        (gateway?.ca ?? '/etc/ucentral/' + cert_prefix + '.ca');
+	if (!valid_renewal_candidate(staged, current, issuer_ca)) {
 		ulog(LOG_INFO, 'Renewal candidate failed identity, expiry or trust validation\n');
 		return 1;
 	}
@@ -291,8 +340,10 @@ function load_operational_ca() {
 	if (set_est_server())
 		return 1;
 
-	let curl_cmd = 'curl -m 10 -X GET https://' + est_server + '/.well-known/est/cacerts --cert /etc/ucentral/' + cert_prefix + '.pem --key /etc/ucentral/key.pem --cacert /etc/ucentral/insta.pem -o /tmp/' + cert_prefix + '.ca.nohdr.p7';
-	ulog(LOG_INFO, `Executing: ${curl_cmd}\n`);
+	let credential = private_est ? '' : `--cert /etc/ucentral/${cert_prefix}.pem --key /etc/ucentral/key.pem`;
+    let tls_ca = private_est?.tls_ca ?? '/etc/ucentral/insta.pem';
+    let curl_cmd = `curl --fail --silent --show-error -m 10 -X GET https://${est_server}/.well-known/est/cacerts ${credential} --cacert ${tls_ca} -o /tmp/${cert_prefix}.ca.nohdr.p7`;
+	ulog(LOG_INFO, 'Contacting configured EST service\n');
 	let ret = system(curl_cmd);
 	if (!ret)
 		ret = p7_too_pem('/tmp/' + cert_prefix + '.ca.nohdr.p7', '/etc/ucentral/' + cert_prefix + '.ca');
@@ -300,7 +351,8 @@ function load_operational_ca() {
 		ulog(LOG_INFO, `Failed to load CA (exit code: ${ret})\n`);
 		return 1;
 	}
-	system('cat /etc/ucentral/openlan.pem >> /etc/ucentral/' + cert_prefix + '.ca');
+	if (!private_est)
+		system('cat /etc/ucentral/openlan.pem >> /etc/ucentral/' + cert_prefix + '.ca');
 	ulog(LOG_INFO, 'Acquired CA\n');
 	store_operational_ca = true;
 	return 0;
@@ -350,7 +402,8 @@ function check_cert() {
 
 switch(ARGV[0]) {
 case 'enroll':
-	let ret = simpleenroll();
+	let ret = private_est ? load_operational_ca() : 0;
+    if (!ret) ret = simpleenroll();
 	if (!ret)
 		ret = load_operational_ca();
 	if (store_operational_pem)
