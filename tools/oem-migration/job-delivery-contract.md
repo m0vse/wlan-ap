@@ -1,9 +1,12 @@
 # Per-device migration job handoff
 
-This is an integration contract, not an executable installer. A root-authorized
-portal action creates one resumable, ownership-bound job and private per-device
-API key. The operator runs the qualified local migration installer and securely
-supplies that job's enrollment material. Initial migration is operator-assisted;
+This is an integration contract, not an executable installer. One root-authorized
+portal bulk action approves a migration batch with one shared enrollment key.
+The operator reuses that private key through the same protected input file or
+non-echoing prompt across installer runs. No per-AP operator key generation or
+individual portal approval is required. The backend maintains resumable,
+ownership-bound per-device records within that approved batch automatically.
+Initial migration is operator-assisted;
 post-install onboarding is automatic. There is no controller-to-private-LAN
 execution agent, server-side SSH service or operator countdown.
 
@@ -30,9 +33,14 @@ version, operation, canonical serial, exact model/SKU/revision/region, source
 capability digest, installer/image/recovery digests and qualification policy.
 The existing backend owns cancellation, current ownership and resumable key/CSR
 binding. API field names and routes must be taken from that backend's actual
-interface, not inferred from this contract. An API key is job authorization,
+interface, not inferred from this contract. The shared enrollment key authorizes
+only the approved migration batch, not arbitrary devices or Root operations.
+It is enrollment authorization,
 not a firmware signing key. Keep it out of URLs, logs, image defaults and
 ordinary configuration archives. No generic firmware secret is permitted.
+The shared batch key must not be compiled into firmware or treated as a global
+Root API credential. Each AP still generates its own private key and CSR;
+first-CSR binding, completion, cancellation and native renewal remain per-device.
 
 ### Exact job admission metadata
 
@@ -85,7 +93,8 @@ into a private AP path without exposing credentials in arguments, URLs or logs.
 The AP generates its own key and CSR; no private device key is generated in the
 portal or copied from another AP. Native EST uses `/certificates/est.json` with
 `server` and `tls_ca`, and the root-only curl configuration
-`/certificates/est-bootstrap.conf` with the canonical serial/per-job credential.
+`/certificates/est-bootstrap.conf` with Basic username equal to the canonical
+serial and password equal to the shared approved batch enrollment key.
 Both files are root-owned mode 0600; the credential is not a gateway discovery
 secret. Exact serialization/transport and executable bootstrap adapter remain
 owned by the CA integration and must be tested before use.
@@ -95,7 +104,11 @@ Native output is `operational.pem` and `operational.ca`, using the AP-local
 reload and rollback behavior require the lifecycle owner's final tested handoff.
 Preserve bootstrap credentials for interrupted retries. Remove them only after
 server-confirmed job completion and verified normal native connection; enroll
-success alone is not completion. Unlinking is cleanup, not a claim of physical
+success alone is not completion. Completion of one AP removes only that AP's
+bootstrap copy; it must not revoke the shared batch key while other approved
+devices still need enrollment or retries. Batch cancellation/revocation stops
+new enrollment without substituting the batch key for native mTLS renewal.
+Unlinking is cleanup, not a claim of physical
 secure erasure on flash. No new retrieval API is required merely to supply this
 local input. Existing job cancellation/ownership checks still apply.
 
