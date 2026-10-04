@@ -14,6 +14,8 @@
   "verification": {
     "existing_sage_ARM_runtime": "94 module assertions PASS; actual CLI/NTP marker, 7 helper assertions, private namespace shell/shutdown regression PASS.",
     "existing_thor_AArch64_runtime": "94 module assertions PASS; actual CLI/NTP marker, 7 helper assertions, private namespace shell/shutdown regression PASS.",
+    "existing_gambit_MIPS_runtime": "94 module assertions PASS; actual CLI/NTP marker, 7 helper assertions, private namespace shell/shutdown regression PASS after requiring whole-value regex matches.",
+    "older_regex_runtime": "Anchored validators explicitly compare the matched substring with the entire input, preventing older line-scoped regex implementations from accepting newline suffixes.",
     "profile_closure": "All five family profiles include ucentral-ap, which includes ucentral-schema depending on the shared ucentral-boot-report package.",
     "AP_operation": false,
     "firmware_build": false,
