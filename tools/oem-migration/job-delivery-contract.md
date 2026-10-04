@@ -5,8 +5,9 @@ portal action creates one resumable, ownership-bound job and private per-device
 API key. Protected retrieval delivers the exact approved command/bundle to the
 AP; there is no server-side SSH execution service or operator countdown.
 
-The shared job backend and PKI lifecycle remain owned by the provisioning
-service. Do not add a second issuer, identity store or activation protocol.
+The shared job backend remains owned by the provisioning service. Certificate
+enrollment and lifecycle use native OpenWiFi EST. Do not add a bespoke issuer,
+identity store or activation protocol.
 
 ## Admission and delivery
 
@@ -32,24 +33,27 @@ ordinary configuration archives. No generic firmware secret is permitted.
 ## AP execution sequence
 
 1. Complete read-only source and policy checks and authenticate the exact bundle.
-2. Generate the device's unique private key and CSR locally, then use the shared
-   backend's atomic first-CSR binding and enrollment protocol. Preserve a
-   resumable candidate handoff using the approved private lifecycle store.
+2. Generate the device's unique private key and CSR locally, then enroll through
+   native OpenWiFi EST using the reviewed bootstrap trust/authentication. Bind
+   the job to the actual device/CSR through the approved backend interface.
+   Preserve a resumable candidate handoff using native certificate persistence.
 3. Invoke only the qualified family/source adapter. Protect the running bank,
    unique calibration/identity and reviewed recovery set. Stock migration clears
    legacy configuration through its existing bridge/sysupgrade route; candidate
    identity handoff must survive independently of the discarded configuration.
-4. Boot the candidate and use the shared sole-client activation flow in
-   `tests/private-pki/private-activation-nonce.md`. Verify the protected receipt
-   binds the expected serial, candidate TLS leaf, fresh nonce and ordinary
-   gateway session. Issuance or transmitting a nonce alone is insufficient.
+4. Boot the candidate and reload the sole native client using the reviewed native
+   identity interface. Verify ordinary gateway acceptance binds the expected
+   serial and candidate TLS leaf to the current session, with evidence that
+   distinguishes it from a stale connection. Issuance alone is insufficient.
 5. Commit the durable candidate identity and then the qualified bank transaction
    only after acceptance evidence is persisted. Any failure must preserve or
    restore the prior identity/client and qualified source-bank recovery.
 
-The source lifecycle store helper is a primitive. Its existence does not prove
-this sequence works on a target. The target firmware must contain the agreed
-orchestrator, store, native client hook and bank guard before a job is enabled.
+Native EST bootstrap/authentication, certificate paths, persistence, reload and
+acceptance interfaces remain pending confirmation with the lifecycle owner.
+Do not guess endpoints or retain bespoke nonce/store hooks as prerequisites.
+The target firmware must contain and validate the agreed native EST integration
+and bank guard before a job is enabled. Source tests alone do not enable a job.
 
 ## Existing adapter insertion points
 

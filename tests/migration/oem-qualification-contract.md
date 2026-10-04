@@ -48,23 +48,20 @@ shared model/variant capability, not an implicit prerequisite from the OEM
 migration gate. Both migration routes use the same device key/CSR/grant and
 durable identity/controller acceptance flow.
 
-After admission, both adapters must use the shared private PKI lifecycle
-orchestrator and the native client activation hook documented in
-`tests/private-pki/private-activation-nonce.md`. Obtain a fresh challenge using
-the candidate certificate, stop the old client, and start the sole client with
-the candidate identity and challenge. Commit the durable candidate generation
-only after the protected gateway receipt binds the expected canonical serial,
-candidate TLS leaf, fresh nonce and accepted ordinary gateway session. Persist
-the issuer/root/leaf/session acceptance evidence with that generation. A grant,
-issued certificate or transmitted nonce alone does not complete migration.
+After admission, both adapters must use native OpenWiFi EST for enrollment and
+certificate lifecycle. Bootstrap trust/authentication, local key/CSR creation,
+certificate paths, persistence and client reload must follow the reviewed native
+integration contract. Those target interfaces remain pending confirmation; do
+not substitute a bespoke lifecycle service, nonce hook or certificate store.
 
-The activation verifier consumes the nonce once. Remove the service environment
-override after every attempt; preserve the previous identity generation and
-source-bank recovery until acceptance, and restore the prior identity/client on
-failure using the qualified transaction's rollback path. Neither adapter may
-create a separate issuer, certificate store or acceptance protocol. The optional
-native hook has source-level validation; live endpoint activation, package and
-firmware integration, and physical AP acceptance remain qualification gates.
+Commit the candidate identity and bank transaction only after verified ordinary
+gateway acceptance binds the expected canonical serial and candidate TLS leaf
+to the current session. Persist sufficient acceptance evidence to distinguish
+that session from a stale connection. Issuance alone does not complete migration.
+Preserve prior identity and source-bank recovery until acceptance and restore the
+prior identity/client on failure through the qualified rollback path. Native EST
+integration, durable certificate persistence, renewal and physical AP acceptance
+remain qualification gates; source tests do not enable a hardware migration.
 
 Inventory requires exactly `serial`, `exact_model`, `sku_hex`,
 `hardware_revision` and `region`. Serial is the canonical lowercase 12-hex AP
