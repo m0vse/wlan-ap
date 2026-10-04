@@ -34,6 +34,40 @@ interface, not inferred from this contract. An API key is job authorization,
 not a firmware signing key. Keep it out of URLs, logs, image defaults and
 ordinary configuration archives. No generic firmware secret is permitted.
 
+### Exact job admission metadata
+
+Use the frozen `openwifi.oem-migration-qualification.v1` evaluator schema rather
+than a second model allowlist. The download envelope carries these normalized
+objects alongside the backend's job ID, envelope schema, current job version,
+owner binding, current cancellation/completion state and authenticated manifest
+identity/signing-key reference. Backend wire names remain its API contract;
+extract exactly the following evaluator fields without passing wrapper metadata
+as extra evaluator keys.
+
+| Object | Required evaluator fields |
+| --- | --- |
+| Authoritative inventory | `serial`, `exact_model`, `sku_hex`, `hardware_revision`, `region` |
+| Verified runtime | All five inventory fields, `operation`, and all five digests below |
+| Trusted qualification | `schema`, `operation`, `status`, `exact_model`, `sku_hex`, `hardware_revision`, `region_compatibility`, and all five digests below |
+
+The five digests are `source_capability_contract_digest`, `installer_sha256`,
+`target_image_sha256`, `shared_recovery_manifest_sha256` and
+`qualification_evidence_digest`. Each is lowercase 64-hex SHA256; serial is
+lowercase 12-hex and SKU lowercase 8-hex. Only `status: qualified` admits a job.
+Resolve exact hardware fields by joining existing inventory serial to privately
+approved manufacturing evidence. Portal `deviceType` alone cannot establish
+factory SKU/revision/region. Missing evidence denies; requester-supplied values
+cannot populate that authoritative registry.
+
+For OEM, the source capability digest binds the exact reviewed OEM release,
+tools, layout, inactive geometry and boot guard, and the recovery digest binds
+the exact shared OEM recovery set. For stock OpenWrt, those digests bind its
+independently qualified stock release/updater bridge/runtime and stock rollback
+set. A stock job must not require OEM qualification. Verify the AP manufacturing
+identity and source/layout read-only against those contracts before enrollment
+or writing. The issuer also reevaluates current qualification before enrollment
+side effects; a prior downloaded approval cannot bypass later revocation.
+
 ## Secure local input boundary
 
 The local installer takes a public approved job-envelope path and a separate
