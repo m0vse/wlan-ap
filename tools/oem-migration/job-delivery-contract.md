@@ -2,8 +2,10 @@
 
 This is an integration contract, not an executable installer. A root-authorized
 portal action creates one resumable, ownership-bound job and private per-device
-API key. Protected retrieval delivers the exact approved command/bundle to the
-AP; there is no server-side SSH execution service or operator countdown.
+API key. The operator runs the qualified local migration installer and securely
+supplies that job's enrollment material. Initial migration is operator-assisted;
+post-install onboarding is automatic. There is no controller-to-private-LAN
+execution agent, server-side SSH service or operator countdown.
 
 The shared job backend remains owned by the provisioning service. Certificate
 enrollment and lifecycle use native OpenWiFi EST. Do not add a bespoke issuer,
@@ -19,9 +21,11 @@ jobs stop before persistent staging, backup or enrollment. The operations remain
 `production-oem-migration` and `production-stock-openwrt-migration`; qualification
 for one cannot authorize the other. Routine renewal remains separate.
 
-Retrieve the job over hostname-verified HTTPS using independently provisioned
-trust. Do not accept a trust anchor from the same downloaded bundle as proof of
-that bundle's authenticity. The reviewed job envelope must bind job ownership,
+Supply the approved job and authenticated bundle to the local installer through
+the protected operator channel. Any HTTPS retrieval must verify the hostname
+using independently provisioned trust. Do not accept a trust anchor from the
+same downloaded bundle as proof of its authenticity. The reviewed job envelope
+must bind job ownership,
 version, operation, canonical serial, exact model/SKU/revision/region, source
 capability digest, installer/image/recovery digests and qualification policy.
 The existing backend owns cancellation, current ownership and resumable key/CSR
@@ -29,6 +33,41 @@ binding. API field names and routes must be taken from that backend's actual
 interface, not inferred from this contract. An API key is job authorization,
 not a firmware signing key. Keep it out of URLs, logs, image defaults and
 ordinary configuration archives. No generic firmware secret is permitted.
+
+## Secure local input boundary
+
+The local installer takes a public approved job-envelope path and a separate
+private enrollment-input path, not an API key in its command line. These are
+integration inputs, not new executable flags on the existing family wrappers.
+The secret input must be a regular file owned by root, mode 0600, within a
+root-owned 0700 directory. Reject symlinks, shared/writable parent directories,
+wrong owner/mode and unapproved job/serial/operation before copying the material
+to persistent AP storage or invoking enrollment. Never source or evaluate the
+input as shell code. Do not print its contents, enable shell tracing, include it
+in receipts, or place it in public artifact hosting or ordinary backup archives.
+
+After successful admission, the reviewed transport stages the approved input
+into a private AP path without exposing credentials in arguments, URLs or logs.
+The AP generates its own key and CSR; no private device key is generated in the
+portal or copied from another AP. Native EST uses `/certificates/est.json` with
+`server` and `tls_ca`, and the root-only curl configuration
+`/certificates/est-bootstrap.conf` with the canonical serial/per-job credential.
+Both files are root-owned mode 0600; the credential is not a gateway discovery
+secret. Exact serialization/transport and executable bootstrap adapter remain
+owned by the CA integration and must be tested before use.
+
+Native output is `operational.pem` and `operational.ca`, using the AP-local
+`/etc/ucentral/key.pem` and CSR. Full resolved output paths, atomic persistence,
+reload and rollback behavior require the lifecycle owner's final tested handoff.
+Preserve bootstrap credentials for interrupted retries. Remove them only after
+server-confirmed job completion and verified normal native connection; enroll
+success alone is not completion. Unlinking is cleanup, not a claim of physical
+secure erasure on flash. No new retrieval API is required merely to supply this
+local input. Existing job cancellation/ownership checks still apply.
+
+After installation, approved inventory/configuration and provisioned identity
+drive automatic onboarding. DHCP option 224 overrides the private gateway
+default; EST trust/configuration remains separate from gateway discovery.
 
 ## AP execution sequence
 
