@@ -129,6 +129,32 @@ After installation, approved inventory/configuration and provisioned identity
 drive automatic onboarding. DHCP option 224 overrides the private gateway
 default; EST trust/configuration remains separate from gateway discovery.
 
+### Durable key and retry boundary
+
+No migration-owned key generation or retry adapter is implemented yet. Before
+submitting the first CSR, the native adapter must reuse the AP's valid existing
+unique key or generate one exactly once, publish it atomically to qualified
+private durable storage, flush it, then reread and validate that durable key.
+Only then derive and submit the CSR. Interrupted publication or an uncertain
+issuance response must not silently replace a key already bound by the issuer.
+Retries retain that same key and CSR identity. Temporary RAM and an overlay
+discarded by `sysupgrade -n` do not establish durability.
+
+The qualified source-to-candidate handoff must preserve the key and native
+birth-certificate mount requirements, EST trust/bootstrap and issued identity
+through power loss and clean migration while retaining prior recovery identity.
+Do not overwrite that recovery identity before acceptance. In particular, the
+current Sage stock bridge requires an empty certificate store after services
+stop: simply pre-enrolling into `/certificates` violates its guard. A narrow
+handoff or bridge change requires family-specific qualification first.
+
+OEM preflight uses POSIX shell, not ucode. Neither OEM nor converted stock ucode,
+curl or crypto capabilities may be assumed from the target firmware's tools.
+Verify the exact source runtime capability or supply an authenticated reviewed
+helper in the qualified bundle; otherwise deny. The native lifecycle owner
+provides enrollment/import/acceptance executable interfaces. This document does
+not create a parallel enrollment implementation or enable any writer.
+
 ## AP execution sequence
 
 1. Complete read-only source and policy checks and authenticate the exact bundle.
