@@ -2,7 +2,7 @@
 # keep their existing health contract. No controller credential or endpoint.
 
 ab_installer_health() {
-	local target job image seed=${AB_INSTALLER_INCOMING_SEED:-/root/.cambium-installer-identity}
+	local target job image seed=${AB_INSTALLER_INCOMING_SEED:-/root/.cambium-installer-settings}
 	local accept=${AB_INSTALLER_ACCEPT:-/usr/libexec/ucentral-installer-identity} value
 	target=$(ab_getenv "${AB_ENV}_installer_target") || target=
 	job=$(ab_getenv "${AB_ENV}_installer_job") || job=
@@ -32,7 +32,7 @@ ab_installer_clear_pending() {
 }
 
 ab_installer_cleanup_confirmed() {
- local job=$1 slot=$2 seed=${AB_INSTALLER_INCOMING_SEED:-/root/.cambium-installer-identity}
+ local job=$1 slot=$2 seed=${AB_INSTALLER_INCOMING_SEED:-/root/.cambium-installer-settings}
  local accept=${AB_INSTALLER_ACCEPT:-/usr/libexec/ucentral-installer-identity}
  [ -d "$seed" ] || return 0
  [ "$slot" = "$AB_ACTIVE" ] &&

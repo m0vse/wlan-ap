@@ -35,7 +35,7 @@ copy_certificates() {
 
 boot() {
 	# Apply pending installer identity before the saved-file shortcut.
-	/usr/libexec/ucentral-installer-boot import || return 1
+	/usr/libexec/ucentral-installer-boot prepare || return 1
 	case "$(board_name)" in
 	sonicfi,rap6*)
 		touch /tmp/squashfs
