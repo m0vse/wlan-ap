@@ -1,0 +1,86 @@
+#!/bin/sh /etc/rc.common
+# Diagnostic only. Install as zz_ath11k_tpc_once AFTER coordinator review.
+START=09
+
+boot() {
+	local work=/root/xe34-ath11k-tpc-once
+	local link=/etc/rc.d/S09zz_ath11k_tpc_once
+	local original=/lib/modules/6.12.85/ath11k.ko
+	local candidate="$work/ath11k-ap-tpc.ko"
+	local key value
+
+	[ -f "$work/armed" ] || return 0
+	# The marker is consumed and our own link removed BEFORE any module load.
+	# A second power cycle uses the installed original; no module is overwritten.
+	mv "$work/armed" "$work/consumed" || return 0
+	if [ -L "$link" ]; then
+		case "$(readlink "$link")" in
+			../init.d/zz_ath11k_tpc_once|/etc/init.d/zz_ath11k_tpc_once)
+				rm -f "$link" || return 0
+				;;
+			*) sync; return 0;;
+		esac
+	fi
+	sync
+	[ ! -e "$work/armed" ] && [ ! -e "$link" ] || return 0
+
+	printf 'disarmed boot_id=%s\n' "$(cat /proc/sys/kernel/random/boot_id)" >> "$work/stages.log"
+	sync
+	# All failure paths leave the original S10 loader in charge. No unloads.
+	[ "$(cat /tmp/sysinfo/board_name)" = 'cambiumnetworks,xe3-4' ] || return 0
+	[ "$(uci -q get ucentral.config.serial)" = b4a25c05c018 ] || return 0
+	[ "$(uname -r)" = 6.12.85 ] || return 0
+	[ "$(uci -q get wireless.radio2.band)" = 6g ] || return 0
+	[ "$(uci -q get wireless.radio2.reg_power_type)" = 0 ] || return 0
+	[ "$(uci -q get wireless.radio2.he_6ghz_reg_pwr_type)" = 0 ] || return 0
+	[ "$(uci -q get wireless.radio2.country)" = GB ] || return 0
+	[ "$(uci -q get wireless.radio2.txpower)" = 14 ] || return 0
+	[ "$(sha256sum "$original" | cut -d' ' -f1)" = bc51dc38ba8bd5884bcc24cbf6f0a750d7be22d67b11dba33c1b0fe20410fa0e ] || return 0
+	[ "$(sha256sum /lib/modules/6.12.85/ath11k_ahb.ko | cut -d' ' -f1)" = e3d7661fb85d5813cf931b1ff78f3261c2102fabf1864fb4f7ec3e6fb2adc2c6 ] || return 0
+	[ "$(sha256sum /lib/modules/6.12.85/ath11k_pci.ko | cut -d' ' -f1)" = 0cad8a114ba0b5b2b9383de412cb08fc0aa7ac2e00b7eb8897c2397d150e2f31 ] || return 0
+	[ "$(sha256sum "$candidate" | cut -d' ' -f1)" = 4d706f5518ce5ffa960a50577ee9d0d4876ab39c131b6ca2d027aded1a782b45 ] || return 0
+	[ "$(sha256sum /lib/firmware/ath11k/QCN9074/hw1.0/board-2.bin | cut -d' ' -f1)" = ec7f6118fb340f5f752e6f160c633148a400b779500e5e139b57c822b1f060b4 ] || return 0
+	[ -L /etc/rc.d/S09cambium-board-data ] || return 0
+	[ -L /etc/rc.d/S09early_boot ] || return 0
+	[ -L /etc/rc.d/S10boot ] || return 0
+	[ ! -d /sys/module/ath11k ] && [ ! -d /sys/module/ath11k_pci ] && [ ! -d /sys/module/ath11k_ahb ] || return 0
+
+	# Parameters are captured from this AP during staging, never eval/sourced.
+	# Validate the exact captured file and accept only known module parameters.
+	[ -f "$work/parameters" ] && [ -f "$work/parameters.sha256" ] || return 0
+	[ "$(sha256sum "$work/parameters" | cut -d' ' -f1)" = "$(cat "$work/parameters.sha256")" ] || return 0
+	set --
+	while IFS='=' read -r key value; do
+		case "$key" in
+			cold_boot_cal|ftm_mode)
+				case "$value" in Y|N|0|1) ;; *) return 0;; esac;;
+			crypto_mode|frame_mode|debug_mask)
+				case "$value" in ''|*[!0-9a-fA-FxX]*) return 0;; esac;;
+			xv3_8_hw_mode)
+				case "$value" in ''|'(null)') continue;; *[!a-zA-Z0-9_-]*) return 0;; esac;;
+			*) return 0;;
+		esac
+		set -- "$@" "$key=$value"
+	done < "$work/parameters"
+	[ "$#" -ge 5 ] || return 0
+	dmesg > "$work/kernel.before-core-load"
+	printf 'guards-passed\n' >> "$work/stages.log"
+	sync
+	# modprobe loads only normal core dependencies, not ath11k bus drivers.
+	# Keep loading synchronous. A timeout cannot cancel uninterruptible kernel
+	# init safely and could race the S10 loader. A hang needs physical recovery.
+	/sbin/modprobe mac80211 || return 0
+	/sbin/modprobe qmi_helpers || return 0
+	[ ! -d /sys/module/ath11k ] && [ ! -d /sys/module/ath11k_pci ] && [ ! -d /sys/module/ath11k_ahb ] || return 0
+	printf 'loading-candidate-core\n' >> "$work/stages.log"
+	sync
+	if /sbin/insmod "$candidate" "$@"; then
+		printf 'candidate-core-loaded-no-hardware-acceptance\n' >> "$work/stages.log"
+	else
+		printf 'candidate-load-failed-normal-loader-will-continue\n' >> "$work/stages.log"
+	fi
+	dmesg > "$work/kernel.after-core-load"
+	sync
+	# Do not load wrappers here. S10boot uses the unchanged normal loader.
+	return 0
+}

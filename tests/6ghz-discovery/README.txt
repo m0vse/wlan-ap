@@ -26,3 +26,11 @@ or feature-policy change is added. Repeat parser checks against new images.
 
 Runtime beacon/client discovery and reboot persistence remain separate from
 these source/target-parser tests. No AP FILS changes were made during testing.
+Full-caller regression: test-bss-integration.py OPENWRT_ROOT runs the entire
+hostapd_set_bss_options function with the native base-files append function.
+It reproduces the old FILS/ctrl_interface joining bug as a negative control.
+DISCOVERY_TEST_SHELL can select the shipped BusyBox via qemu. Set
+DISCOVERY_TARGET_ROOT and DISCOVERY_TARGET_EMULATOR to additionally check
+complete emitted BSS text and power enums/default/invalid value against the
+selected target hostapd parser, using a deliberately invalid driver (no radio
+initialization). Without TARGET_ROOT the parser check explicitly skips.

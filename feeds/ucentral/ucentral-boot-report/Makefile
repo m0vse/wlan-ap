@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-boot-report
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 PKG_LICENSE:=BSD-3-Clause
@@ -26,6 +26,8 @@ define Package/ucentral-boot-report/install
 	$(INSTALL_BIN) ./files/etc/init.d/ucentral-boot-report $(1)/etc/init.d/
 	$(INSTALL_DATA) ./files/etc/profile.d/ucentral-reboot-history.sh $(1)/etc/profile.d/
 	$(INSTALL_DATA) ./files/usr/share/ucentral/boot_reporting.uc $(1)/usr/share/ucentral/
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/ntp
+	$(INSTALL_DATA) ./files/etc/hotplug.d/ntp/35-boot-report-clock $(1)/etc/hotplug.d/ntp/
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/ucentral-boot-report $(1)/lib/upgrade/keep.d/
 endef

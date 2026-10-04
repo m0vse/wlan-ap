@@ -22,6 +22,19 @@ cli() { "$emulator" -L "$root" "$root/usr/bin/ucode" -L "$root/usr/lib/ucode" "$
 uc() { "$emulator" -L "$root" "$root/usr/bin/ucode" -L "$root/usr/lib/ucode" "$@"; }
 cli collect
 cli collect
+cli clock-sync step 16
+[ ! -e /run/ucentral-boot-report/clock-synced ]
+cli clock-sync stratum 16
+[ ! -e /run/ucentral-boot-report/clock-synced ]
+cli clock-sync stratum 2
+[ "$(cat /run/ucentral-boot-report/clock-synced)" = aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa ]
+[ "$(stat -c %a /run/ucentral-boot-report/clock-synced)" = 600 ]
+cli clock-sync step 16
+[ -f /run/ucentral-boot-report/clock-synced ]
+cli clock-sync unsync 16
+[ ! -e /run/ucentral-boot-report/clock-synced ]
+cli clock-sync periodic 3
+[ -f /run/ucentral-boot-report/clock-synced ]
 cli plan controller-requested
 cli plan user-requested
 cli plan orderly-shutdown

@@ -27,13 +27,36 @@ let app = reporter({
 	cause: runtime + '/cause'
 }, {
 	now: () => time(), sync: () => system(['sync']), rename: (a, b) => fs.rename(a, b),
+	clock_synced: function() {
+		let path = runtime + '/clock-synced', s = fs.lstat(path);
+		return s && s.type == 'file' && s.uid == 0 && !(s.mode & 0o077) && s.size <= 128 &&
+			trim(fs.readfile(path) || '') == trim(fs.readfile('/proc/sys/kernel/random/boot_id') || '');
+	},
 	unlink: path => fs.unlink(path), reset_cause,
 	connected: function() { let s = rpc('status', {}); return s && type(s.connected) == 'int' && s.connected >= 0 && s.boot_report_transport == 1; },
 	send: function(message) { let response = rpc('send', message); return response && response.transmitted === true; }
 });
 let command = ARGV[0];
 try {
-	if (command == 'collect') app.collect();
+	if (command == 'clock-sync') {
+		let action = ARGV[1], stratum = ARGV[2];
+		if (index(['stratum', 'periodic', 'step', 'unsync'], action) < 0) exit(0);
+		let path = runtime + '/clock-synced', s = fs.lstat(path);
+		if (s && (s.type != 'file' || s.uid != 0 || (s.mode & 0o077))) die('Unsafe clock marker\n');
+		// step initially has stratum 16: await the subsequent valid stratum.
+		// Hooks are asynchronous: a late step must not erase a newer stratum.
+		if (action == 'step') exit(0);
+		if (action == 'unsync' || !match(stratum || '', /^([1-9]|1[0-5])$/)) {
+			if (s) fs.unlink(path);
+			exit(0);
+		}
+		let id = trim(fs.readfile('/proc/sys/kernel/random/boot_id') || '');
+		if (!match(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)) die('Invalid boot ID\n');
+		let f = fs.open(path, 'w', 0o600);
+		if (!f || !fs.chmod(path, 0o600)) die('Cannot mark synchronised clock\n');
+		if (f.write(id) != length(id) || !f.flush() || !f.close()) die('Clock marker write failed\n');
+	}
+	else if (command == 'collect') app.collect();
 	else if (command == 'plan') app.plan(ARGV[1]);
 	else if (command == 'cancel') app.cancel(ARGV[1]);
 	else if (command == 'send') app.send();
@@ -42,5 +65,5 @@ try {
 			try { app.collect(); app.send(); } catch (e) { warn(sprintf('boot-report: %s\n', e)); connection = null; }
 			sleep(30000);
 		}
-	} else die('Usage: ucentral-boot-report collect|plan REASON|cancel REASON|send|run\n');
+	} else die('Usage: ucentral-boot-report collect|plan REASON|cancel REASON|send|run|clock-sync ACTION STRATUM\n');
 } catch (e) { warn(sprintf('boot-report: %s\n', e)); exit(1); }

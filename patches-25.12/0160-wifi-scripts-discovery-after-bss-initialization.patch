@@ -1,0 +1,35 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi-scripts: initialize BSS before appending discovery options
+
+The first ctrl_interface append deliberately uses the default space separator.
+It must remain first so the FILS interval is not joined to ctrl_interface.
+
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+ PKG_VERSION:=1.0
+-PKG_RELEASE:=3
++PKG_RELEASE:=4
+ PKG_LICENSE:=GPL-2.0
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+--- a/package/network/config/wifi-scripts/files/lib/netifd/hostapd.sh
++++ b/package/network/config/wifi-scripts/files/lib/netifd/hostapd.sh
+@@ -568,7 +568,6 @@ hostapd_set_bss_options() {
+ 
+ 	local bss_conf bss_md5sum ft_key rxkhs
+ 	local wep_rekey wpa_group_rekey wpa_pair_rekey wpa_master_rekey wpa_key_mgmt
+-	hostapd_set_6ghz_discovery
+ 
+ 	json_get_vars \
+ 		wep_rekey wpa_group_rekey wpa_pair_rekey wpa_master_rekey wpa_strict_rekey \
+@@ -616,6 +615,7 @@ hostapd_set_bss_options() {
+ 	/usr/sbin/hostapd -vfils || fils=0
+ 
+ 	append bss_conf "ctrl_interface=/var/run/hostapd"
++	hostapd_set_6ghz_discovery
+ 	if [ "$isolate" -gt 0 ]; then
+ 		append bss_conf "ap_isolate=$isolate" "$N"
+ 	fi

@@ -1,0 +1,4 @@
+#!/bin/sh
+# ntpd supplies stratum; a restored boot clock or arbitrary touch is not proof.
+/usr/libexec/ucentral-boot-report clock-sync "$ACTION" "$stratum" ||
+	logger -t boot-report 'clock synchronisation marker unavailable; reports remain queued'
