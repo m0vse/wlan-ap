@@ -5,7 +5,9 @@ function reporter(p, io) {
 	let collect;
 	const max_events = 8, max_state = 196608, max_dump = 16384;
 	const reasons = ['controller-requested', 'user-requested', 'orderly-shutdown', 'firmware-upgrade', 'factory', 'certupdate', 'fixedconfig', 'transfer', 'confirmed-crash', 'watchdog', 'power-failure', 'unexpected-shutdown'];
-	function uuid(id) { return type(id) == 'string' && !!match(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/); }
+	// Older ucode regex anchors are line-scoped: require the entire value.
+	function fullmatch(value, pattern) { let m = type(value) == 'string' && match(value, pattern); return m && m[0] == value; }
+	function uuid(id) { return !!fullmatch(id, /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/); }
 	function bounded(value, size) { return type(value) == 'string' && length(value) <= size; }
 	function normalized(reason) { return reason == 'upgrade' ? 'firmware-upgrade' : reason == 'kernel-crash' ? 'confirmed-crash' : reason; }
 	function safe(path, dir) {
@@ -116,7 +118,7 @@ function reporter(p, io) {
 			let directory = fs.opendir(p.pstore);
 			for (let n = 0; directory && n < 34; n++) {
 				let name = directory.read(); if (name == null) break;
-				if (!match(name, /^dmesg-[a-zA-Z0-9_-]+$/)) continue;
+				if (!fullmatch(name, /^dmesg-[a-zA-Z0-9_-]+$/)) continue;
 				let src = p.pstore + '/' + name, meta = fs.lstat(src);
 				if (!meta || meta.type != 'file') continue;
 				let raw = read(src, max_dump);
@@ -148,18 +150,18 @@ function reporter(p, io) {
 			let radios = radio_lock && radio_lock.lock('sn') && io.sync() == 0 ? fs.opendir(p.radio_crash) : null;
 			for (let n = 0; radios && n < 10; n++) {
 				let name = radios.read(); if (name == null) break;
-				if (!match(name, /^[a-f0-9-]{36}-devcd[0-9]{1,8}\.json$/)) continue;
+				if (!fullmatch(name, /^[a-f0-9-]{36}-devcd[0-9]{1,8}\.json$/)) continue;
 				let path = p.radio_crash + '/' + name, st = fs.lstat(path);
 				if (!st || !safe(path, false) || st.size > 4096) continue;
 				let m; try { m = json(read(path, 4097)); } catch (e) { continue; }
 				if (type(m) != 'object' || m.version != 1 || !uuid(m.boot_id) ||
-					!bounded(m.id, 64) || !match(m.id, /^[a-f0-9-]{36}-devcd[0-9]{1,8}$/) ||
+					!bounded(m.id, 64) || !fullmatch(m.id, /^[a-f0-9-]{36}-devcd[0-9]{1,8}$/) ||
 					substr(m.id, 0, 36) != m.boot_id || name != m.id + '.json' ||
 					m.binaryfile != m.id + '.bin' || m.source != 'devcoredump' ||
-					!bounded(m.driver, 64) || !match(m.driver, /^[a-zA-Z0-9_.:-]+$/) ||
+					!bounded(m.driver, 64) || !fullmatch(m.driver, /^[a-zA-Z0-9_.:-]+$/) ||
 					type(m.byte_count) != 'int' || m.byte_count < 0 || m.byte_count > 4194304 ||
 					type(m.complete) != 'bool' || type(m.truncated) != 'bool' || m.truncated == m.complete ||
-					(m.sha256 != null && (type(m.sha256) != 'string' || !match(m.sha256, /^[a-f0-9]{64}$/)))) continue;
+					(m.sha256 != null && !fullmatch(m.sha256, /^[a-f0-9]{64}$/))) continue;
 				let binpath = p.radio_crash + '/' + m.binaryfile, binary = fs.lstat(binpath);
 				if (!binary || !safe(binpath, false) || binary.size != m.byte_count) continue;
 				let key = 'radio:' + m.id;
