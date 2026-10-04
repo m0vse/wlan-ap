@@ -48,6 +48,24 @@ shared model/variant capability, not an implicit prerequisite from the OEM
 migration gate. Both migration routes use the same device key/CSR/grant and
 durable identity/controller acceptance flow.
 
+After admission, both adapters must use the shared private PKI lifecycle
+orchestrator and the native client activation hook documented in
+`tests/private-pki/private-activation-nonce.md`. Obtain a fresh challenge using
+the candidate certificate, stop the old client, and start the sole client with
+the candidate identity and challenge. Commit the durable candidate generation
+only after the protected gateway receipt binds the expected canonical serial,
+candidate TLS leaf, fresh nonce and accepted ordinary gateway session. Persist
+the issuer/root/leaf/session acceptance evidence with that generation. A grant,
+issued certificate or transmitted nonce alone does not complete migration.
+
+The activation verifier consumes the nonce once. Remove the service environment
+override after every attempt; preserve the previous identity generation and
+source-bank recovery until acceptance, and restore the prior identity/client on
+failure using the qualified transaction's rollback path. Neither adapter may
+create a separate issuer, certificate store or acceptance protocol. The optional
+native hook has source-level validation; live endpoint activation, package and
+firmware integration, and physical AP acceptance remain qualification gates.
+
 Inventory requires exactly `serial`, `exact_model`, `sku_hex`,
 `hardware_revision` and `region`. Serial is the canonical lowercase 12-hex AP
 identity used by the existing provisioning contract. Do not assume a label's
