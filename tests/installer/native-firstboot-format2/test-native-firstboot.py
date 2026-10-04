@@ -12,14 +12,15 @@ class EST(http.server.BaseHTTPRequestHandler):
  def respond(self,status,payload):self.send_response(status);self.send_header('Content-Length',str(len(payload)));self.end_headers();self.wfile.write(payload)
  def do_GET(self):assert self.path=='/.well-known/est/cacerts';self.respond(200,ca7)
  def do_POST(self):
-  assert self.path=='/.well-known/est/simpleenroll';assert self.headers['Authorization']=='Basic '+base64.b64encode((serial+':'+shared).encode()).decode()
+  if self.path=='/.well-known/est/simpleenroll':assert self.headers['Authorization']=='Basic '+base64.b64encode((serial+':'+shared).encode()).decode()
+  else:assert self.path=='/.well-known/est/simplereenroll' and self.connection.getpeercert() and self.headers.get('Authorization') is None
   csr=base64.b64decode(self.rfile.read(int(self.headers['Content-Length'])),validate=False);requests.append(hashlib.sha256(csr).hexdigest());request=work/'received.csr';request.write_bytes(csr)
   assert ossl('req','-inform','DER','-in',request,'-subject','-noout','-nameopt','RFC2253').strip()==('subject=CN='+serial).encode()
   if fail['post']:self.respond(503,b'');return
   ext=work/'client.ext';ext.write_text('basicConstraints=critical,CA:FALSE\nextendedKeyUsage=clientAuth\nkeyUsage=critical,digitalSignature\n')
   leaf=work/'issued.pem';ossl('x509','-req','-inform','DER','-in',request,'-CA',issuer,'-CAkey',issuer_key,'-CAcreateserial','-days',2,'-extfile',ext,'-out',leaf)
   self.respond(200,base64.b64encode(ossl('crl2pkcs7','-nocrl','-certfile',leaf,'-outform','DER')))
-server=http.server.ThreadingHTTPServer(('127.0.0.1',0),EST);tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(https,https_key);server.socket=tls.wrap_socket(server.socket,server_side=True);threading.Thread(target=server.serve_forever,daemon=True).start()
+server=http.server.ThreadingHTTPServer(('127.0.0.1',0),EST);tls=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);tls.load_cert_chain(https,https_key);tls.load_verify_locations(issuer);tls.verify_mode=ssl.CERT_OPTIONAL;server.socket=tls.wrap_socket(server.socket,server_side=True);threading.Thread(target=server.serve_forever,daemon=True).start()
 store=work/'store';runtime=work/'runtime';settings=work/'settings';proc=work/'proc';tmp=work/'tmp';bindir=work/'bin'
 for d in [store,runtime,settings,proc,tmp,bindir]:d.mkdir(mode=0o700)
 (proc/'sys/kernel/random').mkdir(parents=True);boot='12345678-1234-1234-1234-123456789abc';(proc/'sys/kernel/random/boot_id').write_text(boot+'\n')
@@ -96,6 +97,13 @@ original_helper=helper.read_text();helper.write_text(original_helper.replace("fo
 invoke('cleanup-confirmed',False);assert (store/'.installer-import/completion.json').exists()
 helper.write_text(original_helper);invoke('cleanup-confirmed',True);assert not settings.exists();assert (store/'key.pem').exists() and (store/'operational.pem').exists()
 invoke('cleanup-confirmed',True)
+# Native mTLS renewal after confirmed enrollment has consumed the batch credential.
+old_leaf=hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()
+fail['post']=True;p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode!=0
+assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()==old_leaf and hashlib.sha256((runtime/'operational.pem').read_bytes()).hexdigest()==old_leaf
+fail['post']=False;p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode==0,(p.stdout,p.stderr,(work/'native.log').read_text())
+assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()!=old_leaf and (store/'operational.pem').read_bytes()==(runtime/'operational.pem').read_bytes()
+assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
 server.shutdown()
-report={'passed':True,'cases':['settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch/curl/crypto and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
+report={'passed':True,'cases':['settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch/curl/crypto and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
 (base/'firstboot-native-protocol-tests.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
