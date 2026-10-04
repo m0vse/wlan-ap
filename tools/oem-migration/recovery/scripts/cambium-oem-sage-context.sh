@@ -50,7 +50,7 @@ target=$(pending target) job=$(pending job) image=$(pending image)
 if [ -n "$target$job$image" ]; then
     case "$target" in 0|1) ;; *) fail 'invalid pending target' ;; esac
     [ "$target" != "$active" ] || fail 'pending source target is active'
-    [ "${#job}" = 32 ] && [ "${#image}" = 64 ] || fail 'incomplete pending identity transaction'
+    [ "${#job}" = 64 ] && [ "${#image}" = 64 ] || fail 'incomplete pending identity transaction'
     case "$job$image" in *[!0-9a-f]*) fail 'invalid pending transaction digests' ;; esac
 fi
 printf '%s\tsage\t%s\t%s\t%s\t%s\t%s\n' "$serial" "$model" "$active" "$target" "$job" "$image"

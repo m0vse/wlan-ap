@@ -67,7 +67,7 @@ class SourceStorageTests(unittest.TestCase):
         self.assertEqual(result.stdout.rstrip('\n').split('\t'), ['000456abcdef', 'sage', 'E410B', '0', '', '', ''])
         self.capture.put('environment/sage_installer_target', '1')
         self.assertNotEqual(run().returncode, 0, 'incomplete pending transaction must refuse')
-        self.capture.put('environment/sage_installer_job', 'a' * 32)
+        self.capture.put('environment/sage_installer_job', 'a' * 64)
         self.capture.put('environment/sage_installer_image', 'b' * 64)
         self.assertEqual(run().returncode, 0)
         self.capture.put('dev/mtd6ro', bytes.fromhex('05ca01000c00') + b'010456abcdef' + b'\0PL-E410XXXB-EU\0')

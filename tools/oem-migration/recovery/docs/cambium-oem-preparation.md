@@ -200,6 +200,24 @@ corrupt readback and pre-write refusals retain active-bank/key/factory sentinels
 and never report completion after failure. These fixtures do not prove physical
 NAND power-loss recovery or bootloader behavior.
 
+## Authenticated shared Sage recovery preparation
+
+`prepare-sage-recovery.py` is a workstation tool for the reviewed Sage
+4.2.3.3-r10 container. It requires an independently supplied signer certificate
+and trusted signer/container digests, verifies the vendor signature and parses
+the manifest declaratively. It never executes the attached vendor script or
+updater. It validates the complete clean TAR member tree before publishing the
+shared kernel, root TAR and provenance/readback manifest to a new private folder.
+Path traversal, duplicate paths, special devices, descendants through symlinks,
+unreviewed ownership and unsafe hardlinks are rejected. The three reviewed
+non-root vendor directories retain their exact ownership metadata.
+
+The root TAR is not a UBIFS image or an installer. Recovery still requires a
+qualified inactive-only filesystem writer, readback of files/links/modes/owners,
+bounded shared/NOR configuration reset, reviewed OEM U-Boot defaults and guarded
+boot/recovery. The generated manifest explicitly leaves production admission
+disabled. Embedded bootloader files are not authority to write executable flash.
+
 ## Shared OEM recovery firmware
 
 Maintain one private, verified recovery firmware set per exact model and

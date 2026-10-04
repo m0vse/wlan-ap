@@ -130,6 +130,44 @@ After installation, approved inventory/configuration and provisioned identity
 drive automatic onboarding. DHCP option 224 overrides the private gateway
 default; EST trust/configuration remains separate from gateway discovery.
 
+### Fixed protected settings format
+
+The candidate path is `/root/.cambium-installer-settings`. It contains only flat
+root-owned mode-0600 regular single-link files, each at most 131072 bytes, in a
+root-owned mode-0700 directory. Required files are `binding.tsv`, `files.sha256`,
+`est.json`, `gateway.json` and `est-bootstrap.conf`; optional files are `insta.pem`
+and `server-ca.pem`. Never stage `key.pem`, `csr.pem`, `cert.pem`,
+`operational.pem` or `operational.ca` from the source.
+
+`binding.tsv` has exactly these eleven tab-separated rows in this order:
+`format` (2), `serial` (canonical 12 lowercase hex), `family` (sage/jaguar/cheetah/thor),
+`model` (exact qualified model), `source_operation`, `source_release`,
+`source_contract_sha256`, `source_slot`, `target_slot`, `image_sha256`, `job_id`.
+Source operation is the qualified OEM or stock operation above; release is 1–64
+ASCII letters/digits or `._~-`; source/candidate slots are opposite 0/1; contract,
+image and internal job digests are 64 lowercase hex. The job is an internal
+transaction identifier, not an operator-created AP enrollment key.
+`files.sha256` covers every other payload exactly once with flat whitelist names.
+
+`est.json` uses the native `server` hostname/optional port and `tls_ca` system
+bundle or `/etc/ucentral/insta.pem`. `gateway.json` contains the strict native
+`DEFAULT` gateway/operational identity/public trust settings, hostname validation
+enabled and no self-signed trust exception. DHCP224 overrides the private default;
+explicit operator policy remains authoritative and option138 is not used.
+`est-bootstrap.conf` is exactly `user = "canonicalserial:sharedkey"` plus newline,
+where the privately supplied shared key is 64 URL-safe characters. The native
+CA-owned validator checks JSON/trust semantics; source wrappers must not invent
+another reader or place credentials in public examples, arguments or logs.
+
+`recovery/scripts/lib/cambium-installer-settings.sh` provides the source-side
+POSIX structural/provenance validator and protected inactive-overlay publication.
+Its trusted caller establishes qualification, exact context, target mount and
+completed image readback first; it is not a standalone admission authority.
+It does not request certificates, create keys, write boot selectors or enable
+any production model. Atomic publication/readback and read-only same-job resume
+are tested with isolated mounts. Family integration, complete sealed source tool
+closure and hardware qualification remain required before deployment.
+
 ### First-boot key and retry boundary
 
 Outgoing OEM and stock installers only validate exact model/source and policy,
