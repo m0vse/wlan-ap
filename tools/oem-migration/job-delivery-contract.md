@@ -1,16 +1,16 @@
-# Per-device migration job handoff
+# Shared enrollment migration handoff
 
 This is an integration contract, not an executable installer. One root-authorized
 portal bulk action approves a migration batch with one shared enrollment key.
 The operator reuses that private key through the same protected input file or
 non-echoing prompt across installer runs. No per-AP operator key generation or
-individual portal approval is required. The backend maintains resumable,
-ownership-bound per-device records within that approved batch automatically.
+individual portal approval is required. The backend authorizes approved batch
+members and binds each device's first CSR independently.
 Initial migration is operator-assisted;
 post-install onboarding is automatic. There is no controller-to-private-LAN
 execution agent, server-side SSH service or operator countdown.
 
-The shared job backend remains owned by the provisioning service. Certificate
+The shared enrollment backend remains owned by the provisioning service. Certificate
 enrollment and lifecycle use native OpenWiFi EST. Do not add a bespoke issuer,
 identity store or activation protocol.
 
@@ -24,33 +24,38 @@ jobs stop before persistent staging, backup or enrollment. The operations remain
 `production-oem-migration` and `production-stock-openwrt-migration`; qualification
 for one cannot authorize the other. Routine renewal remains separate.
 
-Supply the approved job and authenticated bundle to the local installer through
+Supply the approved batch material and authenticated bundle to the local installer through
 the protected operator channel. Any HTTPS retrieval must verify the hostname
 using independently provisioned trust. Do not accept a trust anchor from the
-same downloaded bundle as proof of its authenticity. The reviewed job envelope
-must bind job ownership,
-version, operation, canonical serial, exact model/SKU/revision/region, source
-capability digest, installer/image/recovery digests and qualification policy.
-The existing backend owns cancellation, current ownership and resumable key/CSR
-binding. API field names and routes must be taken from that backend's actual
-interface, not inferred from this contract. The shared enrollment key authorizes
+same downloaded bundle as proof of its authenticity. Firmware admission binds
+the actual source operation, serial, exact hardware, capability and artifact
+digests to approved qualification, separately from enrollment authorization.
+No job-download, job-version or remote execution protocol is required.
+The shared enrollment key authorizes
 only the approved migration batch, not arbitrary devices or Root operations.
 It is enrollment authorization,
 not a firmware signing key. Keep it out of URLs, logs, image defaults and
 ordinary configuration archives. No generic firmware secret is permitted.
 The shared batch key must not be compiled into firmware or treated as a global
 Root API credential. Each AP still generates its own private key and CSR;
-first-CSR binding, completion, cancellation and native renewal remain per-device.
+first-CSR binding and native renewal remain per-device.
 
-### Exact job admission metadata
+The protected Root API is `POST /api/v1/pki/create-enrollment-key` with
+`{serials: [canonical serials], operation: "migration"}`. Its response contains
+`id`, `enrollmentKey`, `devices`, `operation` and `server`. Download that material
+privately, never to chat or public firmware hosting. The wire operation
+`migration` does not collapse the two source-specific qualification operations.
+Native EST enrollment uses Basic canonical serial/shared key with a locally
+signed CSR whose CN is that serial, standard base64 DER PKCS10 input and base64
+PKCS7 output. Subsequent renewal uses native certificate authentication.
+
+### Exact firmware admission metadata
 
 Use the frozen `openwifi.oem-migration-qualification.v1` evaluator schema rather
-than a second model allowlist. The download envelope carries these normalized
-objects alongside the backend's job ID, envelope schema, current job version,
-owner binding, current cancellation/completion state and authenticated manifest
-identity/signing-key reference. Backend wire names remain its API contract;
-extract exactly the following evaluator fields without passing wrapper metadata
-as extra evaluator keys.
+than a second model allowlist. The trusted qualification registry and verified
+local source/bundle evidence provide these normalized objects. They are not
+additional fields required from the shared-key API response. Extract exactly
+these fields for the evaluator; batch response metadata is not evaluator input.
 
 | Object | Required evaluator fields |
 | --- | --- |
@@ -74,16 +79,16 @@ independently qualified stock release/updater bridge/runtime and stock rollback
 set. A stock job must not require OEM qualification. Verify the AP manufacturing
 identity and source/layout read-only against those contracts before enrollment
 or writing. The issuer also reevaluates current qualification before enrollment
-side effects; a prior downloaded approval cannot bypass later revocation.
+side effects; possessing a batch key cannot bypass current registry refusal.
 
 ## Secure local input boundary
 
-The local installer takes a public approved job-envelope path and a separate
+The local installer takes an authenticated firmware bundle and a separate
 private enrollment-input path, not an API key in its command line. These are
 integration inputs, not new executable flags on the existing family wrappers.
 The secret input must be a regular file owned by root, mode 0600, within a
 root-owned 0700 directory. Reject symlinks, shared/writable parent directories,
-wrong owner/mode and unapproved job/serial/operation before copying the material
+wrong owner/mode and unapproved serial/source operation before copying the material
 to persistent AP storage or invoking enrollment. Never source or evaluate the
 input as shell code. Do not print its contents, enable shell tracing, include it
 in receipts, or place it in public artifact hosting or ordinary backup archives.
@@ -99,18 +104,20 @@ Both files are root-owned mode 0600; the credential is not a gateway discovery
 secret. Exact serialization/transport and executable bootstrap adapter remain
 owned by the CA integration and must be tested before use.
 
-Native output is `operational.pem` and `operational.ca`, using the AP-local
-`/etc/ucentral/key.pem` and CSR. Full resolved output paths, atomic persistence,
-reload and rollback behavior require the lifecycle owner's final tested handoff.
+Native output is `/etc/ucentral/operational.pem` and
+`/etc/ucentral/operational.ca`, persisted under `/certificates/` with the same
+basenames, using the AP-local `/etc/ucentral/key.pem` and CSR. Atomic persistence,
+key handoff, reload and rollback require the lifecycle owner's tested interface.
 Preserve bootstrap credentials for interrupted retries. Remove them only after
-server-confirmed job completion and verified normal native connection; enroll
-success alone is not completion. Completion of one AP removes only that AP's
+confirmed per-device completion and verified normal native connection; enroll
+success alone is not completion. The exact completion/cleanup interface remains
+pending, not an assumed server job API. Completion of one AP removes only that AP's
 bootstrap copy; it must not revoke the shared batch key while other approved
 devices still need enrollment or retries. Batch cancellation/revocation stops
 new enrollment without substituting the batch key for native mTLS renewal.
 Unlinking is cleanup, not a claim of physical
 secure erasure on flash. No new retrieval API is required merely to supply this
-local input. Existing job cancellation/ownership checks still apply.
+local input. Existing batch authorization/revocation checks still apply.
 
 After installation, approved inventory/configuration and provisioned identity
 drive automatic onboarding. DHCP option 224 overrides the private gateway
@@ -121,7 +128,7 @@ default; EST trust/configuration remains separate from gateway discovery.
 1. Complete read-only source and policy checks and authenticate the exact bundle.
 2. Generate the device's unique private key and CSR locally, then enroll through
    native OpenWiFi EST using the reviewed bootstrap trust/authentication. Bind
-   the job to the actual device/CSR through the approved backend interface.
+   enrollment to the actual device/CSR through the existing backend interface.
    Preserve a resumable candidate handoff using native certificate persistence.
 3. Invoke only the qualified family/source adapter. Protect the running bank,
    unique calibration/identity and reviewed recovery set. Stock migration clears
@@ -139,7 +146,7 @@ Native EST bootstrap/authentication, certificate paths, persistence, reload and
 acceptance interfaces remain pending confirmation with the lifecycle owner.
 Do not guess endpoints or retain bespoke nonce/store hooks as prerequisites.
 The target firmware must contain and validate the agreed native EST integration
-and bank guard before a job is enabled. Source tests alone do not enable a job.
+and bank guard before a migration is enabled. Source tests alone do not enable it.
 
 ## Existing adapter insertion points
 
@@ -156,7 +163,7 @@ Paths below are repository-relative source references, not published bundle URLs
 Existing Cheetah stock operator bundles are local generated artifacts, not a
 canonical source adapter in this directory. Select its reviewed source with the
 family owner before publication. Existing wrappers do not yet implement the
-per-job identity handoff above. Do not substitute the historical
+shared-enrollment identity handoff above. Do not substitute the historical
 `e410-oem-install-openwrt.sh` for a production OEM writer, or invoke generic
 sysupgrade from OEM. Each OEM writer needs qualified tools, geometry, inactive
 capacity, image semantics, boot guard and recovery evidence first.
