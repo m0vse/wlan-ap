@@ -72,6 +72,12 @@ approved manufacturing evidence. Portal `deviceType` alone cannot establish
 factory SKU/revision/region. Missing evidence denies; requester-supplied values
 cannot populate that authoritative registry.
 
+Sage E410 revision A and E410B revision B are distinct hardware revisions.
+Early B units shared the A-style enclosure; later B enclosures changed without
+another hardware revision. Identify A/B from verified manufacturing product and
+revision evidence, never case appearance or assumed storage capacity. Retain
+separate A/B qualification and hardware support checks.
+
 For OEM, the source capability digest binds the exact reviewed OEM release,
 tools, layout, inactive geometry and boot guard, and the recovery digest binds
 the exact shared OEM recovery set. For stock OpenWrt, those digests bind its
