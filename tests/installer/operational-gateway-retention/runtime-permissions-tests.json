@@ -2,20 +2,23 @@
   "package_install": {
     "passed": true,
     "cases": [
+      "certificate-executables-normalized-from-git-umask-0775",
       "tip/certificates-normalizes-observed-checkout-mode",
       "tip/cloud_discovery-normalizes-observed-checkout-mode",
       "tip/tip-defaults-normalizes-observed-checkout-mode",
       "ucentral/ucentral-schema-normalizes-observed-checkout-mode",
       "ucentral/ucentral-client-normalizes-observed-checkout-mode",
-      "all-120-package-merge-orders-produce-0755"
+      "all-120-package-merge-orders-produce-0755",
+      "final-private-overlay-reproduces-and-normalizes-directory-override"
     ],
-    "count": 6,
+    "count": 8,
     "package_orders": 120,
     "macros": {
       "CP": "cp -fpR",
-      "INSTALL_DIR": "install -d -m0755"
+      "INSTALL_DIR": "install -d -m0755",
+      "INSTALL_BIN": "install -m0755"
     },
-    "scope": "Actual shared package install tails and actual OpenWrt macros, synthetic checkout 0775 and isolated image merge. No builds or AP operations."
+    "scope": "Actual shared package install tails and actual OpenWrt macros, synthetic checkout/executable 0775, all package orders and final private overlay normalization. No builds or AP operations."
   },
   "target_arm_public_ca": {
     "passed": true,
