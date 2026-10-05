@@ -1,0 +1,35 @@
+#!/usr/bin/ucode
+// Restore endpoint policy independently of the saved-identity boot shortcut.
+import * as fs from 'fs';
+import { default_policy } from '/usr/share/ucentral/discovery_policy.uc';
+const STORE='/certificates';
+const RUNTIME='/etc/ucentral';
+function safe_file(path) {
+    let st=fs.lstat(path);
+    if(st?.type!='file'||st.uid!=0||st.nlink!=1||!(st.mode in [0600,0644])||st.size>131072)
+        die('Unsafe discovery policy file\n');
+}
+let saved=STORE+'/discovery-policy.json',current=RUNTIME+'/discovery-policy.json';
+if (!fs.lstat(saved)) exit(0);
+safe_file(saved);
+if (fs.lstat(current)) {
+    safe_file(current);
+    let policy;
+    try {policy=json(fs.readfile(current));}catch(e){exit(0);}
+    // An archived explicit or malformed policy must never be broadened.
+    if (!default_policy(policy)) exit(0);
+}
+for(let directory in [STORE,RUNTIME]) {
+    let st=fs.lstat(directory);
+    if(st?.type!='directory'||st.uid!=0||(st.mode & 0022)||fs.realpath(directory)!=directory)
+        die('Unsafe discovery policy directory\n');
+}
+let contents=fs.readfile(saved),temporary=current+'.restore';
+if(fs.lstat(temporary)) {
+    safe_file(temporary);
+    if(!fs.unlink(temporary))die('Cannot clear interrupted policy restore\n');
+}
+let file=fs.open(temporary,'w',0600);
+if(!file||!fs.chmod(temporary,0600)||file.write(contents)!=length(contents)||!file.flush()||!file.close()||
+   system('sync')||!fs.rename(temporary,current)||system('sync'))
+    die('Cannot restore discovery policy\n');
