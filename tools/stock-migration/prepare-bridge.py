@@ -51,6 +51,8 @@ def stock_platform(text):
 def generate(family, root, out, release, flavor='default'):
     if not re.fullmatch(r'[A-Za-z0-9._~-]{1,64}', release):
         raise ValueError('unsafe release')
+    if out == root or out.is_relative_to(root):
+        raise ValueError('generated output must not modify the verified stock root')
     frozen = REPO / 'tests/installer' / ('sage-stock6-r3' if family == 'sage' else 'jaguar-stock-r3')
     if flavor == 'xe3':
         if family != 'jaguar':
@@ -66,8 +68,9 @@ def generate(family, root, out, release, flavor='default'):
         if path.is_symlink() or (sha == '-' and path.exists()) or (sha != '-' and (not path.is_file() or digest(path) != sha)):
             raise ValueError('stock source ledger mismatch: ' + name)
     release_file = root/'etc/cambium-openwrt-release'
-    if release not in release_file.read_text():
-        raise ValueError('release not present in authenticated stock release metadata')
+    metadata = release_file.read_text()
+    if not re.search(r'^'+family.upper()+"_BUILD_ID='"+re.escape(release)+r"'$", metadata, re.MULTILINE):
+        raise ValueError('exact release not present in authenticated stock release metadata')
     out.mkdir(parents=True, exist_ok=False)
     for name in ('prepare-upgrader.sh', 'bridge-transaction.sh', f'{family}-sysinstall.sh',
                  'cambium-ab.sh', 'cambium-ab-upgrade.sh', 'cambium-ab-certificates.sh',
