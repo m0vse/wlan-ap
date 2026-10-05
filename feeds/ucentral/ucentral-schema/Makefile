@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-schema
-PKG_RELEASE:=26
+PKG_RELEASE:=27
 
 PKG_SOURCE_URL=https://github.com/Telecominfraproject/wlan-ucentral-schema.git
 PKG_MIRROR_HASH:=89821bce0ed6a0d9cb7a21b704a8a38a4c0f26c84145b3fa5e33bac83fc0870e
@@ -50,6 +50,8 @@ define Package/ucentral-schema/install
 	$(LN) /usr/share/ucentral/schemareader.uc $(1)/usr/share/ucode
 	$(LN) /usr/share/ucentral/ucentral.uc $(1)/usr/bin/ucentral_apply
 	$(CP) ./files/* $(1)
+	# Recursive copies preserve checkout directory modes; normalize last.
+	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
 
 define Package/ucentral-recovery/install

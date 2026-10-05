@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=certificates
-PKG_RELEASE:=12
+PKG_RELEASE:=13
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -26,6 +26,8 @@ Build/Compile = $(Build/Compile/Default)
 
 define Package/certificates/install
 	$(CP) ./files/* $(1)
+	# Recursive copies preserve checkout directory modes; normalize last.
+	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
 
 $(eval $(call BuildPackage,certificates))
