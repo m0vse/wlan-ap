@@ -242,7 +242,7 @@ Paths below are repository-relative source references, not published bundle URLs
 
 | Source | Current interface | Integration boundary |
 | --- | --- | --- |
-| OEM, OpenWiFi recovery tools | `tools/oem-migration/recovery/scripts/cambium-oem-prepare.sh check`, `inspect-capture ROOT`, `backup NEW_PRIVATE_DIRECTORY`; Sage delegate and `cambium-oem-models.tsv` | Read-only identity/layout first; backup is admission-gated. No production OEM writer exists yet and all OEM write qualifications remain disabled. |
+| OEM, OpenWiFi recovery tools | `tools/oem-migration/recovery/scripts/cambium-oem-prepare.sh check`, `inspect-capture ROOT`, `backup NEW_PRIVATE_DIRECTORY`; Sage delegate and `cambium-oem-models.tsv` | Read-only identity/layout first; backup is admission-gated. The Sage operator runner and bounded OEM recovery adapters exist; all production OEM write qualifications remain disabled. See recovery/docs/sage-operator-and-recovery.md for independent pins and physical qualification gates. |
 | OEM payload verification, OpenWiFi recovery tools | `tools/oem-migration/recovery/scripts/cambium-oem-verify-bundle.py` | Workstation authenticated payload verifier; not an OEM runtime dependency or installer. |
 | Converted stock Sage | `tests/installer/sage-stock6-r3/sage-sysinstall.sh --check\|--install` | Sealed IMAGE/SHA256SUMS bundle, prepare-upgrader bridge recovery/install/verification, then stock `sysupgrade -n -T` and `sysupgrade -v -n`. |
 | Converted stock Jaguar | `tests/installer/jaguar-stock-r3/jaguar-sysinstall.sh --check\|--install` | Same bridge/preflight boundary with the exact family's hardware-data protection. |
