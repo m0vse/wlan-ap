@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Actual durable activation replay, early boot, discovery pin and client argv."""
-import hashlib,json,os,pathlib,shutil,subprocess,tempfile
+import hashlib,json,os,pathlib,shlex,shutil,subprocess,tempfile
 repo=pathlib.Path(os.environ['WLAN_AP_SOURCE_DIR']);ucode=os.environ['NATIVE_TEST_UCODE'];target=pathlib.Path(os.environ['OW_TEST_ROOT'])
+shell=shlex.split(os.environ.get('OW_TEST_SHELL','sh'))
 assert os.getuid()==0
 src=repo/'feeds/tip/certificates/files';module=repo/'feeds/tip/cloud_discovery/files/usr/share/ucentral/discovery_policy.uc';work=pathlib.Path(tempfile.mkdtemp(prefix='operational-replay.'));cases=[]
 def openssl(*args):subprocess.run(['openssl',*map(str,args)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -32,7 +33,9 @@ if os.environ.get('OW_TEST_PUBLIC_CA_BUNDLE'):
   openssl('x509','-checkend',0,'-noout','-in',actual_leaf)
   openssl('verify','-purpose','sslclient','-CAfile',public_path,actual_leaf)
   public_info['actual_leaf_chain_validated']=True
-for name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','oversized-ca-bundle','oversized-key','oversized-leaf','custom-endpoint','custom-ca-pin','TLS-policy-conflict','discovery-policy-conflict','durable-policy-conflict','runtime-EST-conflict','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway','fresh-F2-default','no-durable-gateway','fault-EST','fault-flash','fault-gateway']+(['actual-public-ca-bundle'] if public_bundle else []):
+permission_cases=['legacy-root-group-0775','secure-0700','secure-0750','unsafe-runtime-worldwrite','unsafe-runtime-othergroup','unsafe-runtime-nonroot','unsafe-runtime-sgid','unsafe-runtime-symlink','fault-runtime-chmod']
+successful_permissions=permission_cases[:3]
+for name in permission_cases+['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','oversized-ca-bundle','oversized-key','oversized-leaf','custom-endpoint','custom-ca-pin','TLS-policy-conflict','discovery-policy-conflict','durable-policy-conflict','runtime-EST-conflict','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway','fresh-F2-default','no-durable-gateway','fault-EST','fault-flash','fault-gateway']+(['actual-public-ca-bundle'] if public_bundle else []):
  f=work/name;r=f/'runtime';s=f/'store';r.mkdir(parents=True);s.mkdir()
  for d in [r,s]:
   for n,p in [('key.pem',key),('operational.pem',leaf),('operational.ca',ca),('insta.pem',ca),('server-ca.pem',birth_ca)]:shutil.copyfile(p,d/n);(d/n).chmod(0o600)
@@ -51,7 +54,7 @@ for name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-b
  est={'server':'est.example:2443','tls_ca':str(r/'insta.pem')}
  for p,value in [(s/'gateway.json',operational),(r/'gateway.json',birth),(r/'gateway.flash',birth),(s/'est.json',est),(r/'discovery-policy.json',{'mode':'default','default':'fallback.example:15002'})]:p.write_text(json.dumps(value));p.chmod(0o600)
  # These runtime selectors represent the older updater's explicit archive.
- if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle']:
+ if name in successful_permissions+['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle']:
   archive=f/'old-upgrade.tar';subprocess.run(['tar','cf',str(archive),'-C',str(r),'gateway.json','gateway.flash','key.pem','operational.pem','operational.ca'],check=True)
   for n in ['gateway.json','gateway.flash','key.pem','operational.pem','operational.ca']:(r/n).unlink()
   subprocess.run(['tar','xf',str(archive),'-C',str(r)],check=True)
@@ -79,37 +82,58 @@ for name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-b
  helper=(src/'usr/libexec/ucentral-restore-operational-gateway').read_text().replace('/usr/share/ucentral/discovery_policy.uc',str(module)).replace("'/certificates'",repr(str(s))).replace("'/etc/ucentral'",repr(str(r)))
  normal=f/'restore.uc';normal.write_text(helper)
  faulty=f/'faulty.uc';faulty.write_text(helper.replace("import * as fs from 'fs';","import * as realfs from 'fs';\nlet fs={...realfs,rename:(a,b)=>b==getenv('RESTORE_FAULT')?false:realfs.rename(a,b)};"))
- wrapper=f/'restore';wrapper.write_text('#!/bin/sh\nexec '+ucode+' '+str(faulty if name.startswith('fault-') else normal)+'\n');wrapper.chmod(0o700)
+ wrapper=f/'restore';wrapper.write_text('#!/bin/sh\nexec '+ucode+' '+str(faulty if name in ['fault-EST','fault-flash','fault-gateway'] else normal)+'\n');wrapper.chmod(0o700)
+ secure_source=(src/'usr/libexec/ucentral-secure-runtime').read_text().replace("'/etc/ucentral'",repr(str(r)))
+ if name=='fault-runtime-chmod':secure_source=secure_source.replace("import * as fs from 'fs';","import * as realfs from 'fs';let fs={...realfs,chmod:(p,m)=>false};")
+ secure_program=f/'secure.uc';secure_program.write_text(secure_source)
+ secure=f/'secure';secure.write_text('#!/bin/sh\nexec '+ucode+' '+str(secure_program)+'\n');secure.chmod(0o700)
+ if name=='legacy-root-group-0775' or name=='fault-runtime-chmod':r.chmod(0o775)
+ if name=='secure-0700':r.chmod(0o700)
+ if name=='secure-0750':r.chmod(0o750)
+ if name=='unsafe-runtime-worldwrite':r.chmod(0o777)
+ if name=='unsafe-runtime-othergroup':os.chown(r,0,1);r.chmod(0o775)
+ if name=='unsafe-runtime-nonroot':os.chown(r,1,0)
+ if name=='unsafe-runtime-sgid':r.chmod(0o2775)
+ if name=='unsafe-runtime-symlink':r.rename(f/'actual-runtime');r.symlink_to(f/'actual-runtime',target_is_directory=True)
+ original_metadata=r.lstat()
  core=f/'core';core.write_text('ab_family(){ return 0; }\n');mount=f/'mount';mount.write_text('#!/bin/sh\nexit 0\n');mount.chmod(0o700)
- prepare=f/'prepare';prepare.write_text('#!/bin/sh\nexit 0\n');prepare.chmod(0o700)
+ prepare=f/'prepare';prepare.write_text('#!/bin/sh\nmode=$(stat -c %a '+str(r)+'); case "$mode" in 700|750|755) :;; *) exit 31;; esac\ntouch '+str(f/'prepared')+'\n');prepare.chmod(0o700)
  policy_source=(src/'usr/libexec/ucentral-restore-discovery-policy').read_text().replace('/usr/share/ucentral/discovery_policy.uc',str(module)).replace("'/certificates'",repr(str(s))).replace("'/etc/ucentral'",repr(str(r)))
  policy_program=f/'policy.uc';policy_program.write_text(policy_source)
  policy=f/'policy';policy.write_text('#!/bin/sh\nexec '+ucode+' '+str(policy_program)+'\n');policy.chmod(0o700)
  boot=(src/'etc/init.d/early_boot').read_text()
- for a,b in [('/usr/libexec/ucentral-installer-boot',str(prepare)),('/usr/libexec/ucentral-restore-operational-gateway',str(wrapper)),('/usr/libexec/ucentral-restore-discovery-policy',str(policy)),('/usr/bin/mount_certs',str(mount)),('/lib/functions/cambium-ab.sh',str(core)),('/etc/ucentral',str(r)),('/certificates',str(s))]:boot=boot.replace(a,b)
- program=f/'boot';program.write_text(boot+'\nboard_name(){ echo cambiumnetworks,e410; }\nboot\n')
+ for a,b in [('/usr/libexec/ucentral-secure-runtime',str(secure)),('/usr/libexec/ucentral-installer-boot',str(prepare)),('/usr/libexec/ucentral-restore-operational-gateway',str(wrapper)),('/usr/libexec/ucentral-restore-discovery-policy',str(policy)),('/usr/bin/mount_certs',str(mount)),('/lib/functions/cambium-ab.sh',str(core)),('/etc/ucentral',str(r)),('/certificates',str(s))]:boot=boot.replace(a,b)
+ program=f/'boot';program.write_text(boot+'\nlogger(){ echo "stage-log:$*" >&2; }\nboard_name(){ echo cambiumnetworks,e410; }\nboot\n')
  identity={str(p):sha(p) for d in [r,s] for p in d.iterdir() if p.suffix in ['.pem','.ca']}
  before={n:(r/n).read_bytes() if (r/n).exists() else None for n in ['gateway.json','gateway.flash','est.json']}
  env=os.environ.copy()
- if name.startswith('fault-'):env['RESTORE_FAULT']=str(r/({'fault-EST':'est.json','fault-flash':'gateway.flash','fault-gateway':'gateway.json'}[name]))
- p=subprocess.run(['sh',str(program)],env=env,capture_output=True,text=True)
- invalid=name in ['oversized-ca-bundle','oversized-key','oversized-leaf','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway']
- assert (p.returncode!=0)==(invalid or name.startswith('fault-')),(name,p.returncode,p.stdout,p.stderr)
+ if name in ['fault-EST','fault-flash','fault-gateway']:env['RESTORE_FAULT']=str(r/({'fault-EST':'est.json','fault-flash':'gateway.flash','fault-gateway':'gateway.json'}[name]))
+ p=subprocess.run(shell+[str(program)],env=env,capture_output=True,text=True)
+ invalid=name.startswith('unsafe-runtime-') or name=='fault-runtime-chmod' or name in ['oversized-ca-bundle','oversized-key','oversized-leaf','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway']
+ if name in permission_cases:
+  if invalid:
+   after=r.lstat();assert (after.st_mode,after.st_uid,after.st_gid)==(original_metadata.st_mode,original_metadata.st_uid,original_metadata.st_gid)
+   assert 'runtime-permissions failed (status ' in p.stderr,(name,p.stderr)
+   assert not (f/'prepared').exists(),name
+  else:
+   assert r.stat().st_mode & 0o7777==({'secure-0700':0o700,'secure-0750':0o750}.get(name,0o755))
+   assert (r.stat().st_uid,r.stat().st_gid)==(original_metadata.st_uid,original_metadata.st_gid)
+ assert (p.returncode!=0)==(invalid or name in ['fault-EST','fault-flash','fault-gateway']),(name,p.returncode,p.stdout,p.stderr)
  if name in ['oversized-ca-bundle','oversized-key','oversized-leaf']:
   assert 'size out of bounds' in p.stderr and 'limit ' in p.stderr,(name,p.stderr)
- if name.startswith('fault-'):
+ if name in ['fault-EST','fault-flash','fault-gateway']:
   wrapper.write_text('#!/bin/sh\nexec '+ucode+' '+str(normal)+'\n')
-  p=subprocess.run(['sh',str(program)],capture_output=True,text=True);assert p.returncode==0,(name,p.stderr)
- if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name.startswith('fault-'):
+  p=subprocess.run(shell+[str(program)],capture_output=True,text=True);assert p.returncode==0,(name,p.stderr)
+ if name in successful_permissions+['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name in ['fault-EST','fault-flash','fault-gateway']:
   for n in ['gateway.json','gateway.flash']:assert json.loads((r/n).read_text())==operational,(name,n)
   assert (r/'est.json').read_bytes()==(s/'est.json').read_bytes()
   final={n:sha(r/n) for n in ['gateway.json','gateway.flash','est.json']}
-  p=subprocess.run(['sh',str(program)],capture_output=True,text=True);assert p.returncode==0,p.stderr
+  p=subprocess.run(shell+[str(program)],capture_output=True,text=True);assert p.returncode==0,p.stderr
   assert {n:sha(r/n) for n in final}==final
  else:
   assert {n:(r/n).read_bytes() if (r/n).exists() else None for n in before}==before,name
  assert {str(p):sha(p) for d in [r,s] for p in d.iterdir() if p.suffix in ['.pem','.ca']}==identity,name
- if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name.startswith('fault-'):
+ if name in successful_permissions+['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name in ['fault-EST','fault-flash','fault-gateway']:
   cloud=(repo/'feeds/tip/cloud_discovery/files/usr/bin/cloud_discovery').read_text()
   def function(n):
    start=cloud.index('function '+n+'(');a=cloud.index('{',start);depth=1;i=a+1
@@ -137,4 +161,4 @@ for name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-b
   assert {str(p):sha(p) for d in [r,s] for p in d.iterdir() if p.suffix in ['.pem','.ca']}==identity
   cases.append('expired-active-identity-retains-existing-renewal-attempt')
  cases.append(name)
-print(json.dumps({'passed':True,'count':len(cases),'cases':cases,'public_ca_assessment':public_info,'helper_sha256':sha(src/'usr/libexec/ucentral-restore-operational-gateway'),'early_boot_sha256':sha(src/'etc/init.d/early_boot'),'scope':'Actual target ucode with host OpenSSL and early_boot saved-identity path; actual old-selector tar replay, second boot and interrupted atomic publication. Synthetic Root files only; mount/installer boundaries isolated. No AP/trust/ENV/build writes.'},indent=2))
+print(json.dumps({'passed':True,'count':len(cases),'cases':cases,'public_ca_assessment':public_info,'helper_sha256':sha(src/'usr/libexec/ucentral-restore-operational-gateway'),'early_boot_sha256':sha(src/'etc/init.d/early_boot'),'secure_runtime_sha256':sha(src/'usr/libexec/ucentral-secure-runtime'),'boot_shell':shell,'scope':'Actual target ucode with host OpenSSL and early_boot saved-identity path; actual old-selector tar replay, second boot and interrupted atomic publication. Synthetic Root files only; mount/installer boundaries isolated. No AP/trust/ENV/build writes.'},indent=2))

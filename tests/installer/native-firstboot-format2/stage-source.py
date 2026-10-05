@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse,shutil
 p=argparse.ArgumentParser();p.add_argument('repository',type=Path);p.add_argument('destination',type=Path);a=p.parse_args();a.destination.mkdir(parents=True,exist_ok=False)
 files={
+ 'ucentral-secure-runtime':'feeds/tip/certificates/files/usr/libexec/ucentral-secure-runtime',
  'ucentral-installer-identity':'feeds/tip/certificates/files/usr/libexec/ucentral-installer-identity',
  'ucentral-installer-boot':'feeds/tip/certificates/files/usr/libexec/ucentral-installer-boot',
  'ucentral-installer-firstboot':'feeds/tip/certificates/files/usr/libexec/ucentral-installer-firstboot',
