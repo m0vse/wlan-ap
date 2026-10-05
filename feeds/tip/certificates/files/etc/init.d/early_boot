@@ -18,7 +18,7 @@ copy_certificates() {
 		cp /etc/ucentral/gateway.default.json /etc/ucentral/gateway.json
 	chmod 0600 /etc/ucentral/est.json /etc/ucentral/est-bootstrap.conf /etc/ucentral/gateway.default.json 2>/dev/null || true
 	[ -f /certificates/restrictions.json ] && cp /certificates/restrictions.json /etc/ucentral/
-	[ -f /certificates/discovery-policy.json ] && cp /certificates/discovery-policy.json /etc/ucentral/
+	/usr/libexec/ucentral-restore-discovery-policy || return 1
 	[ -f /certificates/sign_pubkey.pem ] && cp /certificates/sign_pubkey.pem /etc/ucentral/
 	country=`cat /certificates/ucentral.defaults | jsonfilter -e '@.country'`
 	[ -z "$country" -a -f /etc/uci-defaults/30_uboot-envtools ] && {
@@ -45,7 +45,14 @@ boot() {
 	# not enough: an app factory reset with keep_redirector (cmd_factory.uc)
 	# preserves key.pem but not operational.pem, which made this return early
 	# and never restore the operational cert stored in the insta partition.
-	[ -f /etc/ucentral/key.pem -a -f /etc/ucentral/operational.pem ] && return
+	if [ -f /etc/ucentral/key.pem -a -f /etc/ucentral/operational.pem ]; then
+		# Saved identities do not imply that the discovery policy was archived.
+		if [ -f /lib/functions/cambium-ab.sh ] && (. /lib/functions/cambium-ab.sh; ab_family); then
+			/usr/bin/mount_certs || return 1
+		fi
+		/usr/libexec/ucentral-restore-discovery-policy || return 1
+		return 0
+	fi
 	/usr/bin/mount_certs
 	copy_certificates
 }
