@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cloud_discovery
-PKG_RELEASE:=10
+PKG_RELEASE:=11
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -23,6 +23,8 @@ endef
 
 define Package/cloud_discovery/install
 	$(CP) ./files/* $(1)
+	# Recursive copies preserve checkout directory modes; normalize last.
+	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
 
 $(eval $(call BuildPackage,cloud_discovery))

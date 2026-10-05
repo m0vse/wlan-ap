@@ -2,6 +2,17 @@
 
 START=09
 
+# Each failed stage is visible in system logs; helpers retain their diagnostics
+# on stderr. Stage names contain no certificate or enrollment credentials.
+run_stage() {
+	local stage="$1" status
+	shift
+	"$@" && return 0
+	status=$?
+	logger -t early_boot "${stage} failed (status ${status})"
+	return "$status"
+}
+
 copy_certificates() {
 	[ -f /certificates/key.pem ] || return
 
@@ -18,7 +29,7 @@ copy_certificates() {
 		cp /etc/ucentral/gateway.default.json /etc/ucentral/gateway.json
 	chmod 0600 /etc/ucentral/est.json /etc/ucentral/est-bootstrap.conf /etc/ucentral/gateway.default.json 2>/dev/null || true
 	[ -f /certificates/restrictions.json ] && cp /certificates/restrictions.json /etc/ucentral/
-	/usr/libexec/ucentral-restore-discovery-policy || return 1
+	run_stage discovery-policy /usr/libexec/ucentral-restore-discovery-policy || return 1
 	[ -f /certificates/sign_pubkey.pem ] && cp /certificates/sign_pubkey.pem /etc/ucentral/
 	country=`cat /certificates/ucentral.defaults | jsonfilter -e '@.country'`
 	[ -z "$country" -a -f /etc/uci-defaults/30_uboot-envtools ] && {
@@ -34,8 +45,10 @@ copy_certificates() {
 }
 
 boot() {
+	# Repair the known legacy directory before any strict identity/policy checks.
+	run_stage runtime-permissions /usr/libexec/ucentral-secure-runtime || return 1
 	# Apply pending installer identity before the saved-file shortcut.
-	/usr/libexec/ucentral-installer-boot prepare || return 1
+	run_stage installer-prepare /usr/libexec/ucentral-installer-boot prepare || return 1
 	case "$(board_name)" in
 	sonicfi,rap6*)
 		touch /tmp/squashfs
@@ -48,12 +61,12 @@ boot() {
 	if [ -f /etc/ucentral/key.pem -a -f /etc/ucentral/operational.pem ]; then
 		# Saved identities do not imply that the discovery policy was archived.
 		if [ -f /lib/functions/cambium-ab.sh ] && (. /lib/functions/cambium-ab.sh; ab_family); then
-			/usr/bin/mount_certs || return 1
+			run_stage certificate-mount /usr/bin/mount_certs || return 1
 		fi
-		/usr/libexec/ucentral-restore-discovery-policy || return 1
-		/usr/libexec/ucentral-restore-operational-gateway || return 1
+		run_stage discovery-policy /usr/libexec/ucentral-restore-discovery-policy || return 1
+		run_stage operational-gateway /usr/libexec/ucentral-restore-operational-gateway || return 1
 		return 0
 	fi
-	/usr/bin/mount_certs
+	run_stage certificate-mount /usr/bin/mount_certs || return 1
 	copy_certificates
 }
