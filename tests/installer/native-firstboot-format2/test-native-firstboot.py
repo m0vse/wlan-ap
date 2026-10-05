@@ -63,7 +63,15 @@ text=text.replace("warn('Native first-boot operation refused.\\n');","warn('Synt
 helper=work/'firstboot.uc';helper.write_text(text)
 def invoke(op,ok):
  p=subprocess.run([ucode,str(helper),op,str(settings)],capture_output=True,text=True);assert (p.returncode==0)==ok,(op,p.stdout,p.stderr,(work/'native.log').read_text() if (work/'native.log').exists() else '',len(requests),str(work));return p
-invoke('prepare-settings',True);assert not (store/'key.pem').exists() and not requests
+(runtime/'discovery-policy.json').write_text(json.dumps({'mode':'default','default':'openwifi.wlan.local:15002'}));(runtime/'discovery-policy.json').chmod(0o644)
+invoke('prepare-settings',True)
+expected_policy={'mode':'default','default':'gateway.example:15002'}
+for directory in [store,runtime]:assert json.loads((directory/'discovery-policy.json').read_text())==expected_policy
+explicit_policy=json.dumps({'default':'operator.example:15002','allowed':['operator.example:15002']})
+for directory in [store,runtime]:(directory/'discovery-policy.json').write_text(explicit_policy)
+invoke('prepare-settings',True)
+for directory in [store,runtime]:assert (directory/'discovery-policy.json').read_text()==explicit_policy;(directory/'discovery-policy.json').write_text(json.dumps(expected_policy))
+assert not (store/'key.pem').exists() and not requests
 invoke('enroll-settings',False);assert not (store/'key.pem').exists() and not requests
 (work/'network.ready').touch();(work/'clock.ready').touch();invoke('enroll-settings',False)
 key_before=hashlib.sha256((store/'key.pem').read_bytes()).hexdigest();csr_before=hashlib.sha256((store/'.installer-import/csr.pem').read_bytes()).hexdigest();assert (store/'.installer-import/issuance-intent.json').is_file()
@@ -105,5 +113,5 @@ fail['post']=False;p=subprocess.run([str(native_wrapper),'reenroll'],capture_out
 assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()!=old_leaf and (store/'operational.pem').read_bytes()==(runtime/'operational.pem').read_bytes()
 assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
 server.shutdown()
-report={'passed':True,'cases':['settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch/curl/crypto and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
+report={'passed':True,'cases':['firstboot-generated-fallback-policy','firstboot-preserves-explicit-operator-policy','settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch/curl/crypto and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
 (base/'firstboot-native-protocol-tests.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
