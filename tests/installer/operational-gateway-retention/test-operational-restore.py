@@ -21,17 +21,37 @@ for label,days in [('expired-leaf',-1),('not-yet-valid-leaf',1)]:
  start=datetime.now(timezone.utc)+timedelta(days=days);end=start+timedelta(hours=12)
  dated=work/(label+'.pem');openssl('ca','-batch','-notext','-config',config,'-in',csr,'-startdate',start.strftime('%y%m%d%H%M%SZ'),'-enddate',end.strftime('%y%m%d%H%M%SZ'),'-extfile',ext,'-out',dated);dates[label]=dated
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
-for name in ['archived-birth-to-durable-operational','custom-endpoint','custom-ca-pin','TLS-policy-conflict','discovery-policy-conflict','durable-policy-conflict','runtime-EST-conflict','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway','fresh-F2-default','no-durable-gateway','fault-EST','fault-flash','fault-gateway']:
+public_bundle=None;public_info=None
+if os.environ.get('OW_TEST_PUBLIC_CA_BUNDLE'):
+ public_path=pathlib.Path(os.environ['OW_TEST_PUBLIC_CA_BUNDLE']);public_bundle=public_path.read_bytes();digest=hashlib.sha256(public_bundle).hexdigest()
+ if os.environ.get('OW_TEST_PUBLIC_CA_SHA256'):assert digest==os.environ['OW_TEST_PUBLIC_CA_SHA256']
+ openssl('crl2pkcs7','-nocrl','-certfile',public_path,'-out',work/'public-ca.p7')
+ public_info={'bytes':len(public_bundle),'sha256':digest,'fixture_issuer_added':True,'tested_bundle_bytes':len(public_bundle)+len(ca.read_bytes())}
+ if os.environ.get('OW_TEST_PUBLIC_CLIENT_LEAF'):
+  actual_leaf=pathlib.Path(os.environ['OW_TEST_PUBLIC_CLIENT_LEAF'])
+  openssl('x509','-checkend',0,'-noout','-in',actual_leaf)
+  openssl('verify','-purpose','sslclient','-CAfile',public_path,actual_leaf)
+  public_info['actual_leaf_chain_validated']=True
+for name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','oversized-ca-bundle','oversized-key','oversized-leaf','custom-endpoint','custom-ca-pin','TLS-policy-conflict','discovery-policy-conflict','durable-policy-conflict','runtime-EST-conflict','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway','fresh-F2-default','no-durable-gateway','fault-EST','fault-flash','fault-gateway']+(['actual-public-ca-bundle'] if public_bundle else []):
  f=work/name;r=f/'runtime';s=f/'store';r.mkdir(parents=True);s.mkdir()
  for d in [r,s]:
   for n,p in [('key.pem',key),('operational.pem',leaf),('operational.ca',ca),('insta.pem',ca),('server-ca.pem',birth_ca)]:shutil.copyfile(p,d/n);(d/n).chmod(0o600)
   (d/'cert.pem').write_bytes(birth_leaf.read_bytes());(d/'cert.pem').chmod(0o600)
+ if name in ['large-ca-bundle','max-ca-bundle','oversized-ca-bundle']:
+  size={'large-ca-bundle':223727,'max-ca-bundle':2097152,'oversized-ca-bundle':2097153}[name]
+  pem=ca.read_bytes();bundle=pem*(size//len(pem))+b'\n'*(size%len(pem))
+  for d in [r,s]:(d/'operational.ca').write_bytes(bundle)
+ if name in ['oversized-key','oversized-leaf']:
+  n='key.pem' if name=='oversized-key' else 'operational.pem'
+  for d in [r,s]:(d/n).write_bytes(b'x'*131073)
+ if name=='actual-public-ca-bundle':
+  for d in [r,s]:(d/'operational.ca').write_bytes(public_bundle+ca.read_bytes())
  operational={'server':'gateway.example','port':15002,'cert':str(r/'operational.pem'),'ca':str(r/'operational.ca'),'hostname_validate':1,'valid':True}
  birth={**operational,'cert':str(r/'cert.pem'),'ca':str(r/'server-ca.pem')}
  est={'server':'est.example:2443','tls_ca':str(r/'insta.pem')}
  for p,value in [(s/'gateway.json',operational),(r/'gateway.json',birth),(r/'gateway.flash',birth),(s/'est.json',est),(r/'discovery-policy.json',{'mode':'default','default':'fallback.example:15002'})]:p.write_text(json.dumps(value));p.chmod(0o600)
  # These runtime selectors represent the older updater's explicit archive.
- if name=='archived-birth-to-durable-operational':
+ if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle']:
   archive=f/'old-upgrade.tar';subprocess.run(['tar','cf',str(archive),'-C',str(r),'gateway.json','gateway.flash','key.pem','operational.pem','operational.ca'],check=True)
   for n in ['gateway.json','gateway.flash','key.pem','operational.pem','operational.ca']:(r/n).unlink()
   subprocess.run(['tar','xf',str(archive),'-C',str(r)],check=True)
@@ -73,12 +93,14 @@ for name in ['archived-birth-to-durable-operational','custom-endpoint','custom-c
  env=os.environ.copy()
  if name.startswith('fault-'):env['RESTORE_FAULT']=str(r/({'fault-EST':'est.json','fault-flash':'gateway.flash','fault-gateway':'gateway.json'}[name]))
  p=subprocess.run(['sh',str(program)],env=env,capture_output=True,text=True)
- invalid=name in ['runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway']
+ invalid=name in ['oversized-ca-bundle','oversized-key','oversized-leaf','runtime-key-mismatch','invalid-leaf','expired-leaf','expired-active-operational','not-yet-valid-leaf','runtime-issuer-mismatch','invalid-EST','unsafe-store-gateway']
  assert (p.returncode!=0)==(invalid or name.startswith('fault-')),(name,p.returncode,p.stdout,p.stderr)
+ if name in ['oversized-ca-bundle','oversized-key','oversized-leaf']:
+  assert 'size out of bounds' in p.stderr and 'limit ' in p.stderr,(name,p.stderr)
  if name.startswith('fault-'):
   wrapper.write_text('#!/bin/sh\nexec '+ucode+' '+str(normal)+'\n')
   p=subprocess.run(['sh',str(program)],capture_output=True,text=True);assert p.returncode==0,(name,p.stderr)
- if name=='archived-birth-to-durable-operational' or name.startswith('fault-'):
+ if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name.startswith('fault-'):
   for n in ['gateway.json','gateway.flash']:assert json.loads((r/n).read_text())==operational,(name,n)
   assert (r/'est.json').read_bytes()==(s/'est.json').read_bytes()
   final={n:sha(r/n) for n in ['gateway.json','gateway.flash','est.json']}
@@ -87,7 +109,7 @@ for name in ['archived-birth-to-durable-operational','custom-endpoint','custom-c
  else:
   assert {n:(r/n).read_bytes() if (r/n).exists() else None for n in before}==before,name
  assert {str(p):sha(p) for d in [r,s] for p in d.iterdir() if p.suffix in ['.pem','.ca']}==identity,name
- if name=='archived-birth-to-durable-operational' or name.startswith('fault-'):
+ if name in ['archived-birth-to-durable-operational','large-ca-bundle','max-ca-bundle','actual-public-ca-bundle'] or name.startswith('fault-'):
   cloud=(repo/'feeds/tip/cloud_discovery/files/usr/bin/cloud_discovery').read_text()
   def function(n):
    start=cloud.index('function '+n+'(');a=cloud.index('{',start);depth=1;i=a+1
@@ -115,4 +137,4 @@ for name in ['archived-birth-to-durable-operational','custom-endpoint','custom-c
   assert {str(p):sha(p) for d in [r,s] for p in d.iterdir() if p.suffix in ['.pem','.ca']}==identity
   cases.append('expired-active-identity-retains-existing-renewal-attempt')
  cases.append(name)
-print(json.dumps({'passed':True,'count':len(cases),'cases':cases,'helper_sha256':sha(src/'usr/libexec/ucentral-restore-operational-gateway'),'early_boot_sha256':sha(src/'etc/init.d/early_boot'),'scope':'Actual target ucode with host OpenSSL and early_boot saved-identity path; actual old-selector tar replay, second boot and interrupted atomic publication. Synthetic Root files only; mount/installer boundaries isolated. No AP/trust/ENV/build writes.'},indent=2))
+print(json.dumps({'passed':True,'count':len(cases),'cases':cases,'public_ca_assessment':public_info,'helper_sha256':sha(src/'usr/libexec/ucentral-restore-operational-gateway'),'early_boot_sha256':sha(src/'etc/init.d/early_boot'),'scope':'Actual target ucode with host OpenSSL and early_boot saved-identity path; actual old-selector tar replay, second boot and interrupted atomic publication. Synthetic Root files only; mount/installer boundaries isolated. No AP/trust/ENV/build writes.'},indent=2))
