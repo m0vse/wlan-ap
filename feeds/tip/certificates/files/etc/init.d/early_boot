@@ -9,6 +9,14 @@ copy_certificates() {
 	chown root.network /etc/ucentral/*.pem /etc/ucentral/*.ca
 	chmod 0440 /etc/ucentral/*.pem /etc/ucentral/*.ca
 	[ -f /certificates/gateway.json ] && cp /certificates/gateway.json /etc/ucentral/gateway.flash
+	# Installer gateway is a default, not an explicit controller pin.
+	[ ! -f /certificates/gateway.default.json ] ||
+		cp /certificates/gateway.default.json /etc/ucentral/gateway.default.json
+	[ ! -f /certificates/est.json ] || cp /certificates/est.json /etc/ucentral/est.json
+	[ ! -f /certificates/est-bootstrap.conf ] || cp /certificates/est-bootstrap.conf /etc/ucentral/est-bootstrap.conf
+	[ ! -f /etc/ucentral/gateway.default.json ] || [ -f /etc/ucentral/gateway.json ] ||
+		cp /etc/ucentral/gateway.default.json /etc/ucentral/gateway.json
+	chmod 0600 /etc/ucentral/est.json /etc/ucentral/est-bootstrap.conf /etc/ucentral/gateway.default.json 2>/dev/null || true
 	[ -f /certificates/restrictions.json ] && cp /certificates/restrictions.json /etc/ucentral/
 	[ -f /certificates/discovery-policy.json ] && cp /certificates/discovery-policy.json /etc/ucentral/
 	[ -f /certificates/sign_pubkey.pem ] && cp /certificates/sign_pubkey.pem /etc/ucentral/
@@ -26,6 +34,8 @@ copy_certificates() {
 }
 
 boot() {
+	# Apply pending installer identity before the saved-file shortcut.
+	/usr/libexec/ucentral-installer-boot prepare || return 1
 	case "$(board_name)" in
 	sonicfi,rap6*)
 		touch /tmp/squashfs

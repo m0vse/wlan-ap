@@ -20,6 +20,7 @@ const ORPHAN = 4;
 
 const DISCOVER_DHCP = "DHCP";
 const DISCOVER_FLASH = "FLASH";
+const DISCOVER_DEFAULT = "DEFAULT";
 const DISCOVER_FQDN = "STANDARD_FQDN";
 const DISCOVER_LOOKUP = "OpenLAN";
 
@@ -96,14 +97,23 @@ function gateway_credentials_ready(gateway) {
 		fs.stat(gateway.ca ?? '/etc/ucentral/operational.ca')?.type == 'file';
 }
 
+function installer_default() {
+	let gateway = readjsonfile('/etc/ucentral/gateway.default.json');
+	if (gateway?.cert != '/etc/ucentral/operational.pem' || gateway.hostname_validate != 1 ||
+	    gateway['allow-self-signed'] === true ||
+	    !(gateway.ca in ['/etc/ssl/certs/ca-certificates.crt', '/etc/ucentral/server-ca.pem']))
+		return null;
+	return gateway_credentials_ready(gateway) ? gateway : null;
+}
+
 function pinned_gateway() {
-	// Flash is explicit provisioning, not a hint. Local default/allowed policy
-	// also owns a ready configured identity; DHCP cannot replace its files.
+	// Flash and manual birth-certificate provisioning are explicit pins.
+	// An installer default never pins the current DHCP destination.
 	let flash = readjsonfile('/etc/ucentral/gateway.flash');
 	if (gateway_credentials_ready(flash))
 		return flash;
 	let gateway = readjsonfile('/etc/ucentral/gateway.json');
-	if ((discovery_policy() != null || gateway?.cert == '/etc/ucentral/cert.pem') &&
+	if ((!installer_default() && discovery_policy() != null || gateway?.cert == '/etc/ucentral/cert.pem') &&
 	    gateway_credentials_ready(gateway))
 		return gateway;
 	return null;
@@ -248,34 +258,37 @@ function set_state(set) {
 
 function discover_dhcp() {
 	let dhcp = readjsonfile('/tmp/cloud.json');
+	if (dhcp?.dhcp_policy_rejected)
+		ulog(LOG_INFO, 'DHCP224 controller rejected by explicit policy; using approved fallback\n');
 	if (dhcp?.dhcp_server && dhcp?.dhcp_port) {
 		if (!controller_allowed(dhcp.dhcp_server, dhcp.dhcp_port) || pinned_gateway())
 			return false;
 		let fqdn = split(dhcp.dhcp_server, ':')[0];
+		let defaults = installer_default();
 		let candidate = {
 			server: dhcp.dhcp_server,
 			port: dhcp.dhcp_port,
 			valid: false,
 			hostname_validate: 1,
-			cert: `/etc/ucentral/${fqdn}.pem`,
-			ca: `/etc/ucentral/${fqdn}.ca`
+			cert: defaults?.cert ?? `/etc/ucentral/${fqdn}.pem`,
+			ca: defaults?.ca ?? `/etc/ucentral/${fqdn}.ca`
 		};
 		// EST uses the DHCP hint, not gateway.json. Do not publish incomplete
 		// credential paths or stop a working client before enrollment succeeds.
-		fs.writefile('/tmp/discovery.method', DISCOVER_DHCP);
-		if (system('/usr/bin/est_client enroll') || !gateway_credentials_ready(candidate))
+		fs.writefile('/tmp/discovery.method', dhcp.dhcp_source == 'policy-default' ? DISCOVER_DEFAULT : DISCOVER_DHCP);
+		if ((!defaults && system('/usr/bin/est_client enroll')) || !gateway_credentials_ready(candidate))
 			return false;
 		if (gateway_write(candidate)) {
 			dnsmasq_rebind_allow(fqdn);
 			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - trying EST\n`);
-			fs.writefile('/tmp/discovery.method', DISCOVER_DHCP);
+			fs.writefile('/tmp/discovery.method', dhcp.dhcp_source == 'policy-default' ? DISCOVER_DEFAULT : DISCOVER_DHCP);
 			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - starting client\n`);
 			client_start();
 			set_state(VALIDATING);
 		}
 		return true;
 	}
-	return !dhcp?.lease;
+	return installer_default() ? false : !dhcp?.lease;
 }
 
 function redirector_lookup() {
@@ -320,6 +333,18 @@ function discover_flash() {
 	client_start();
 	set_state(VALIDATING);
 	return 0;
+}
+
+function discover_installer_default() {
+	let candidate = installer_default();
+	if (!candidate || pinned_gateway()) return false;
+	if (gateway_write(candidate) || gateway_available()) {
+		fs.writefile('/tmp/discovery.method', DISCOVER_DEFAULT);
+		client_start();
+		set_state(VALIDATING);
+		return true;
+	}
+	return false;
 }
 
 function discover_standard_fqdn() {
@@ -422,6 +447,11 @@ function interval_handler() {
 		if (!is_discover_method_blacked() && !discover_flash())
 			return;
 
+		discovery_method = DISCOVER_DEFAULT;
+		if (discover_installer_default()) return;
+		// A damaged/missing installer identity must not fall through to public EST.
+		if (fs.stat('/etc/ucentral/gateway.default.json')) return;
+
 		// A restrictive local policy never authorizes the stock public EST or
 		// redirector fallback merely because its configured files are absent.
 		if (discovery_policy() != null || system('/usr/bin/est_client enroll'))
@@ -513,6 +543,14 @@ let ubus_methods = {
 	renew: {
 		call: function(req) {
 			let cloud = readjsonfile('/tmp/cloud.json');
+			if (installer_default() && !pinned_gateway()) {
+				let defaults = installer_default();
+				let gateway = gateway_load();
+				let server = cloud?.lease != false && cloud?.dhcp_server ? cloud.dhcp_server : defaults.server;
+				let port = cloud?.lease != false && cloud?.dhcp_port ? cloud.dhcp_port : defaults.port;
+				if (gateway?.server != server || +gateway?.port != +port) set_state(DISCOVER);
+				return 0;
+			}
 			if (cloud?.lease == false) {
 				// Preserve the validated gateway and credentials through a
 				// carrier/DHCP outage; only the transient lease is invalid.

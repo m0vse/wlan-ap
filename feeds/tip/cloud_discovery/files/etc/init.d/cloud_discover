@@ -13,6 +13,14 @@ reload_service() {
 }
 
 start_service() {
+    if /usr/libexec/ucentral-installer-boot pending && ! /usr/libexec/ucentral-installer-boot check; then
+        procd_open_instance installer-enroll
+        procd_set_param command /usr/libexec/ucentral-installer-firstboot
+        procd_set_param respawn 3600 5 0
+        procd_close_instance
+        return 0
+    fi
+	/usr/libexec/ucentral-installer-boot check || return 1
 	[ -e /tmp/ucentral-network.ready ] || return 1
 	[ -f /etc/ucentral/capabilities.json ] || {
 		mkdir -p /etc/ucentral/
