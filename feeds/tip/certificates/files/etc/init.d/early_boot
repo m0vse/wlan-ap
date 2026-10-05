@@ -51,6 +51,7 @@ boot() {
 			/usr/bin/mount_certs || return 1
 		fi
 		/usr/libexec/ucentral-restore-discovery-policy || return 1
+		/usr/libexec/ucentral-restore-operational-gateway || return 1
 		return 0
 	fi
 	/usr/bin/mount_certs
