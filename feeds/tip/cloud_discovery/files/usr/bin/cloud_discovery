@@ -9,7 +9,7 @@ import * as uloop from 'uloop';
 import * as libuci from 'uci';
 import * as math from 'math';
 import * as fs from 'fs';
-import { select_controller } from '/usr/share/ucentral/discovery_policy.uc';
+import { select_controller, default_policy } from '/usr/share/ucentral/discovery_policy.uc';
 
 
 const DISCOVER = 0;
@@ -99,6 +99,8 @@ function gateway_credentials_ready(gateway) {
 
 function installer_default() {
 	let gateway = readjsonfile('/etc/ucentral/gateway.default.json');
+	if (!gateway && default_policy(discovery_policy()))
+		gateway = readjsonfile('/etc/ucentral/gateway.json');
 	if (gateway?.cert != '/etc/ucentral/operational.pem' || gateway.hostname_validate != 1 ||
 	    gateway['allow-self-signed'] === true ||
 	    !(gateway.ca in ['/etc/ssl/certs/ca-certificates.crt', '/etc/ucentral/server-ca.pem']))
