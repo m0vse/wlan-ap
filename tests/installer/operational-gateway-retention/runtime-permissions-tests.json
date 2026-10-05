@@ -2,8 +2,9 @@
   "package_install": {
     "passed": true,
     "cases": [
-      "certificate-executables-normalized-from-git-umask-0775",
+      "certificate-boot-executables-normalized-from-git-umask-0775",
       "tip/certificates-normalizes-observed-checkout-mode",
+      "native-est-executable-normalized-from-git-umask-0775",
       "tip/cloud_discovery-normalizes-observed-checkout-mode",
       "tip/tip-defaults-normalizes-observed-checkout-mode",
       "ucentral/ucentral-schema-normalizes-observed-checkout-mode",
@@ -11,7 +12,7 @@
       "all-120-package-merge-orders-produce-0755",
       "final-private-overlay-reproduces-and-normalizes-directory-override"
     ],
-    "count": 8,
+    "count": 9,
     "package_orders": 120,
     "macros": {
       "CP": "cp -fpR",

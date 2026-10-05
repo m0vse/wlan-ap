@@ -20,7 +20,7 @@ for provider in providers:
  # mode rather than trusting whichever umask created this checkout.
  runtime=isolated/'files/etc/ucentral';runtime.mkdir(parents=True,exist_ok=True);runtime.chmod(0o775)
  proof=runtime/'mode-test-sentinel';proof.write_text(provider);proof.chmod(0o440)
- executable_paths=['usr/libexec/ucentral-secure-runtime','etc/init.d/early_boot'] if provider=='tip/certificates' else []
+ executable_paths=['usr/libexec/ucentral-secure-runtime','etc/init.d/early_boot'] if provider=='tip/certificates' else ['usr/bin/est_client'] if provider=='tip/cloud_discovery' else []
  for n in executable_paths:(isolated/'files'/n).chmod(0o775)
  staging=isolated/'package';staging.mkdir()
  block=(source/'Makefile').read_text().split('define Package/'+source.name+'/install\n',1)[1].split('endef',1)[0]
@@ -37,7 +37,7 @@ for provider in providers:
  for n in executable_paths:
   assert (staging/n).stat().st_mode & 0o7777==0o755
   assert (staging/n).read_bytes()==(isolated/'files'/n).read_bytes()
- if executable_paths:cases.append('certificate-executables-normalized-from-git-umask-0775')
+ if executable_paths:cases.append(('certificate-boot-executables' if provider=='tip/certificates' else 'native-est-executable')+'-normalized-from-git-umask-0775')
  packages.append(staging);cases.append(provider+'-normalizes-observed-checkout-mode')
 # Any provider may be installed last; exercise every order of the five tails.
 for i,order in enumerate(itertools.permutations(packages)):
