@@ -1,0 +1,10 @@
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -129,6 +129,7 @@
+ 	"/etc/ucentral/operational.ca", "/etc/ucentral/server-ca.pem",
+ 	"/etc/ucentral/insta.pem", "/etc/ucentral/openlan.pem",
+ 	"/etc/ucentral/restrictions.json", "/etc/ucentral/sign_pubkey.pem",
++	"/etc/ucentral/discovery-policy.json",
+ ];
+ let gateway = {};
+ 

@@ -18,6 +18,7 @@ require '"/etc/config", "/etc/config-shadow"'
 require 'fs.readlink("/etc/ucentral/ucentral.active")'
 require "push(archive_cmdline, '/etc/ucentral/ucentral.active', active_config)"
 require 'sysupgrade -f /upgrade.tgz'
+require '"/etc/ucentral/discovery-policy.json"'
 
 # A single shadow file creates the directory and makes zzz-ucentral skip its
 # initialization while leaving the rest of the rendered configuration absent.
