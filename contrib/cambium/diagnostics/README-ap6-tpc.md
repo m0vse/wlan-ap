@@ -1,9 +1,17 @@
-# QCN9074 6 GHz LPI AP TPC diagnostic — not production enabled
+# QCN9074 6 GHz LPI AP TPC diagnostic history
 
-This directory records a diagnostic adaptation of Sebastian Gottschall's
+Production integration (2026-10-05): patch `0162` now installs this same
+driver change as regular ath11k patch `960`, with mac80211 release 3.
+Jaguar `.8` image and normal-boot hardware acceptance are pending. `.7`
+retained the original driver and therefore did not retain the successful
+temporary diagnostic's power behavior. Do not call this fixed in a released
+image until its actual packaged module and runtime checks are verified.
+
+This directory records the original diagnostic adaptation of Sebastian Gottschall's
 unmerged May 2026 v3 proposal, with the July review's alignment and bss_conf
-changes. It is deliberately outside patches-25.12: regular firmware builds
-do not apply it. The driver proposal uses LPI for AP TPC, not VLP/SP support.
+changes. These diagnostic assets remain outside patches-25.12; patch `0162`
+is the separately enabled production integration. The driver proposal uses
+LPI for AP TPC, not VLP/SP support.
 Do not use it to silently replace an operator's VLP/SP policy.
 
 UK VLP legality and support in this particular driver are different questions.
@@ -42,6 +50,10 @@ The initial candidate 077ffc22... used debug-only stripping. Use only the
 final hash above, processed by the regular OpenWrt strip-kmod.sh.
 
 ## Building again (offline only)
+
+The instructions below describe the original unpatched baseline. Once
+production patch `960` is applied, do not run the diagnostic builder against
+that already-patched source. Use the normal package build instead.
 
 On cnbeacon, with no concurrent Jaguar compiler:
 
