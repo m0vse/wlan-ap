@@ -136,6 +136,34 @@ assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()==old_l
 fail['post']=False;p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode==0,(p.stdout,p.stderr,(work/'native.log').read_text())
 assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()!=old_leaf and (store/'operational.pem').read_bytes()==(runtime/'operational.pem').read_bytes()
 assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
+# Invoke the shipped unattended expiry callback and native trigger against the
+# same real HTTPS EST server. Only clock/process restart boundaries are isolated.
+cloud=(base/'cloud_discovery').read_text()
+def cloud_function(name):
+ start=cloud.index('function '+name+'(');a=cloud.index('{',start);depth=1;i=a+1
+ while depth:depth+=(cloud[i]=='{')-(cloud[i]=='}');i+=1
+ return cloud[start:i]+'\n'
+source=cloud_function('trigger_reenroll')+cloud_function('expiry_handler')
+source=source.replace('/usr/bin/est_client',str(native_wrapper)).replace('system(', 'native_system(')
+expiry=work/'unattended-expiry.uc'
+expiry.write_text("import * as realfs from 'fs';let restarted=0;let timeouts={expiry_threshold:90*24*60*60};let LOG_INFO=1;function ulog(...a){}function client_start(){restarted++;}function gateway_load(){return json(realfs.readfile(ARGV[0]+'/gateway.json'));}let fs={stat:(p)=>p=='/tmp/ntp.set'?(getenv('EXPIRY_NO_CLOCK')?null:realfs.stat(ARGV[1])):realfs.stat(replace(p,'/etc/ucentral',ARGV[0]))};function native_system(c){return system(replace(c,'/etc/ucentral',ARGV[0])+' >/dev/null 2>&1');}\n"+source+"expiry_handler();print(sprintf('%J',{restarted}));\n")
+def expiry_invoke(restarted,no_clock=False):
+ env={**os.environ}
+ if no_clock:env['EXPIRY_NO_CLOCK']='1'
+ p=subprocess.run([ucode,str(expiry),str(runtime),str(work/'clock.ready')],env=env,capture_output=True,text=True)
+ assert p.returncode==0 and json.loads(p.stdout)=={'restarted':restarted},(p.stdout,p.stderr)
+requests_before=len(requests);expiry_invoke(0,True);assert len(requests)==requests_before
+saved_gateway=(runtime/'gateway.json').read_bytes();birth=json.loads(saved_gateway);birth['cert']='/etc/ucentral/cert.pem';(runtime/'gateway.json').write_text(json.dumps(birth))
+expiry_invoke(0);assert len(requests)==requests_before;(runtime/'gateway.json').write_bytes(saved_gateway)
+old_leaf=(store/'operational.pem').read_bytes();fail['post']=True;expiry_invoke(0)
+assert len(requests)==requests_before+1
+assert (store/'operational.pem').read_bytes()==old_leaf and (runtime/'operational.pem').read_bytes()==old_leaf
+assert (runtime/'gateway.json').read_bytes()==saved_gateway
+fail['post']=False;expiry_invoke(1)
+assert len(requests)==requests_before+2 and (store/'operational.pem').read_bytes()!=(old_leaf)
+assert (store/'operational.pem').read_bytes()==(runtime/'operational.pem').read_bytes()
+assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
+assert (runtime/'gateway.json').read_bytes()==saved_gateway and not (store/'est-bootstrap.conf').exists()
 # An already-selected expired identity still reaches native reenroll; failed
 # server mTLS validation must retain its key, leaf and operational selector.
 valid_leaf=(store/'operational.pem').read_bytes();expired=work/'expired-native.pem'
@@ -153,5 +181,5 @@ assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
 for n in ['gateway.json','gateway.flash']:assert json.loads((runtime/n).read_text())['cert']=='/etc/ucentral/operational.pem'
 for d in [store,runtime]:(d/'operational.pem').write_bytes(valid_leaf)
 server.shutdown()
-report={'passed':True,'cases':['firstboot-generated-fallback-policy','firstboot-preserves-explicit-operator-policy','settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','managed-operational-selector-and-EST-restored-with-223727-byte-CA-bundle','second-replay-retains-operational-selection','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf','expired-selected-native-mTLS-renewal-failure-retains-key-leaf-selector'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'activation_restore_sha256':hashlib.sha256((base/'ucentral-restore-operational-gateway').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch, target curl, host OpenSSL and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
+report={'passed':True,'cases':['firstboot-generated-fallback-policy','firstboot-preserves-explicit-operator-policy','settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','managed-operational-selector-and-EST-restored-with-223727-byte-CA-bundle','second-replay-retains-operational-selection','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf','expired-selected-native-mTLS-renewal-failure-retains-key-leaf-selector','unattended-expiry-clock-gate','unattended-expiry-skips-birth-selection','unattended-renewal-failure-keeps-identity-and-running-client','unattended-renewal-success-persists-leaf-and-restarts-client-without-bootstrap'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'cloud_discovery_sha256':hashlib.sha256((base/'cloud_discovery').read_bytes()).hexdigest(),'activation_restore_sha256':hashlib.sha256((base/'ucentral-restore-operational-gateway').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch, target curl, host OpenSSL and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
 (base/'firstboot-native-protocol-tests.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
