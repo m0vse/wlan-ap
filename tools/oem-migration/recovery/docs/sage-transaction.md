@@ -8,8 +8,9 @@ no migration code belongs in the stock OpenWrt enhancement repository.
 `cos_install IMAGE KERNEL ROOT SETTINGS_DIRECTORY` performs exact qualification,
 authentication, live source and pending-job checks, FORMAT2 input validation,
 inactive geometry/capacity and boot preflight before recovery or modification.
-The authenticated source runner supplies `cos_admit`, `cos_authenticate`,
-`cos_source_check`, `cos_refuse_pending` and `cos_recovery`; these functions are
+The authenticated source runner supplies `cos_admit`, `cos_authenticate` and
+`cos_recovery`; `cambium-oem-sage-source.sh` implements the concrete read-only
+`cos_source_check` and complete-environment `cos_refuse_pending` callbacks; these functions are
 never loaded from operator settings. It must hold exclusive execution, freeze
 private payloads, verify the actual FIT and SquashFS semantics, validate the
 named 64 KiB OEM environment mapping and preserve device-specific recovery.
@@ -68,3 +69,15 @@ qualifies all callbacks on the actual outgoing OEM runtime, including complete
 tool closure and environment geometry. Exact OEM recovery still requires the
 bounded shared/NOR reset, reviewed defaults, fallback and recovery-access trial.
 No source test grants permission to flash or reboot a device.
+
+The shared settings library uses `ow_settings_metadata PATH`, returning numeric
+`uid:mode:linkcount` from one successful `LC_ALL=C ls -ldn` output row. It accepts
+only exact private regular-file 0600 or directory 0700 modes, numeric owner/group
+and link counts, and absolute paths. Callers independently reject symlinks and
+require ordinary single-link files. There is no stock `stat` dependency; wrong
+modes, special mode bits, annotated/ambiguous output and multiple rows deny.
+
+Post-write read-only source validation permits a 285-LEB root only for the
+inactive candidate. The active OEM root still requires its reviewed 305/372-LEB
+layout. A failed complete environment read always denies fresh installation;
+missing per-key output never turns an ENV error into approval.

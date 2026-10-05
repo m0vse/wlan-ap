@@ -119,7 +119,9 @@ for pair in '0 linux0' '1 rootfs0' '2 linux1' '3 rootfs1'; do
 	[ "$(read_value "$base/name")" = "$name" ] || die "unexpected volume ID $id"
 	[ "$(read_value "$base/usable_eb_size")" = 126976 ] || die "unexpected usable eraseblock size in $name"
 	lebs=$(read_value "$base/reserved_ebs"); number "$lebs"
-	case "$name:$lebs" in linux?:34|rootfs?:372|rootfs?:305) ;; *) die "unqualified capacity $name:$lebs" ;; esac
+	case "$name:$lebs" in linux?:34|rootfs?:372|rootfs?:305) ;; rootfs?:285)
+        [ "$name" != "rootfs$active" ] || die 'active OEM root cannot use candidate SquashFS capacity'
+        ;; *) die "unqualified capacity $name:$lebs" ;; esac
 	if [ "$live" = 1 ]; then [ -c "/dev/ubi0_$id" ] || die "missing volume device $id"; fi
 done
 image=$(environment image) || die 'cannot read selected OEM image with explicit -c configuration; qualify OEM reader'

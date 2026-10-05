@@ -34,9 +34,10 @@ class SettingsTests(unittest.TestCase):
         self.manifest()
         self.tools = self.root / 'bin'
         self.tools.mkdir()
-        stat = self.tools / 'stat'
-        stat.write_text('#!/usr/bin/env python3\nimport os,sys\ns=os.stat(sys.argv[3]); print(sys.argv[2].replace("%u",str(s.st_uid)).replace("%a",oct(s.st_mode & 0o777)[2:]).replace("%h",str(s.st_nlink)))\n')
-        stat.chmod(0o700)
+        # Match BusyBox numeric ls output; macOS appends xattr annotations.
+        listing = self.tools / 'ls'
+        listing.write_text('#!/usr/bin/env python3\nimport os,stat,sys\np=sys.argv[-1]; s=os.lstat(p); print(stat.filemode(s.st_mode),s.st_nlink,s.st_uid,s.st_gid,s.st_size,"Jan 1 00:00",p)\n')
+        listing.chmod(0o700)
         sync = self.tools / 'sync'
         sync.write_text('#!/bin/sh\n[ "${FAIL_SYNC:-0}" != 1 ]\n')
         sync.chmod(0o700)

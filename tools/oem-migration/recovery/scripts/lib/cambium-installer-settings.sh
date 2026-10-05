@@ -5,9 +5,26 @@
 # wrapper loads this library until its full source/storage contract is qualified.
 
 ow_settings_fail() { echo 'Installer settings refused.' >&2; return 1; }
+# Old qualified stock BusyBox lacks stat. Numeric ls is already available;
+# decode only the two accepted private modes, not arbitrary permission text.
+# Absolute paths prevent option interpretation; one complete output row is
+# mandatory. File type, symlinks and single-link files remain checked by caller.
+ow_settings_metadata() {
+    local listing
+    case "$1" in /*) ;; *) return 1 ;; esac
+    listing=$(LC_ALL=C ls -ldn "$1") || return 1
+    printf '%s\n' "$listing" | awk '
+        NR==1 && NF>=4 && $2~/^[0-9]+$/ && $3~/^[0-9]+$/ && $4~/^[0-9]+$/ {
+            if($1=="-rw-------")mode="600"
+            else if($1=="drwx------")mode="700"
+            else exit 1
+            result=$3 ":" mode ":" $2;good=1
+        }
+        END {if(NR!=1 || !good)exit 1;print result}'
+}
 ow_settings_private() {
     [ -f "$1" ] && [ ! -L "$1" ] &&
-    [ "$(stat -c '%u:%a:%h' "$1")" = "${OW_SETTINGS_OWNER:-0}:600:1" ] &&
+    [ "$(ow_settings_metadata "$1")" = "${OW_SETTINGS_OWNER:-0}:600:1" ] &&
     [ "$(wc -c < "$1")" -le 131072 ]
 }
 ow_settings_hash() { sha256sum < "$1" | awk '{print $1}'; }
@@ -53,7 +70,7 @@ ow_settings_binding() {
 ow_settings_tree() {
     local tree=$1 path name count=0
     [ -d "$tree" ] && [ ! -L "$tree" ] &&
-    [ "$(stat -c '%u:%a' "$tree")" = "${OW_SETTINGS_OWNER:-0}:700" ] &&
+    [ "$(ow_settings_metadata "$tree" | awk -F: '{print $1 ":" $2}')" = "${OW_SETTINGS_OWNER:-0}:700" ] &&
     [ "$(readlink -f "$tree")" = "$tree" ] || return 1
     for path in "$tree"/* "$tree"/.[!.]* "$tree"/..?*; do
         [ -e "$path" ] || [ -L "$path" ] || continue

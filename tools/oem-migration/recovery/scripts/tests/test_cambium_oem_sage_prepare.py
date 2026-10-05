@@ -76,6 +76,15 @@ mtd9: 08000000 00020000 "fs"
         self.assertIn('inactive_bank=0', result.stdout)
         self.assertIn('root_capacity=38727680', result.stdout)
 
+    def test_postwrite_candidate_capacity_preserves_active_oem_validation(self):
+        self.put('sys/class/ubi/ubi0_3/reserved_ebs', '285\n')
+        result = self.run_capture()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.put('sys/class/ubi/ubi0_1/reserved_ebs', '285\n')
+        result = self.run_capture()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('active OEM root', result.stderr)
+
     def test_refusals(self):
         mutations = [
             ('proc/mtd', 'mtd9: 08000000 00020000 "fs"\nmtd8: 08000000 00020000 "fs"\n', 'duplicate'),
