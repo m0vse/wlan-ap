@@ -105,6 +105,28 @@ original_helper=helper.read_text();helper.write_text(original_helper.replace("fo
 invoke('cleanup-confirmed',False);assert (store/'.installer-import/completion.json').exists()
 helper.write_text(original_helper);invoke('cleanup-confirmed',True);assert not settings.exists();assert (store/'key.pem').exists() and (store/'operational.pem').exists()
 invoke('cleanup-confirmed',True)
+# Simulate a managed upgrade retaining stale birth selectors while the
+# already-authorized durable operational activation remains on the store.
+for d in [store,runtime]:(d/'gateway.default.json').unlink(missing_ok=True)
+selected={'server':'gateway.example','port':15002,'cert':'/etc/ucentral/operational.pem','ca':'/etc/ucentral/operational.ca','hostname_validate':1,'valid':True}
+(store/'gateway.json').write_text(json.dumps(selected));(store/'gateway.json').chmod(0o600)
+old_selection={**selected,'cert':'/etc/ucentral/cert.pem','ca':'/etc/ucentral/server-ca.pem'}
+for n in ['gateway.json','gateway.flash']:(runtime/n).write_text(json.dumps(old_selection));(runtime/n).chmod(0o600)
+(runtime/'est.json').unlink(missing_ok=True)
+activation_source=(base/'ucentral-restore-operational-gateway').read_text().replace('/usr/share/ucentral/discovery_policy.uc',str(base/'discovery_policy.uc')).replace("'/certificates'",repr(str(store))).replace("'/etc/ucentral'",repr(str(runtime)))
+activation=work/'activation.uc';activation.write_text(activation_source)
+# Map public serialized paths for the isolated replay and restore them before
+# invoking the unchanged native EST dispatch against its production-path adapter.
+for d,n in [(store,'gateway.json'),(runtime,'gateway.json'),(runtime,'gateway.flash'),(store,'est.json')]:
+ p=d/n;p.write_text(p.read_text().replace('/etc/ucentral',str(runtime)))
+identity_before={n:hashlib.sha256((runtime/n).read_bytes()).hexdigest() for n in ['key.pem','operational.pem','operational.ca']}
+for replay in range(2):
+ p=subprocess.run([ucode,str(activation)],capture_output=True,text=True);assert p.returncode==0,(p.stdout,p.stderr)
+ for n in ['gateway.json','gateway.flash']:assert json.loads((runtime/n).read_text())['cert']==str(runtime/'operational.pem')
+ assert (runtime/'est.json').read_bytes()==(store/'est.json').read_bytes()
+assert {n:hashlib.sha256((runtime/n).read_bytes()).hexdigest() for n in identity_before}==identity_before
+for d,n in [(store,'gateway.json'),(runtime,'gateway.json'),(runtime,'gateway.flash'),(store,'est.json'),(runtime,'est.json')]:
+ p=d/n;p.write_text(p.read_text().replace(str(runtime),'/etc/ucentral'))
 # Native mTLS renewal after confirmed enrollment has consumed the batch credential.
 old_leaf=hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()
 fail['post']=True;p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode!=0
@@ -112,6 +134,22 @@ assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()==old_l
 fail['post']=False;p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode==0,(p.stdout,p.stderr,(work/'native.log').read_text())
 assert hashlib.sha256((store/'operational.pem').read_bytes()).hexdigest()!=old_leaf and (store/'operational.pem').read_bytes()==(runtime/'operational.pem').read_bytes()
 assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
+# An already-selected expired identity still reaches native reenroll; failed
+# server mTLS validation must retain its key, leaf and operational selector.
+valid_leaf=(store/'operational.pem').read_bytes();expired=work/'expired-native.pem'
+from datetime import datetime,timedelta,timezone
+expired_csr=work/'expired.csr';ossl('req','-inform','DER','-in',work/'received.csr','-out',expired_csr)
+database=work/'expired.index';database.write_text('');serial_file=work/'expired.serial';serial_file.write_text('20\n')
+ca_config=work/'expired-ca.config';ca_config.write_text('[ca]\ndefault_ca=fixture\n[fixture]\ndatabase='+str(database)+'\nserial='+str(serial_file)+'\nnew_certs_dir='+str(work)+'\ncertificate='+str(issuer)+'\nprivate_key='+str(issuer_key)+'\ndefault_md=sha256\npolicy=subject\n[subject]\ncommonName=supplied\n')
+start=datetime.now(timezone.utc)-timedelta(days=2);end=start+timedelta(days=1)
+ossl('ca','-batch','-notext','-config',ca_config,'-in',expired_csr,'-startdate',start.strftime('%y%m%d%H%M%SZ'),'-enddate',end.strftime('%y%m%d%H%M%SZ'),'-extfile',work/'client.ext','-out',expired)
+for d in [store,runtime]:(d/'operational.pem').write_bytes(expired.read_bytes())
+expired_hash=hashlib.sha256(expired.read_bytes()).hexdigest()
+p=subprocess.run([str(native_wrapper),'reenroll'],capture_output=True,text=True);assert p.returncode!=0
+for d in [store,runtime]:assert hashlib.sha256((d/'operational.pem').read_bytes()).hexdigest()==expired_hash
+assert hashlib.sha256((store/'key.pem').read_bytes()).hexdigest()==key_before
+for n in ['gateway.json','gateway.flash']:assert json.loads((runtime/n).read_text())['cert']=='/etc/ucentral/operational.pem'
+for d in [store,runtime]:(d/'operational.pem').write_bytes(valid_leaf)
 server.shutdown()
-report={'passed':True,'cases':['firstboot-generated-fallback-policy','firstboot-preserves-explicit-operator-policy','settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch/curl/crypto and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
+report={'passed':True,'cases':['firstboot-generated-fallback-policy','firstboot-preserves-explicit-operator-policy','settings-stage-no-key-no-network','network-clock-gate-before-key','native-EST-503-preserves-key-CSR-intent','native-EST-retry-identical-CSR','reboot-during-503-retains-key-CSR','post-intent-missing-corrupt-CSR-refuses-contact','independent-HTTPS-and-client-issuer-trust','validated-durable-native-leaf','completed-retry-no-reissue','reboot-restores-current-durable-identity','reboot-retains-key-and-CSR','failed-stale-disconnected-config-refuses-confirmation','fresh-applied-config-consumes-bootstrap','actual-packaged-empty-store-mount','cleanup-stable-env-gate','cleanup-partial-delete-resume-retains-identity','managed-operational-selector-and-EST-restored','second-replay-retains-operational-selection','native-mTLS-renewal-without-bootstrap','failed-renewal-retains-current-leaf','successful-renewal-retains-key-and-persists-leaf','expired-selected-native-mTLS-renewal-failure-retains-key-leaf-selector'],'helper_sha256':hashlib.sha256((base/'ucentral-installer-identity').read_bytes()).hexdigest(),'native_est_sha256':hashlib.sha256((base/'est_client').read_bytes()).hexdigest(),'activation_restore_sha256':hashlib.sha256((base/'ucentral-restore-operational-gateway').read_bytes()).hexdigest(),'scope':'Full actual native EST dispatch, target curl, host OpenSSL and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services.'}
 (base/'firstboot-native-protocol-tests.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
