@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=tip-defaults
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -29,6 +29,8 @@ Build/Compile = $(Build/Compile/Default)
 
 define Package/tip-defaults/install
 	$(CP) ./files/* $(1)
+	# Recursive copies preserve checkout directory modes; normalize last.
+	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
 
 $(eval $(call BuildPackage,tip-defaults))

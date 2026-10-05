@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-client
-PKG_RELEASE:=13
+PKG_RELEASE:=14
 
 PKG_SOURCE_URL=https://github.com/m0vse/wlan-ucentral-client.git
 PKG_MIRROR_HASH:=537453c59f515013c2eb5fb6b106ab086700f5ea3b85d051aa79e25b76128150
@@ -28,6 +28,8 @@ define Package/ucentral-client/install
 	$(INSTALL_DIR) $(1)/usr/sbin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ucentral $(1)/usr/sbin/
 	$(CP) ./files/* $(1)
+	# Recursive copies preserve checkout directory modes; normalize last.
+	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
 
 $(eval $(call BuildPackage,ucentral-client))

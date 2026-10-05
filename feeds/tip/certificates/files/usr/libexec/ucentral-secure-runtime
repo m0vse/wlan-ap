@@ -1,0 +1,19 @@
+#!/usr/bin/ucode
+// Repair the root:root 0775 directory shipped by older discovery packages.
+// No file, key, certificate, ownership or trust changes are permitted here.
+import * as fs from 'fs';
+const RUNTIME='/etc/ucentral';
+function inspect() {
+    let st=fs.lstat(RUNTIME);
+    if(st?.type!='directory'||st.uid!=0||fs.realpath(RUNTIME)!=RUNTIME)
+        die('Unsafe runtime directory path or owner\n');
+    return st;
+}
+let st=inspect();
+if(st.mode==0775 && st.gid==0) {
+    if(!fs.chmod(RUNTIME,0755))die('Cannot secure legacy runtime directory\n');
+    st=inspect();
+    if(st.mode!=0755||st.gid!=0)die('Runtime directory permissions repair failed\n');
+}
+if(!(st.mode in [0700,0750,0755]))
+    die('Unsafe runtime directory permissions\n');
