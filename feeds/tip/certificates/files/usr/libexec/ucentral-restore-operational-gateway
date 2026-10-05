@@ -3,12 +3,15 @@
 import * as fs from 'fs';
 import { select_controller } from '/usr/share/ucentral/discovery_policy.uc';
 const STORE='/certificates', RUNTIME='/etc/ucentral';
+const CA_BUNDLE_MAX=2097152;
 function fail(message){die(message+'\n');}
 function conflict(message){warn('Operational activation preserved operator conflict: '+message+'\n');exit(0);}
 function safe(path,maximum){
     let st=fs.lstat(path);
-    if(st?.type!='file'||st.uid!=0||st.nlink!=1||!(st.mode in [0600,0440,0644])||st.size<1||st.size>maximum)
-        fail('Unsafe operational activation file');
+    if(st?.type!='file'||st.uid!=0||st.nlink!=1||!(st.mode in [0600,0440,0644]))
+        fail('Unsafe operational activation file metadata: '+path);
+    if(st.size<1||st.size>maximum)
+        fail('Operational activation file size out of bounds: '+path+' ('+st.size+' bytes; limit '+maximum+')');
 }
 function read_object(path){
     safe(path,16384);
@@ -63,7 +66,8 @@ for(let directory in [STORE,RUNTIME]){
     if(st?.type!='directory'||st.uid!=0||(st.mode&0022)||fs.realpath(directory)!=directory)fail('Unsafe activation directory');
 }
 for(let name in ['key.pem','operational.pem','operational.ca']){
-    safe(STORE+'/'+name,131072);safe(RUNTIME+'/'+name,131072);
+    let maximum=name=='operational.ca'?CA_BUNDLE_MAX:131072;
+    safe(STORE+'/'+name,maximum);safe(RUNTIME+'/'+name,maximum);
     if(fs.readfile(STORE+'/'+name)!=fs.readfile(RUNTIME+'/'+name))fail('Runtime and durable native identity differ');
 }
 let public_key=output(`openssl pkey -in ${RUNTIME}/key.pem -pubout 2>/dev/null`);
@@ -77,7 +81,7 @@ if(length(keys(est))!=2||!match(est.server??'',/^[A-Za-z0-9][A-Za-z0-9.-]*(:[1-9
    (index(est.server,':')>=0&&+split(est.server,':')[1]>65535)||
    !(est.tls_ca in [RUNTIME+'/insta.pem',RUNTIME+'/server-ca.pem',RUNTIME+'/operational.ca','/etc/ssl/certs/ca-certificates.crt']))
     fail('Invalid durable native EST policy');
-safe(est.tls_ca,2097152);
+safe(est.tls_ca,CA_BUNDLE_MAX);
 if(fs.lstat(RUNTIME+'/est.json')){
     let current=read_object(RUNTIME+'/est.json');
     if(length(keys(current))!=2||current.server!=est.server||current.tls_ca!=est.tls_ca)conflict('explicit runtime EST policy differs');
