@@ -1,4 +1,4 @@
 {
-	"default": "openwifi.shinesystems.co.uk:15002",
-	"allowed": ["openwifi.shinesystems.co.uk:15002"]
+	"mode": "default",
+	"default": "openwifi.wlan.local:15002"
 }

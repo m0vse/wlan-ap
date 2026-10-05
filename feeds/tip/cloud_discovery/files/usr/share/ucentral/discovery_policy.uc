@@ -17,11 +17,23 @@ function endpoint(value) {
 	return { dhcp_server: host, dhcp_port: int(port), no_validation: false };
 }
 
+export function default_policy(policy) {
+    if (type(policy) != 'object' || policy.mode != 'default' || length(keys(policy)) != 2 ||
+        !exists(policy, 'default')) return false;
+    return !!endpoint(policy.default);
+};
+
 export function select_controller(opt138, opt224, policy) {
 	// Option 138 is excluded: it carries unrelated controller hints.
 	let selected = endpoint(opt224);
 	if (policy == null)
 		return selected;
+	if (default_policy(policy)) {
+		if (selected) return selected;
+		let fallback = endpoint(policy.default);
+		fallback.dhcp_source = 'policy-default';
+		return fallback;
+	}
 	/* Malformed local policy fails closed, not back to unrestricted DHCP. */
 	if (type(policy) != 'object' || type(policy.allowed) != 'array')
 		return null;

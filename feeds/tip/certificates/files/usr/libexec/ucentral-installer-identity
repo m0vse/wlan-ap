@@ -269,6 +269,26 @@ function bound_identity(seed) {
     identity.binding.spki_sha256=state.spki;
     return identity;
 }
+function prepare_default_policy(identity) {
+    // Operator allowlists and malformed policies are never broadened.
+    for (let directory in [STORE,RUNTIME]) {
+        let path=directory+'/discovery-policy.json',info=fs.lstat(path);
+        if (!info) continue;
+        if(info.type!='file'||info.uid!=0||info.nlink!=1||!(info.mode in [0600,0644]))fail('Unsafe discovery policy');
+        let policy;
+        try {policy=json(fs.readfile(path));}catch(e){return;}
+        if(type(policy)!='object'||policy.mode!='default'||length(keys(policy))!=2||!exists(policy,'default'))return;
+        let parts=split(policy.default ?? '',':');
+        if(length(parts)>2||!hostname(parts[0])||(length(parts)==2&&(!match(parts[1],/^[1-9][0-9]{0,4}$/)||+parts[1]>65535)))return;
+    }
+    let policy={mode:'default',default:identity.gateway.server+':'+identity.gateway.port};
+    for(let directory in [STORE,RUNTIME]) {
+        let path=directory+'/discovery-policy.json';
+        // The packaged public fallback is a public 0644 file, never a secret.
+        if(fs.lstat(path)?.mode==0644 && !fs.chmod(path,0600))fail('Cannot persist fallback policy');
+        publish(path,sprintf('%J',policy));
+    }
+}
 function prepare_settings(seed) {
     let identity=validate(seed);
     trusted_context(identity);
@@ -281,6 +301,7 @@ function prepare_settings(seed) {
         if (!(name in identity.present) || name=='est-bootstrap.conf' && state.accepted) continue;
         for (let directory in [STORE,RUNTIME]) publish(directory+'/'+name,name=='est.json' && identity.est.tls_ca=='systembundle' ? sprintf('%J',{server:identity.est.server,tls_ca:'/etc/ssl/certs/ca-certificates.crt'}) : fs.readfile(seed+'/'+name));
     }
+    prepare_default_policy(identity);
     for (let directory in [STORE,RUNTIME]) publish(directory+'/gateway.default.json',fs.readfile(seed+'/gateway.json'));
     if (!fs.lstat(RUNTIME+'/gateway.json')) publish(RUNTIME+'/gateway.json',fs.readfile(seed+'/gateway.json'));
     if (state.committed) {
