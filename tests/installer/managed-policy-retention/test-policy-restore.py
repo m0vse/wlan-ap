@@ -51,7 +51,7 @@ for supported,label in [(True,'saved-identity-restores-durable-policy'),(False,'
  core=fixture/'core';core.write_text('ab_family(){ return '+str(0 if supported else 1)+'; }\n')
  mount=fixture/'mount';mount.write_text('#!/bin/sh\necho mounted >> '+str(fixture/'mount.log')+'\n');mount.chmod(0o700)
  prepare=fixture/'prepare';prepare.write_text('#!/bin/sh\nexit 0\n');prepare.chmod(0o700)
- boot=(source/'etc/init.d/early_boot').read_text().replace('/usr/libexec/ucentral-installer-boot',str(prepare)).replace('/usr/libexec/ucentral-restore-discovery-policy',str(wrapper)).replace('/usr/bin/mount_certs',str(mount)).replace('/lib/functions/cambium-ab.sh',str(core)).replace('/etc/ucentral',str(runtime)).replace('/certificates',str(store))
+ boot=(source/'etc/init.d/early_boot').read_text().replace('/usr/libexec/ucentral-restore-operational-gateway',str(prepare)).replace('/usr/libexec/ucentral-installer-boot',str(prepare)).replace('/usr/libexec/ucentral-restore-discovery-policy',str(wrapper)).replace('/usr/bin/mount_certs',str(mount)).replace('/lib/functions/cambium-ab.sh',str(core)).replace('/etc/ucentral',str(runtime)).replace('/certificates',str(store))
  script=fixture/'boot';script.write_text(boot+'\nboard_name(){ echo cambiumnetworks,e410; }\nboot\n')
  p=subprocess.run(['sh',str(script)],capture_output=True,text=True)
  assert p.returncode==0,(label,p.stderr)
