@@ -1,0 +1,88 @@
+#!/usr/bin/ucode
+// Replay the existing durable operational activation, never enroll or renew.
+import * as fs from 'fs';
+import { select_controller } from '/usr/share/ucentral/discovery_policy.uc';
+const STORE='/certificates', RUNTIME='/etc/ucentral';
+function fail(message){die(message+'\n');}
+function conflict(message){warn('Operational activation preserved operator conflict: '+message+'\n');exit(0);}
+function safe(path,maximum){
+    let st=fs.lstat(path);
+    if(st?.type!='file'||st.uid!=0||st.nlink!=1||!(st.mode in [0600,0440,0644])||st.size<1||st.size>maximum)
+        fail('Unsafe operational activation file');
+}
+function read_object(path){
+    safe(path,16384);
+    let value;
+    try{value=json(fs.readfile(path));}catch(e){fail('Invalid operational activation JSON');}
+    if(type(value)!='object')fail('Invalid operational activation object');
+    return value;
+}
+function strict(g){
+    return type(g?.server)=='string'&&match(g.server,/^[A-Za-z0-9][A-Za-z0-9.-]*$/)&&
+        type(g.port)=='int'&&g.port>0&&g.port<=65535&&g.hostname_validate===1&&
+        (!exists(g,'allow-self-signed')||g['allow-self-signed']===false);
+}
+function output(command){let p=fs.popen(command);if(!p)return null;let value=p.read('all');return p.close()==0?value:null;}
+function publish(path,contents){
+    if(fs.lstat(path)){safe(path,131072);if(fs.readfile(path)==contents)return;}
+    let temporary=path+'.activation-restore';
+    if(fs.lstat(temporary)){safe(temporary,131072);if(!fs.unlink(temporary))fail('Cannot clear interrupted activation restore');}
+    let file=fs.open(temporary,'w',0600);
+    if(!file||!fs.chmod(temporary,0600)||file.write(contents)!=length(contents)||!file.flush()||!file.close()||
+       system('sync')||!fs.rename(temporary,path)||system('sync'))fail('Operational activation restore failed');
+}
+// Fresh FORMAT2 uses gateway.default.json and has no durable explicit gateway.
+if(!fs.lstat(STORE+'/gateway.json'))exit(0);
+let stored=read_object(STORE+'/gateway.json');
+if(stored.cert!=RUNTIME+'/operational.pem'||stored.ca!=RUNTIME+'/operational.ca')exit(0);
+if(fs.lstat(STORE+'/gateway.default.json')||fs.lstat(RUNTIME+'/gateway.default.json'))exit(0);
+if(!strict(stored))fail('Durable operational gateway is not strict');
+for(let name in ['gateway.json','gateway.flash']){
+    if(!fs.lstat(RUNTIME+'/'+name)){if(name=='gateway.json')conflict('runtime gateway absent');continue;}
+    let current=read_object(RUNTIME+'/'+name);
+    if(!strict(current)||current.server!=stored.server||current.port!=stored.port)
+        conflict('endpoint or TLS policy differs');
+    let birth=current.cert==RUNTIME+'/cert.pem'&&current.ca==RUNTIME+'/server-ca.pem';
+    let operational=current.cert==stored.cert&&current.ca==stored.ca;
+    if(!birth&&!operational)conflict('custom credential pin');
+    // Unknown gateway policy fields may carry an explicit operator restriction.
+    for(let key in keys(current))if(!(key in ['server','port','cert','ca','hostname_validate','allow-self-signed','valid']))
+        conflict('additional runtime gateway policy');
+}
+for(let name in ['discovery-policy.json','restrictions.json']){
+    if(!fs.lstat(RUNTIME+'/'+name))continue;
+    let policy=read_object(RUNTIME+'/'+name);
+    if(name=='discovery-policy.json'){
+        let selected=select_controller(null,stored.server+':'+stored.port,policy);
+        if(!selected||selected.dhcp_server!=stored.server||selected.dhcp_port!=stored.port)
+            conflict('controller excluded by discovery policy');
+    }else if(policy['allow-self-signed']===true)conflict('conflicting TLS restriction');
+}
+for(let directory in [STORE,RUNTIME]){
+    let st=fs.lstat(directory);
+    if(st?.type!='directory'||st.uid!=0||(st.mode&0022)||fs.realpath(directory)!=directory)fail('Unsafe activation directory');
+}
+for(let name in ['key.pem','operational.pem','operational.ca']){
+    safe(STORE+'/'+name,131072);safe(RUNTIME+'/'+name,131072);
+    if(fs.readfile(STORE+'/'+name)!=fs.readfile(RUNTIME+'/'+name))fail('Runtime and durable native identity differ');
+}
+let public_key=output(`openssl pkey -in ${RUNTIME}/key.pem -pubout 2>/dev/null`);
+let leaf_key=output(`openssl x509 -in ${RUNTIME}/operational.pem -pubkey -noout 2>/dev/null`);
+if(!public_key||public_key!=leaf_key||
+   system(`openssl x509 -in ${RUNTIME}/operational.pem -checkend 0 -noout >/dev/null 2>&1`)||
+   system(`openssl verify -purpose sslclient -CAfile ${RUNTIME}/operational.ca ${RUNTIME}/operational.pem >/dev/null 2>&1`))
+    fail('Operational identity validation failed');
+let est=read_object(STORE+'/est.json');
+if(length(keys(est))!=2||!match(est.server??'',/^[A-Za-z0-9][A-Za-z0-9.-]*(:[1-9][0-9]{0,4})?$/)||
+   (index(est.server,':')>=0&&+split(est.server,':')[1]>65535)||
+   !(est.tls_ca in [RUNTIME+'/insta.pem',RUNTIME+'/server-ca.pem',RUNTIME+'/operational.ca','/etc/ssl/certs/ca-certificates.crt']))
+    fail('Invalid durable native EST policy');
+safe(est.tls_ca,2097152);
+if(fs.lstat(RUNTIME+'/est.json')){
+    let current=read_object(RUNTIME+'/est.json');
+    if(length(keys(current))!=2||current.server!=est.server||current.tls_ca!=est.tls_ca)conflict('explicit runtime EST policy differs');
+}
+// Individually atomic and replayable. Store authority remains unchanged.
+publish(RUNTIME+'/est.json',fs.readfile(STORE+'/est.json'));
+publish(RUNTIME+'/gateway.flash',fs.readfile(STORE+'/gateway.json'));
+publish(RUNTIME+'/gateway.json',fs.readfile(STORE+'/gateway.json'));
