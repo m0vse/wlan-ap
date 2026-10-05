@@ -7,6 +7,7 @@ files={
  'ucentral-installer-boot':'feeds/tip/certificates/files/usr/libexec/ucentral-installer-boot',
  'ucentral-installer-firstboot':'feeds/tip/certificates/files/usr/libexec/ucentral-installer-firstboot',
  'ucentral-restore-operational-gateway':'feeds/tip/certificates/files/usr/libexec/ucentral-restore-operational-gateway',
+ 'cloud_discovery':'feeds/tip/cloud_discovery/files/usr/bin/cloud_discovery',
  'discovery_policy.uc':'feeds/tip/cloud_discovery/files/usr/share/ucentral/discovery_policy.uc',
  'mount_certs':'feeds/tip/certificates/files/usr/bin/mount_certs',
  'est_client':'feeds/tip/cloud_discovery/files/usr/bin/est_client',

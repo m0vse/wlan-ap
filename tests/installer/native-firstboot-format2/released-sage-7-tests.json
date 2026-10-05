@@ -1,0 +1,92 @@
+{
+  "packaged_image": {
+    "image_sha256": "10cfd2c8e8b149e72f234701b32aa32dea5eb224fc5749152fd18ae30a79f82b",
+    "revision": "TIP-sage-2026.10.05.7-1ff2d0c3",
+    "root": "/tmp/sage-20261005.7-check.5XzncK/root",
+    "files": {
+      "ucentral-installer-identity": "54651cd16550464842b15915344f8f28fdc16741adfc27bbd5b829bc75832a82",
+      "ucentral-installer-boot": "61d68123f627528771704c6a1482b98c5ec8064c707c7a1a47b47fa991e93619",
+      "ucentral-installer-firstboot": "60b4ee2e3a62bfd64390c7983ee033c4b910e0b27b28fffd9d45a7621ac9d321",
+      "ucentral-restore-operational-gateway": "a29a707c395b6e02e070bba1cb51b3dcd4ddfd182592f6f71d9b4844558cd6c9",
+      "ucentral-secure-runtime": "38cbdf8aa737a9b365dbf2a8c3a86512fbfd5cbcbb58a217cf78c7faa18a853d",
+      "discovery_policy.uc": "ef53d958b41a7a60dd39cf264d375522e21794ddc7c2db51149bbea9635f3a95",
+      "mount_certs": "9f171a5a28cc435a8b982079d43e043b219639cf35e3014a400ef056bb683696",
+      "est_client": "c95d4b586239dbe5af7ea9efe0b2b30d74732a8149c511f7bb031f7dfbbc4fd3",
+      "cloud_discover.init": "60a42537561480ad518ed5065cde68d430f3607daf1806993ae3ded332b06c0d",
+      "cloud_discovery": "db82b8137418ed93a2f9f1368c94e2b7dfc41052772c19d40d466957b6e97a74"
+    }
+  },
+  "protocol": {
+    "passed": true,
+    "cases": [
+      "firstboot-generated-fallback-policy",
+      "firstboot-preserves-explicit-operator-policy",
+      "settings-stage-no-key-no-network",
+      "network-clock-gate-before-key",
+      "native-EST-503-preserves-key-CSR-intent",
+      "native-EST-retry-identical-CSR",
+      "reboot-during-503-retains-key-CSR",
+      "post-intent-missing-corrupt-CSR-refuses-contact",
+      "independent-HTTPS-and-client-issuer-trust",
+      "validated-durable-native-leaf",
+      "completed-retry-no-reissue",
+      "reboot-restores-current-durable-identity",
+      "reboot-retains-key-and-CSR",
+      "failed-stale-disconnected-config-refuses-confirmation",
+      "fresh-applied-config-consumes-bootstrap",
+      "actual-packaged-empty-store-mount",
+      "cleanup-stable-env-gate",
+      "cleanup-partial-delete-resume-retains-identity",
+      "managed-operational-selector-and-EST-restored-with-223727-byte-CA-bundle",
+      "second-replay-retains-operational-selection",
+      "native-mTLS-renewal-without-bootstrap",
+      "failed-renewal-retains-current-leaf",
+      "successful-renewal-retains-key-and-persists-leaf",
+      "expired-selected-native-mTLS-renewal-failure-retains-key-leaf-selector",
+      "unattended-expiry-clock-gate",
+      "unattended-expiry-skips-birth-selection",
+      "unattended-renewal-failure-keeps-identity-and-running-client",
+      "unattended-renewal-success-persists-leaf-and-restarts-client-without-bootstrap"
+    ],
+    "helper_sha256": "54651cd16550464842b15915344f8f28fdc16741adfc27bbd5b829bc75832a82",
+    "native_est_sha256": "c95d4b586239dbe5af7ea9efe0b2b30d74732a8149c511f7bb031f7dfbbc4fd3",
+    "cloud_discovery_sha256": "db82b8137418ed93a2f9f1368c94e2b7dfc41052772c19d40d466957b6e97a74",
+    "activation_restore_sha256": "a29a707c395b6e02e070bba1cb51b3dcd4ddfd182592f6f71d9b4844558cd6c9",
+    "scope": "Full actual native EST dispatch, target curl, host OpenSSL and first-boot helper, synthetic localhost HTTPS, Root temporary identities; hardware/mount/context/UCI/storage boundaries isolated. No outgoing firmware crypto, AP, real issuer or services."
+  },
+  "worker": {
+    "passed": true,
+    "cases": [
+      "no-pending-no-enrollment-or-restarts",
+      "network-clock-gate",
+      "failed-enrollment-retries",
+      "services-restart-only-on-success"
+    ],
+    "scope": "Actual worker shell; readiness/enrollment/procd boundaries isolated, no services changed."
+  },
+  "services": {
+    "passed": true,
+    "cases": [
+      "non-Cambium-prepare",
+      "non-Cambium-check",
+      "non-Cambium-pending",
+      "unsupported-family-prepare",
+      "unsupported-family-check",
+      "unsupported-family-pending",
+      "normal-no-pending-prepare",
+      "normal-no-pending-check",
+      "normal-no-pending-pending",
+      "fallback-prepare",
+      "fallback-check",
+      "fallback-pending",
+      "pending-stages-only",
+      "pending-check",
+      "malformed-pending-refused",
+      "normal-cloud-service",
+      "pending-enrollment-worker",
+      "enrolled-cloud-service"
+    ],
+    "scope": "Actual boot/cloud init shell with isolated hardware/env/helper/procd boundaries; no AP/services changed."
+  },
+  "hardware_status": "Released-image fixtures only; production clean OEM/stock first-enrollment and unattended renewal on hardware remain separate gates."
+}
