@@ -1,5 +1,6 @@
 #!/bin/sh
-set -eu
+# OpenWrt libraries intentionally use optional, unset environment variables.
+set -e
 operation=${1:-check}
 case "$operation" in prepare|check|pending) ;; *) exit 1 ;; esac
 [ -f /lib/functions/cambium-ab.sh ] || { [ "$operation" != pending ]; exit $?; }
