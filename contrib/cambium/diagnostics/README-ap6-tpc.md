@@ -37,10 +37,15 @@ explicitly operator-approved LPI, country GB, original regulatory limits.
 
 Final diagnostic on cnbeacon:
 
-    /tmp/xe34-ap-tpc-diagnostic.6bpBXv/ath11k-ap-tpc.ko
+    /home/phil/task-artifacts/sage-jaguar-2026-10-06/driver-evidence/ath11k-ap-tpc.ko
     SHA256 4d706f5518ce5ffa960a50577ee9d0d4876ab39c131b6ca2d027aded1a782b45
     vermagic 6.12.85 SMP mod_unload aarch64
     depends mac80211,cfg80211,qmi_helpers
+
+The diagnostic and compact original/patched-source evidence moved to this
+Root-only persistent audit location on 2026-10-06 after verified copies and
+dependency clearance. The old `/tmp/xe34-ap-tpc-diagnostic.6bpBXv` path and
+redundant intermediate objects were removed; no driver/AP/build changes.
 
 Live AP module baseline (XE3-4, serial b4a25c05c018):
 
