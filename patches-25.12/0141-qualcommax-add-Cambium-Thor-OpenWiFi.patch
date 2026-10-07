@@ -1,3 +1,6 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] qualcommax: add Cambium Thor OpenWiFi
+
 diff --git a/include/image-commands.mk b/include/image-commands.mk
 index ca9e527c64..14eecdf494 100644
 --- a/include/image-commands.mk

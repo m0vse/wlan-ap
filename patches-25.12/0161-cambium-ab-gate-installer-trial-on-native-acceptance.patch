@@ -1,3 +1,6 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: gate installer trial on native acceptance
+
 --- a/package/cambium/cambium-ab/files/cambium-ab-guard
 +++ b/package/cambium/cambium-ab/files/cambium-ab-guard
 @@ -11,6 +11,19 @@

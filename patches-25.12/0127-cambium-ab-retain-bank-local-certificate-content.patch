@@ -1,3 +1,6 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: retain bank-local certificate content
+
 diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
 index 401baa353b..b3d9241d67 100644
 --- a/package/cambium/cambium-ab/Makefile

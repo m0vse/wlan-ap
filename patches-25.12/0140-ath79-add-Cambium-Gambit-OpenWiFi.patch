@@ -1,3 +1,4 @@
+From: Phil Taylor <phil@m0vse.uk>
 Subject: ath79: preserve qualified E400 Gambit family port
 
 Family-only hunks from frozen Gambit .12 parent f08f3456. Shared A/B
