@@ -16,7 +16,10 @@ with tempfile.TemporaryDirectory(prefix='jaguar-oem-boot-') as td:
     core=root/'core'; core.write_text(created('package/cambium/cambium-ab/files/cambium-ab.sh'))
     module=root/'package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh'
     module.parent.mkdir(parents=True);module.write_text(created('package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh'))
+    recipe=module.parent.parent/'Makefile'
+    recipe.write_text(created('package/cambium/cambium-jaguar-support/Makefile'))
     subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(REPO/'patches-25.12/0180-cambium-jaguar-gate-oem-first-boot-on-save.patch')],cwd=root,check=True,capture_output=True)
+    assert 'PKG_RELEASE:=9\n' in recipe.read_text()
     total=0
     for model,fit,bank in [('xv2-2','config@cp01-c1','0x3400000'),('xv2-2t1','config@cp01-c1-2','0x6000000'),('xe3-4','config@cp01-c3-xv3-4','0x6000000')]:
         for target in (0,1):

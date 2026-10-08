@@ -7,6 +7,13 @@ unchanged model-specific load/FIT commands.
 
 Signed-off-by: Phil Taylor <phil@m0vse.uk>
 ---
+--- a/package/cambium/cambium-jaguar-support/Makefile
++++ b/package/cambium/cambium-jaguar-support/Makefile
+@@ -3,3 +3,3 @@
+ PKG_NAME:=cambium-jaguar-support
+-PKG_RELEASE:=8
++PKG_RELEASE:=9
+ PKG_LICENSE:=GPL-2.0-only
 --- a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
 +++ b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
 @@ -65,3 +65,3 @@
