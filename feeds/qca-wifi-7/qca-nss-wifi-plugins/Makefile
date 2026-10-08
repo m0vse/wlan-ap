@@ -4,7 +4,7 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=qca-nss-wifi-plugins
 PKG_SOURCE_PROTO:=git
 PKG_BRANCH:=master
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-plugins
 PKG_MIRROR_HASH:=7ba05b01205dc101c4a79a5175ce8b0aab6500de05797f4c08ebc7ee1201aeb6
 PKG_SOURCE_VERSION:=605d7fdf82c0309e39983142ab6e72552f7183ad

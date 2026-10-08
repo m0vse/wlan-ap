@@ -354,7 +354,7 @@ function iface_restart(phydev, config, old_config)
 	if (pending)
 		pending.abort();
 
-	hostapd.remove_iface(phy, phydev.radio);
+	hostapd.remove_iface(phy, phydev.radio ?? -1);
 	iface_remove(old_config,  phydev.radio);
 	iface_remove(config,  phydev.radio);
 

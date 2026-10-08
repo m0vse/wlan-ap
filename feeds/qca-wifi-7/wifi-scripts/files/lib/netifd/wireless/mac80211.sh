@@ -1154,12 +1154,13 @@ mac80211_hostapd_setup_bss() {
 	local ifname="$2"
 	local macaddr="$3"
 	local type="$4"
+	local mld
 
 	hostapd_cfg=
 	append hostapd_cfg "$type=$ifname" "$N"
 
 	hostapd_set_bss_options hostapd_cfg "$phy" "$vif" || return 1
-	json_get_vars wds wds_bridge dtim_period max_listen_int start_disabled ieee80211w beacon_prot ppe_vp
+	json_get_vars wds wds_bridge dtim_period max_listen_int start_disabled ieee80211w beacon_prot ppe_vp mld
 	json_get_vars unsol_bcast_presp fils_discovery
 	json_get_vars enable_epcs ttlm_enable enable_aal ml_max_rec_links enable_scs enable_mscs enable_dscp_policy_capa
 	json_get_vars commitatf atfssidsched atfssidgroup
@@ -1231,7 +1232,9 @@ mac80211_hostapd_setup_bss() {
 	fi
 
 	if [[ "$htmode" == "EHT"* ]]; then
-		append hostapd_cfg "mld_ap=1" "$N"
+		# EHT also supports independent single-link APs. Enable MLO only
+		# when this BSS explicitly belongs to a configured MLD group.
+		[ -z "$mld" ] || append hostapd_cfg "mld_ap=1" "$N"
 
 		if [ -n "$enable_epcs" ]; then
 			append hostapd_cfg "enable_epcs=$enable_epcs" "$N"
@@ -1370,12 +1373,48 @@ rename_board_phy_by_name() (
 	iw "$prev_phy" set name "$phy"
 )
 
+# Miami's two PCI radios share a device path and iwinfo may lack phyname.
+# Resolve its +N ordinal by the kernel index, never by a PHY-name guess.
+miami_phy_by_path() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'cambiumnetworks,x7-35x' ] || return 1
+	local base="$1" ordinal=0 matches= p name device idx
+	case "$base" in
+		*+*)
+			ordinal=${base##*+}; base=${base%+*}
+			case "$ordinal" in ''|*[!0-9]*|0[0-9]*) return 1;; esac
+			;;
+	esac
+	base=${base#/sys/devices/}; base=${base#platform/}
+	for p in /sys/class/ieee80211/*; do
+		[ -d "$p" ] || continue
+		device=$(readlink -f "$p/device" 2>/dev/null) || continue
+		device=${device#/sys/devices/}; device=${device#platform/}
+		[ "$device" = "$base" ] || continue
+		idx=$(cat "$p/index" 2>/dev/null) || return 1
+		case "$idx" in ''|*[!0-9]*|0[0-9]*) return 1;; esac
+		name=${p##*/}
+		matches="$matches$idx $name
+"
+	done
+	[ -n "$matches" ] || return 1
+	matches=$(printf '%s' "$matches" | sort -n)
+	# Duplicate indices cannot establish which radio is intended.
+	printf '%s\n' "$matches" | awk 'NR > 1 && $1 == prev { exit 1 } { prev=$1 }' || return 1
+	name=$(printf '%s\n' "$matches" | awk -v n="$ordinal" 'NR == n + 1 { print $2 }')
+	[ -n "$name" ] || return 1
+	printf '%s\n' "$name"
+}
+
 find_phy() {
 	[ -n "$phy" ] && {
 		rename_board_phy_by_name "$phy"
 		[ -d /sys/class/ieee80211/$phy ] && return 0
 	}
 	[ -n "$path" ] && {
+		if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'cambiumnetworks,x7-35x' ]; then
+			phy="$(miami_phy_by_path "$path")" || return 1
+			return 0
+		fi
 		phy="$(iwinfo nl80211 phyname "path=$path")"
 		# Filter out iwinfo usage message printed to stdout on lookup failure
 		echo "$phy" | grep -qE "^Usage:" && phy=""

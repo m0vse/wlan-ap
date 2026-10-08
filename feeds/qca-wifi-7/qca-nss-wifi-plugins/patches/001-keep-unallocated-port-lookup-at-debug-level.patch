@@ -1,0 +1,32 @@
+Subject: [PATCH] nss-wifi: keep an unallocated port lookup at debug level
+
+Port lookup is also used by software-only interfaces. The PPE driver
+returns PPE_DRV_PORT_ID_INVALID when there is no port attached. Preserve
+that return value without logging normal software forwarding as an error.
+Retain errors for invalid non-sentinel port numbers and configuration failures.
+
+--- a/qca_nss_wifi_plugins.c
++++ b/qca_nss_wifi_plugins.c
+@@ -13,6 +13,7 @@
+ #include <linux/netdevice.h>
+ 
+ #include <ppe_drv_public.h>
++#include <ppe_drv_port.h>
+ #include <ppe_vp_public.h>
+ #include <ppe_drv_iface.h>
+ #include "qca_nss_wifi_plugins.h"
+@@ -226,6 +227,14 @@
+ int16_t qca_nss_wifi_plugin_get_vp_num(struct net_device *dev)
+ {
+ 	int16_t vp_num = ppe_drv_port_num_from_dev(dev);
++
++	/* Software forwarding has no PPE port; allocation errors are logged
++	 * by their caller. Keep out-of-range allocated ports as errors below.
++	 */
++	if (vp_num == PPE_DRV_PORT_ID_INVALID) {
++		pr_debug("No PPE Virtual Port allocated for dev %s\n", dev->name);
++		return -1;
++	}
+ 
+ 	if (unlikely((vp_num < PPE_DRV_VIRTUAL_START) || (vp_num >= PPE_DRV_VIRTUAL_END))) {
+ 		pr_err("\nCouldn't find a valid Virtual Port number for dev %s\n", dev->name);

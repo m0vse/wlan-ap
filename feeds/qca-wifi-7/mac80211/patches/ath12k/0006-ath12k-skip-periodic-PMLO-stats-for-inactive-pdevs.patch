@@ -1,0 +1,58 @@
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -13385,6 +13385,19 @@
+        struct wmi_ctrl_path_stats_list *stats = kzalloc(sizeof(struct wmi_ctrl_path_stats_list), GFP_ATOMIC);
+        struct ath12k *ar = NULL;
+        u32 value;
++       int i;
++
++       /* Only the fixed prefix through estimated_air_time_per_ac is used.
++        * Firmware versions may omit the optional trailing statistics.
++        */
++       if (len < offsetofend(struct wmi_ctrl_path_pmlo_telemetry_stats,
++                             estimated_air_time_per_ac)) {
++               ath12k_warn(ab, "short PMLO stats payload: %u bytes (need %zu)\n",
++                           len, offsetofend(struct wmi_ctrl_path_pmlo_telemetry_stats,
++                                            estimated_air_time_per_ac));
++               kfree(stats);
++               return -EINVAL;
++       }
+
+        if (!stats)
+                return -ENOMEM;
+@@ -13395,17 +13408,32 @@
+                return -ENOMEM;
+        }
+
+-       memcpy(pmlo_stats, pmlo_stats_skb, sizeof(struct wmi_ctrl_path_pmlo_telemetry_stats));
++       memcpy(pmlo_stats, pmlo_stats_skb,
++              min_t(size_t, len, sizeof(*pmlo_stats)));
+        stats->stats_ptr = pmlo_stats;
+ 	stats->tagid = WMI_CTRL_PATH_PMLO_STATS;
+        list_add_tail(&stats->list, &stats_buff->list);
+
+-       ar = ath12k_mac_get_ar_by_pdev_id(ab, pmlo_stats_skb->pdev_id);
++       ar = ath12k_mac_get_ar_by_pdev_id(ab, le32_to_cpu(pmlo_stats_skb->pdev_id));
+        if (!ar) {
+-               ath12k_warn(ab, "Failed to get ar for wmi ctrl stats\n");
+ 		kfree(pmlo_stats);
+                list_del(&stats->list);
+                kfree(stats);
++               /* Firmware publishes periodically even while this pdev is
++                * stopped. No active radio means there is nothing to update.
++                * Keep unknown pdev IDs visible as genuine parse failures.
++                */
++               for (i = 0; i < ab->num_radios; i++) {
++                       if (ab->pdevs[i].ar &&
++                           ab->pdevs[i].pdev_id ==
++                           le32_to_cpu(pmlo_stats_skb->pdev_id)) {
++                               ath12k_dbg(ab, ATH12K_DBG_WMI,
++                                          "skip PMLO stats for inactive pdev %u\n",
++                                          le32_to_cpu(pmlo_stats_skb->pdev_id));
++                               return 0;
++                       }
++               }
++               ath12k_warn(ab, "Failed to get ar for wmi ctrl stats\n");
+                return -EINVAL;
+        }
+
