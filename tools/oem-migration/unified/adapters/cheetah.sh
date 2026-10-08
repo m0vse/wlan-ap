@@ -32,3 +32,14 @@ oem_adapter_inspect() {
 oem_adapter_preflight() { _cheetah_oem_unavailable; }
 oem_adapter_recovery() { _cheetah_oem_unavailable; }
 oem_adapter_migrate() { _cheetah_oem_unavailable; }
+
+_cheetah_boot_unproven() {
+    OEM_BOOT_PRIOR_SLOT=
+    OEM_BOOT_TARGET_SLOT=
+    OEM_BOOT_MODE=
+    OEM_BOOT_WATCHDOG=
+    printf '%s\n' 'Cheetah exact-prior restore/save ordering and bounded watchdog recovery are not qualified for this route; no candidate write or boot arm is allowed.' >&2
+    return 1
+}
+oem_adapter_boot_preflight() { _cheetah_boot_unproven; }
+oem_upgrade_boot_preflight() { _cheetah_boot_unproven; }
