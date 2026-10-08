@@ -1,0 +1,86 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-thor: gate OEM load on saved fallback and validate routing
+
+Reuse the common prior-only trial generator. Keep both stable and prior-only
+rollback defaults valid, and validate their actual bank routing before writes.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=18
++PKG_RELEASE:=19
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
+--- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -97,6 +97,9 @@
+ ab_upgrade_preflight() {
+ 	local state
+ 	ab_identity || return 1
++	if [ "${AB_FAMILY:-}" = thor ]; then
++		ab_thor_boot_preflight || return 1
++	fi
+ 	ab_certificate_lebs >/dev/null || return 1
+ 	# A pair-layout family (Sage) has no conversion step: writing the other
+ 	# slot replaces whatever it held, as its first upgrade always has.
+--- a/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
++++ b/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
+@@ -56,7 +56,7 @@
+ 	1) mtdparts="$(ab_bank_hex)@$AB_SLOT1_OFFSET(fs)"; part=fs; config=$AB_FIT-bank1 ;;
+ 	*) echo "cambium-ab: invalid slot $1" >&2; return 1 ;;
+ 	esac
+-	printf 'aq_load_fw; nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts "mtdparts=nand0:%s" && ubi part %s && ubi read 0x60000000 kernel && bootm 0x60000000#%s\n' \
++	printf 'aq_load_fw && nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts "mtdparts=nand0:%s" && ubi part %s && ubi read 0x60000000 kernel && bootm 0x60000000#%s\n' \
+ 		"$mtdparts" "$part" "$config"
+ }
+ 
+@@ -65,5 +65,31 @@
+ ab_thor_guarded_command() {
+ 	local boot
+ 	boot=$(ab_thor_boot_command "$1") || return 1
+-	echo "setenv changing_bootcmd; setenv bootcmd \"aq_load_fw&&bootipq\"; saveenv; $boot; bootipq"
++	# This hook is only the one-OEM/one-OpenWiFi entry path.
++	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] && ! ab_converted || return 1
++	echo "setenv bootcmd \"aq_load_fw&&bootipq\" && setenv changing_bootcmd && saveenv && $boot; aq_load_fw && bootipq"
+ }
++
++# Validate supported previous-bank defaults before any Thor upgrade write.
++ab_thor_boot_preflight() {
++	local slot expected legacy saved
++	case "$AB_ACTIVE:$AB_TARGET" in 0:1|1:0) ;; *) return 1 ;; esac
++	ab_converted || return 1
++	[ "$(ab_getenv thor_ab_confirmed)" = "$AB_ACTIVE" ] || return 1
++	case "$(ab_getenv bootcmd)" in
++	"run thor_stable$AB_ACTIVE"|"run thor_boot$AB_ACTIVE") ;;
++	*) return 1 ;;
++	esac
++	[ "$(ab_getenv changing_bootcmd)" = 1 ] || return 1
++	# A correct variable name alone does not prove which bank it loads.
++	# Admit only the exact supported current or legacy PHY-prefix command;
++	# all NAND offsets/FIT/bank routing must otherwise match byte-for-byte.
++	for slot in 0 1; do
++		expected=$(ab_thor_boot_command "$slot") || return 1
++		legacy="aq_load_fw; ${expected#aq_load_fw && }"
++		saved=$(ab_getenv "thor_boot$slot") || return 1
++		[ "$saved" = "$expected" ] || [ "$saved" = "$legacy" ] || return 1
++		[ "$(ab_getenv "thor_stable$slot")" = "$(ab_stable_command "$slot" "$((1 - slot))")" ] || return 1
++	done
++}
++
+--- a/package/cambium/cambium-thor-support/Makefile
++++ b/package/cambium/cambium-thor-support/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-thor-support
+-PKG_RELEASE:=12
++PKG_RELEASE:=13
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
