@@ -28,7 +28,7 @@ def main():
         source_base = a.baseline / 'package/cambium'
         for package in ('cambium-ab', 'cambium-thor-support'):
             shutil.copytree(source_base / package, work / 'source/package/cambium' / package, dirs_exist_ok=True)
-        patch = repo / 'patches-25.12/0183-cambium-thor-gate-oem-save-and-check-bank-routing.patch'
+        patch = repo / 'patches-25.12/0181-cambium-thor-gate-oem-save-and-check-bank-routing.patch'
         subprocess.run(['patch', '--fuzz=0', '-p1', '-d', str(work / 'source'),
                         '-i', str(patch)], check=True, capture_output=True)
         assert (tree / 'cambium-ab.sh').read_bytes() == (source_base / 'cambium-ab/files/cambium-ab.sh').read_bytes()
@@ -58,7 +58,13 @@ ab_getenv() {
  thor_ab_state) echo confirmed;;
  thor_boot0|thor_boot1)
   if [ "$BAD_BOOT_VAR" = "$1" ]; then echo 'nand load wrong-bank'; return; fi
-  ab_thor_boot_command "${1#thor_boot}";;
+  slot=${1#thor_boot}
+  [ "$BAD_LEGACY_ROUTING" != "$1" ] || slot=$((1-slot))
+  cmd=$(ab_thor_boot_command "$slot") || return 1
+  case "$LEGACY_BOOT_SLOT:$slot" in both:*|0:0|1:1)
+   case "$cmd" in 'aq_load_fw && '*) cmd="aq_load_fw; ${cmd#aq_load_fw && }";; esac
+  esac
+  printf '%s\n' "$cmd";;
  thor_stable0|thor_stable1)
   if [ "$BAD_BOOT_VAR" = "$1" ]; then echo 'run wrong-default'; return; fi
   slot=${1#thor_stable}; ab_stable_command "$slot" "$((1-slot))";;
@@ -128,7 +134,8 @@ eval "$command"
                 'CAMBIUM_AB_CERTIFICATE_LIB': str(work / 'absent-certificate-helper'),
                 'MODULE': str(module), 'TRACE': str(work / 'trace'),
                 'DURABLE': str(work / 'durable'), 'MARKER': '1', 'FAULT': '',
-                'ACTION': 'execute', 'BAD_BOOT_VAR': ''}
+                'ACTION': 'execute', 'BAD_BOOT_VAR': '', 'LEGACY_BOOT_SLOT': '',
+                'BAD_LEGACY_ROUTING': ''}
 
         def run_case(name, prior, mode='upgrade', fault='', override=None, accepted=True):
             env = {**base, 'PRIOR': str(prior), 'CONFIRMED': str(prior), 'MODE': mode,
@@ -159,10 +166,20 @@ eval "$command"
             assert 'candidate' in trace and saved is None
             trace, saved = run_case(f'OW-{prior}-to-{candidate}-save-before-load', prior)
             assert saved == f'run thor_boot{prior}'
+            assert 'bootipq' not in saved
             assert trace.index('save') < trace.index(f'run-thor_boot{candidate}')
             assert trace.count(f'run-thor_boot{candidate}') == 1
-            # The next reset selects exactly the saved previous default.
-            assert 'bootipq' not in saved
+            for legacy_slot in ('both', '0', '1'):
+                for default in (f'run thor_stable{prior}', f'run thor_boot{prior}'):
+                    trace, saved = run_case(f'OW-{prior}-legacy-{legacy_slot}-{default}-accepted', prior,
+                                           override={'LEGACY_BOOT_SLOT': legacy_slot, 'PRIOR_DEFAULT': default})
+                    assert saved == f'run thor_boot{prior}'
+                    assert trace.count(f'run-thor_boot{candidate}') == 1
+            for slot in (0, 1):
+                trace, saved = run_case(f'OW-{prior}-legacy-wrong-bank-{slot}-refused', prior,
+                                       override={'ACTION': 'preflight', 'LEGACY_BOOT_SLOT': 'both',
+                                                 'BAD_LEGACY_ROUTING': f'thor_boot{slot}'}, accepted=False)
+                assert not trace and saved is None
             for fault in ('set-bootcmd', 'set-image', 'set-thor_ab_state', 'save'):
                 trace, saved = run_case(f'OW-{prior}-{fault}-no-candidate', prior, fault=fault)
                 assert f'run-thor_boot{candidate}' not in trace and saved is None

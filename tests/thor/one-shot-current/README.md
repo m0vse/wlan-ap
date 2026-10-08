@@ -1,7 +1,7 @@
 # Thor incremental boot fix on current main
 
 Based on OpenWiFi main `3f2a130e5804a1ea6f904363ba871dce72b393d7`, including common prior-only trial patch 0179
-and Jaguar patch 0180. This candidate reserves 0183; the unified owner's 0182
+and Jaguar patch 0180. Thor uses reserved 0181; the unified owner's 0182
 readiness patch is separate. Main owns final patch numbering/integration.
 
 The obsolete Thor-specific 0179 override is excluded. There is no change to
@@ -31,9 +31,10 @@ python3 tools/oem-migration/unified/tests/family-thor-boot.py PREPARED_OPENWRT_R
 python3 tests/ab-one-shot/test-trial.py --core PREPARED_OPENWRT_ROOT/package/cambium/cambium-ab/files/cambium-ab.sh
 ```
 
-On 9 October 2026, 56 Thor cases passed: patch application without fuzz,
+On 9 October 2026, 72 Thor cases passed: patch application without fuzz,
 unchanged current common core, both slot directions, stable and prior-only
-defaults, failed fields/save/load, PHY failure, exact routing refusals and no
+defaults, both mixed and fully legacy PHY prefixes, failed fields/save/load,
+PHY failure, legacy wrong-bank routing refusals and no
 OEM fallback for an OpenWiFi predecessor. Two negative controls reproduce the
 old Thor OEM failed-save defect. The common test passed 180 rendered-script
 cases, including next-reset execution selecting only the prior slot.
@@ -65,3 +66,10 @@ manufacturing registry, issuer, signing service, CLI tree or approval service
 is needed. The unified owner retains launcher, common network/protection/CLI
 and backup ownership; this commit changes only existing Thor boot behavior,
 its generic preflight call and focused fixtures.
+
+The optional family `ab_thor_boot_command_matches SLOT COMMAND` hook shares the
+exact legacy/current comparison used by preflight. Common pre-erase patch 0182
+can call this hook through `ab_hook boot_command_matches`; it must not reject
+the qualified legacy PHY prefix solely because the new generator uses `&&`.
+Only the two complete known commands for the specified bank are accepted;
+wrong-bank FIT/offset routing remains refused. No generic helper is edited here.

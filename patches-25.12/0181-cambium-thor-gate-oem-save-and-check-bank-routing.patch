@@ -40,7 +40,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  		"$mtdparts" "$part" "$config"
  }
  
-@@ -65,5 +65,31 @@
+@@ -65,5 +65,40 @@
  ab_thor_guarded_command() {
  	local boot
  	boot=$(ab_thor_boot_command "$1") || return 1
@@ -52,7 +52,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +
 +# Validate supported previous-bank defaults before any Thor upgrade write.
 +ab_thor_boot_preflight() {
-+	local slot expected legacy saved
++	local slot saved
 +	case "$AB_ACTIVE:$AB_TARGET" in 0:1|1:0) ;; *) return 1 ;; esac
 +	ab_converted || return 1
 +	[ "$(ab_getenv thor_ab_confirmed)" = "$AB_ACTIVE" ] || return 1
@@ -65,14 +65,23 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +	# Admit only the exact supported current or legacy PHY-prefix command;
 +	# all NAND offsets/FIT/bank routing must otherwise match byte-for-byte.
 +	for slot in 0 1; do
-+		expected=$(ab_thor_boot_command "$slot") || return 1
-+		legacy="aq_load_fw; ${expected#aq_load_fw && }"
 +		saved=$(ab_getenv "thor_boot$slot") || return 1
-+		[ "$saved" = "$expected" ] || [ "$saved" = "$legacy" ] || return 1
++		ab_thor_boot_command_matches "$slot" "$saved" || return 1
 +		[ "$(ab_getenv "thor_stable$slot")" = "$(ab_stable_command "$slot" "$((1 - slot))")" ] || return 1
 +	done
 +}
 +
++
++# Optional common pre-erase compatibility hook: match the full qualified
++# routing, not a family flag or a loose PHY-prefix/substring check.
++ab_thor_boot_command_matches() {
++	local expected legacy
++	[ "$#" = 2 ] || return 1
++	case "$1" in 0|1) ;; *) return 1 ;; esac
++	expected=$(ab_thor_boot_command "$1") || return 1
++	legacy="aq_load_fw; ${expected#aq_load_fw && }"
++	[ "$2" = "$expected" ] || [ "$2" = "$legacy" ]
++}
 --- a/package/cambium/cambium-thor-support/Makefile
 +++ b/package/cambium/cambium-thor-support/Makefile
 @@ -1,7 +1,7 @@
