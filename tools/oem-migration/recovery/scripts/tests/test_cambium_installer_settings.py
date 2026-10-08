@@ -54,6 +54,42 @@ class SettingsTests(unittest.TestCase):
     def put(self, name, content):
         p=self.input/name; p.write_text(content); p.chmod(0o600)
 
+    def prepare(self, credential='X'*64):
+        dest=self.root/'prepared'
+        env={**os.environ, 'PATH': str(self.tools)+':'+os.environ['PATH'],
+             'OW_SETTINGS_OWNER': str(os.getuid())}
+        result=subprocess.run(['sh','-c',
+            '. "$1"; ow_settings_prepare "$2/binding.tsv" "$2/est.json" "$2/gateway.json" "$3" "$4"',
+            'fixture',str(LIB),str(self.input),credential,str(dest)],
+            capture_output=True,text=True,env=env)
+        self.assertNotIn('X'*64,result.stdout+result.stderr)
+        return result,dest
+
+    def test_prepare_key_for_native_worker_without_device_identity(self):
+        result,dest=self.prepare()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual((dest/'est-bootstrap.conf').read_bytes(),
+                         (self.input/'est-bootstrap.conf').read_bytes())
+        self.assertEqual(dest.stat().st_mode & 0o777,0o700)
+        self.assertEqual(set(p.name for p in dest.iterdir()),set(p.name for p in self.input.iterdir()))
+        self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in dest.iterdir()))
+        result2,_=self.prepare()
+        self.assertNotEqual(result2.returncode,0)
+
+    def test_invalid_key_refused_before_preparation(self):
+        for credential in ('short','X'*63+';','X'*64+'\n'):
+            result,dest=self.prepare(credential)
+            self.assertNotEqual(result.returncode,0)
+            self.assertFalse(dest.exists())
+            self.assertFalse(dest.with_name('prepared.pending').exists())
+
+    def test_prepare_rejects_symlinked_input_before_writes(self):
+        target=self.root/'public-binding';target.write_bytes((self.input/'binding.tsv').read_bytes())
+        (self.input/'binding.tsv').unlink();(self.input/'binding.tsv').symlink_to(target)
+        result,dest=self.prepare()
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse(dest.exists())
+
     def manifest(self):
         self.put('files.sha256', ''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n'
                  for p in sorted(self.input.iterdir()) if p.name!='files.sha256'))
@@ -141,6 +177,30 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn('staged.',result.stdout)
         self.assertFalse((self.mount/'upper/root/.cambium-installer-settings').exists())
         self.assertTrue((self.mount/'upper/root/.cambium-installer-settings.pending').exists())
+
+    def miami(self):
+        self.values.update(family='miami',model='X7-35X')
+        self.put('binding.tsv',''.join(f'{k}\t{v}\n' for k,v in self.values.items()))
+        self.manifest()
+        volume=self.sys/'ubi0_2';volume.mkdir()
+        (volume/'name').write_text('rootfs_data')
+        self.mounts.write_text(f'/dev/ubi0_2 {self.mount} ubifs rw 0 0\n')
+        return {'OW_EXPECT_TARGET_VOLUME':'ubi0_2'}
+
+    def test_miami_exact_model_and_overlay_id2(self):
+        args=self.miami();result=self.run_stage(**args)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue((self.mount/'upper/root/.cambium-installer-settings/binding.tsv').is_file())
+
+    def test_miami_wrong_model_refused(self):
+        args=self.miami();self.values['model']='X7-unknown'
+        self.put('binding.tsv',''.join(f'{k}\t{v}\n' for k,v in self.values.items()));self.manifest()
+        self.refused_before_staging(**args)
+
+    def test_miami_wrong_overlay_id_refused(self):
+        self.miami();(self.sys/'ubi0_5/name').write_text('rootfs_data')
+        self.mounts.write_text(f'/dev/ubi0_5 {self.mount} ubifs rw 0 0\n')
+        self.refused_before_staging()
 
 
 if __name__=='__main__': unittest.main()

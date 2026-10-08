@@ -35,9 +35,43 @@ ab_installer_cleanup_confirmed() {
  local job=$1 slot=$2 seed=${AB_INSTALLER_INCOMING_SEED:-/root/.cambium-installer-settings}
  local accept=${AB_INSTALLER_ACCEPT:-/usr/libexec/ucentral-installer-identity}
  [ -d "$seed" ] || return 0
- [ "$slot" = "$AB_ACTIVE" ] &&
- [ "$(ab_getenv "${AB_ENV}_ab_confirmed")" = "$slot" ] &&
- [ "$(ab_getenv "${AB_ENV}_ab_state")" = confirmed ] &&
- [ "$(ab_getenv bootcmd)" = "run ${AB_ENV}_stable$slot" ] || return 1
+ [ "$slot" = "$AB_ACTIVE" ] && ab_installer_confirmed_context || return 1
  [ -x "$accept" ] && "$accept" cleanup-confirmed "$seed"
 }
+
+# A shared proof for the native worker and shell cleanup caller.
+ab_installer_confirmed_context() {
+ if [ "$(ab_getenv "${AB_ENV}_ab_confirmed")" = "$AB_ACTIVE" ] &&
+    [ "$(ab_getenv "${AB_ENV}_ab_state")" = confirmed ] &&
+    [ "$(ab_getenv bootcmd)" = "run ${AB_ENV}_stable$AB_ACTIVE" ]; then
+  return 0
+ fi
+ [ "$AB_ENV:$AB_FAMILY:$AB_MODEL" = miami:miami:X7-35X ] || return 1
+ command -v ab_converted >/dev/null 2>&1 || return 1
+ [ -z "$(ab_getenv "${AB_ENV}_ab_version")" ] && ! ab_converted || return 1
+ ab_hook installer_confirmed_context && "ab_${AB_FAMILY}_installer_confirmed_context"
+}
+
+# Existing OEM-preserved guard reaches here only after accepted native health
+# and exact guarded boot re-arm. This never writes converted AB state.
+ab_installer_legacy_complete() (
+ local slot=$1 target job image batch field
+ case "$slot" in 0|1) ;; *) return 1 ;; esac
+ [ "$slot" = "$AB_ACTIVE" ] || return 1
+ target=$(ab_getenv "${AB_ENV}_installer_target") || target=
+ job=$(ab_getenv "${AB_ENV}_installer_job") || job=
+ image=$(ab_getenv "${AB_ENV}_installer_image") || image=
+ if [ -n "$target$job$image" ]; then
+  case "$target" in 0|1) [ "$target" = "$AB_ACTIVE" ] || return 0 ;; *) return 1 ;; esac
+  ab_installer_health && ab_installer_confirmed_context || return 1
+  umask 077
+  batch=$(mktemp /tmp/cambium-installer-confirm.XXXXXX) || return 1
+  trap 'rm -f "$batch"' EXIT
+  ab_installer_clear_pending "$batch" && ab_setenv_batch "$batch" || return 1
+  sync || return 1
+  for field in target job image; do
+   [ -z "$(ab_getenv "${AB_ENV}_installer_$field")" ] || return 1
+  done
+ fi
+ ab_installer_cleanup_confirmed "$job" "$slot"
+)

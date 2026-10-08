@@ -1,5 +1,5 @@
 #!/bin/sh
-# Source-side FORMAT2 authorization staging only. No key/CSR/EST operation.
+# Source-side FORMAT2 authorization preparation/staging. No device key/CSR/EST.
 # The authenticated family wrapper supplies trusted OW_EXPECT_* context after
 # exact source/model qualification and inactive image readback. No production
 # wrapper loads this library until its full source/storage contract is qualified.
@@ -56,8 +56,9 @@ ow_settings_binding() {
     done < "$1"
     case "$OW_SERIAL" in ''|*[!0-9a-f]*) return 1 ;; esac
     [ "${#OW_SERIAL}" = 12 ] || return 1
-    case "$OW_FAMILY" in sage|jaguar|cheetah|thor) ;; *) return 1 ;; esac
+    case "$OW_FAMILY" in sage|jaguar|cheetah|thor|miami) ;; *) return 1 ;; esac
     case "$OW_MODEL" in ''|*[!A-Za-z0-9-]*) return 1 ;; esac
+    [ "$OW_FAMILY" != miami ] || [ "$OW_MODEL" = X7-35X ] || return 1
     case "$OW_OPERATION" in production-oem-migration|production-stock-openwrt-migration) ;; *) return 1 ;; esac
     case "$OW_RELEASE" in ''|*[!A-Za-z0-9._~-]*) return 1 ;; esac
     [ "${#OW_RELEASE}" -le 64 ] || return 1
@@ -116,6 +117,45 @@ ow_settings_context() {
     [ "$OW_JOB" = "${OW_EXPECT_JOB:-}" ] &&
     [ "$OW_IMAGE" = "$(ow_settings_hash "$1")" ]
 }
+# Prepare the shared native seed from a wrapper's checked public inputs and
+# operator-supplied batch key. This does not grant source/image admission;
+# stage_overlay still requires the independently established exact context.
+# Key is a function argument for the authorized CLI use, never printed/eval'd.
+ow_settings_prepare() (
+    set +x
+    local binding=$1 est=$2 gateway=$3 credential=$4 dest=$5 pending path name
+    umask 077
+    case "$credential" in ''|*[!A-Za-z0-9_-]*) return 1 ;; esac
+    [ "${#credential}" = 64 ] || return 1
+    ow_settings_binding "$binding" && ow_settings_private "$est" &&
+        ow_settings_private "$gateway" || return 1
+    case "$dest" in /*) ;; *) return 1 ;; esac
+    [ "$(readlink -f "${dest%/*}")" = "${dest%/*}" ] || return 1
+    [ -d "${dest%/*}" ] && [ ! -L "${dest%/*}" ] || return 1
+    pending=$dest.pending
+    [ ! -e "$dest" ] && [ ! -L "$dest" ] &&
+        [ ! -e "$pending" ] && [ ! -L "$pending" ] || return 1
+    mkdir -m 700 "$pending" || return 1
+    cp "$binding" "$pending/binding.tsv" && cp "$est" "$pending/est.json" &&
+        cp "$gateway" "$pending/gateway.json" || return 1
+    printf 'user = "%s:%s"\n' "$OW_SERIAL" "$credential" > "$pending/est-bootstrap.conf" || return 1
+    credential=
+    chmod 600 "$pending"/* || return 1
+    # Optional trust inputs remain explicit files, never fetched over HTTP.
+    shift 5
+    for path in "$@"; do
+        name=${path##*/}
+        case "$name" in insta.pem|server-ca.pem) ;; *) return 1 ;; esac
+        [ ! -e "$pending/$name" ] && ow_settings_private "$path" || return 1
+        cp "$path" "$pending/$name" && chmod 600 "$pending/$name" || return 1
+    done
+    (cd "$pending" && sha256sum binding.tsv est.json gateway.json est-bootstrap.conf \
+        $(for name in insta.pem server-ca.pem; do [ ! -f "$name" ] || printf '%s ' "$name"; done) \
+        > files.sha256) || return 1
+    chmod 600 "$pending/files.sha256" || return 1
+    ow_settings_tree "$pending" && sync || return 1
+    mv "$pending" "$dest" && sync && ow_settings_tree "$dest"
+)
 ow_settings_stage_overlay() {
     local input=$1 image=$2 mnt=$3 sys=${OW_SETTINGS_SYS:-/sys/class/ubi} volume dest pending path
     # All admission/input/mount checks precede even directory creation.
@@ -124,9 +164,10 @@ ow_settings_stage_overlay() {
     case "$volume" in ubi[0-9]_[0-9]*) ;; *) return 1 ;; esac
     [ "$(cat "$sys/${volume%_*}/mtd_num")" = "${OW_EXPECT_TARGET_MTD:-}" ] || return 1
     case "$OW_FAMILY:$(cat "$sys/$volume/name")" in
-        sage:rootfs_data"$OW_TARGET"|jaguar:rootfs_data|cheetah:rootfs_data|thor:rootfs_data) ;;
+        sage:rootfs_data"$OW_TARGET"|jaguar:rootfs_data|cheetah:rootfs_data|thor:rootfs_data|miami:rootfs_data) ;;
         *) return 1 ;;
     esac
+    [ "$OW_FAMILY" != miami ] || [ "${volume##*_}" = 2 ] || return 1
     [ -d "$mnt" ] && [ ! -L "$mnt" ] && [ "$(readlink -f "$mnt")" = "$mnt" ] || return 1
     awk -v mnt="$mnt" -v dev="${OW_SETTINGS_DEV:-/dev}/$volume" '
         $2==mnt {n++;if($1==dev && $3=="ubifs" && $4~/(^|,)rw(,|$)/)good=1}
