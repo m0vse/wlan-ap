@@ -17,7 +17,7 @@ function iface_remove(...args){} function iface_macaddr_init(...args){} function
 function iface_pending_init(...args){}
 '''+phy+'\n'+body+'\nlet p=phy_open("phy0",'+json.dumps(radio)+');iface_restart(p,{bss:[{ifname:"ap0"}]},{});print(sprintf("%J",calls));\n'
    script=root/'test.uc';script.write_text(text)
-   result=subprocess.run([sys.argv[1],str(script)],env=os.environ,capture_output=True,text=True);assert result.returncode==0,result.stderr
+   result=subprocess.run([sys.argv[1],str(script)],env=os.environ,capture_output=True,text=True);assert result.returncode==0,(result.returncode,result.stdout,result.stderr)
    data=json.loads(result.stdout);passed= data[0]['radio']==(radio if radio is not None and radio>=0 else -1)
    assert passed if fixed or radio in [0,1] else not passed,data
    cases.append({'variant':'fixed-source' if fixed else 'regression-source','requested_radio':radio,'removal_radio':data[0]['radio'],'API_sentinel_preserved':passed})
