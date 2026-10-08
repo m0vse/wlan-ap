@@ -1,0 +1,16 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-jaguar: gate the OEM one-shot loader on saved fallback
+
+The initial OEM/OpenWiFi handoff must not reach NAND or UBI after failed
+environment restoration or saveenv. Keep the existing reset fallback and
+unchanged model-specific load/FIT commands.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
++++ b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
+@@ -65,3 +65,3 @@
+ 	esac
+-	echo "setenv bootcmd bootipq; setenv changing_bootcmd; saveenv; nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset"
++	echo "setenv bootcmd bootipq && setenv changing_bootcmd && saveenv && nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset"
+ }
