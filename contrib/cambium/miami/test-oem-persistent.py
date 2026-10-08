@@ -52,7 +52,7 @@ if cmd=='wget':raise AssertionError('preverified files should not download')
 u=r/'sys/class/ubi/ubi9';free=u/'avail_eraseblocks'
 if cmd=='ubirmvol':
  assert a[0]==str(r/'dev/ubi9')
- assert a[-1] in ['kernel','ubi_rootfs','rootfs','rootfs_data','miami_openwifi_trial']
+ assert a[-1] in ['kernel','ubi_rootfs','rootfs','rootfs_data','miami_openwifi_trial','certificates']
  for d in (r/'sys/class/ubi').glob('ubi9_*'):
   if (d/'name').read_text().strip()==a[-1]:
    free.write_text(str(int(free.read_text())+int((d/'reserved_ebs').read_text())));(r/'dev'/d.name).unlink();shutil.rmtree(d);break
@@ -73,7 +73,7 @@ else:raise AssertionError(cmd)
 '''
  for cmd in ['strace','fw_printenv','fw_setenv','wget','ubirmvol','ubimkvol','ubiupdatevol','ubiattach','ubidetach']:
   p=b/cmd;p.write_text(mock);p.chmod(0o755)
- env=dict(os.environ,PATH=str(b)+':'+os.environ['PATH'],CAMBIUM_OEM_INSTALL_ROOT=str(r),ENV_FILE=str(w/'env'),CALLS=str(w/'calls'))
+ env=dict(os.environ,CAMBIUM_INSTALL_SERVER='https://operator.invalid/bundle',PATH=str(b)+':'+os.environ['PATH'],CAMBIUM_OEM_INSTALL_ROOT=str(r),ENV_FILE=str(w/'env'),CALLS=str(w/'calls'))
  def initial(slot=0):
   (w/'env').write_text(json.dumps({'bootcmd':'bootipq','image':str(1-slot),'mtdids':'OEMids','mtdparts':'OEMparts','bootargs':'OEMargs'}));(w/'calls').write_text('')
   (r/'proc/cmdline').write_text('ubi.mtd='+('rootfs_1' if slot==0 else 'rootfs'))
@@ -128,6 +128,32 @@ else:raise AssertionError(cmd)
  calls=run(['update','--yes','--backed-up']);assert '-N rootfs_data' not in calls and '-N certificates' not in calls
  assert (r/'dev/ubi9_2').read_bytes()==data and (r/'dev/ubi9_4').read_bytes()==cert
  (r/'dev/ubi9_0').write_bytes(b'unknown');run(['update','--yes','--backed-up'],False);(r/'dev/ubi9_0').write_bytes(kernel)
+ # Explicit existing-trial fresh reset, both target slots; no active OEM/vault writes.
+ fresh=['install','--yes','--replace-inactive-bank','--backed-up','--fresh-enrolment']
+ for slot in (0,1):
+  initial(slot);run(args)
+  preserved={n:(r/f'dev/{n}').read_bytes() for n in ('ubi9_3','mtd21ro',f'mtd{3 if slot==0 else 2}ro')}
+  (r/'dev/ubi9_2').write_bytes(b'old settings and seed');(r/'dev/ubi9_4').write_bytes(b'old key CSR leaf')
+  state=json.loads((w/'env').read_text());state.update(miami_installer_target=str(slot),miami_installer_job='a'*64,miami_installer_image='b'*64);(w/'env').write_text(json.dumps(state))
+  # Complete same-target old enrollment state is inspectable without mutation.
+  before_env=(w/'env').read_bytes();before_devices={p.name:p.read_bytes() for p in (r/'dev').iterdir() if p.is_file()}
+  assert run(['check'],False)==''
+  assert run(['check','--fresh-enrolment'])==''
+  assert run(['check','--fresh-enrolment','--yes'],False)==''
+  assert (w/'env').read_bytes()==before_env and all((r/'dev'/n).read_bytes()==v for n,v in before_devices.items())
+  state['miami_installer_target']=str(1-slot);(w/'env').write_text(json.dumps(state));assert run(['check','--fresh-enrolment'],False)==''
+  state['miami_installer_target']=str(slot);state['miami_installer_job']='bad';(w/'env').write_text(json.dumps(state));assert run(['check','--fresh-enrolment'],False)==''
+  state['miami_installer_job']='';(w/'env').write_text(json.dumps(state));assert run(['check','--fresh-enrolment'],False)==''
+  state['miami_installer_job']='a'*64;(w/'env').write_text(json.dumps(state))
+  assert '-N certificates' not in run(fresh,False,{'CAMBIUM_INSTALL_SERVER':''})
+  (r/'dev/ubi9_0').write_bytes(b'unknown pair');assert '-N certificates' not in run(fresh,False);(r/'dev/ubi9_0').write_bytes(kernel)
+  state['miami_installer_target']=str(1-slot);(w/'env').write_text(json.dumps(state));run(fresh,False);state['miami_installer_target']=str(slot);(w/'env').write_text(json.dumps(state))
+  calls=run(fresh)
+  assert '-N certificates' in calls and '-N rootfs_data' in calls
+  assert (r/'dev/ubi9_2').read_bytes()==b'blank persistent volume' and (r/'dev/ubi9_4').read_bytes()==b'blank persistent volume'
+  assert all((r/f'dev/{n}').read_bytes()==v for n,v in preserved.items())
+  state=json.loads((w/'env').read_text());assert state['bootcmd']=='bootipq' and not any(k.startswith('miami_installer_') for k in state) and 'miami_storage_pending' not in state
+  run(fresh,False,{'FAIL_WRITE':'ubi9_1'});assert json.loads((w/'env').read_text())['miami_storage_pending'].startswith('install:');run(['arm','--yes'],False)
  # A prior image is admitted only as the exact independently pinned pair.
  for slot in (0,1):
   initial(slot);run(args)

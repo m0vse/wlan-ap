@@ -6,6 +6,10 @@ set +x
 umask 077
 mode=${1:-}; shift || true
 ENROLMENT_KEY=
+FRESH=0
+FRESH_CHECK=0
+[ "$mode:$*" != "check:--fresh-enrolment" ] || FRESH_CHECK=1
+[ "$mode:$*" != "install:--yes --replace-inactive-bank --backed-up --fresh-enrolment" ] || FRESH=1
 if [ "$mode" = arm ] && [ "$#" = 3 ] && [ "$1" = --yes ] && [ "$2" = --enrolment-key ]; then
  ENROLMENT_KEY=$3
  case "$ENROLMENT_KEY" in ''|*[!A-Za-z0-9_-]*) echo 'Invalid enrolment key' >&2; exit 1 ;; esac
@@ -79,9 +83,22 @@ done
 [ "$(get bootcmd)" = bootipq ] || fail 'bootcmd is not idle bootipq'
 ! get changing_bootcmd >/dev/null || [ -z "$(get changing_bootcmd)" ] || fail 'boot change already pending'
 [ "$(get miami_ab_version || true)" != 1 ] || fail 'already converted; OEM-preserving route unavailable'
-for key in miami_installer_target miami_installer_job miami_installer_image; do
- [ -z "$(get "$key" || true)" ] || { [ "$mode" = arm ] && [ -n "$ENROLMENT_KEY" ]; } || fail 'native enrollment transaction pending; storage pilot cannot overwrite it'
-done
+installer_pending_check() {
+ old_target=$(get miami_installer_target || true)
+ old_job=$(get miami_installer_job || true)
+ old_image=$(get miami_installer_image || true)
+ [ -n "$old_target$old_job$old_image" ] || return 0
+ if [ "$FRESH" = 1 ] || [ "$FRESH_CHECK" = 1 ]; then
+  [ "$old_target" = "$SLOT" ] || fail 'old transaction belongs to a different target'
+  for pin in "$old_job" "$old_image"; do
+   [ "${#pin}" = 64 ] || fail 'incomplete old enrollment transaction'
+   case "$pin" in *[!0-9a-f]*) fail 'malformed old enrollment transaction';; esac
+  done
+ else
+  [ "$mode" = arm ] && [ -n "$ENROLMENT_KEY" ] || fail 'native enrollment transaction pending'
+ fi
+}
+installer_pending_check
 [ -z "$(get miami_storage_pending || true)" ] || fail 'interrupted storage transaction; retain OEM and inspect before recovery'
 config=
 for c in "$R/tmp/fw_env.config" "$R/etc/fw_env.config"; do [ ! -f "$c" ] || { config=$c; break; }; done
@@ -120,6 +137,7 @@ if [ "$mode" != check ]; then
  lock="$R/tmp/cambium-oem-install.lock"
  mkdir "$lock" || fail 'another installer is active; inspect stale lock before retry'
  chmod 0700 "$lock"
+ installer_pending_check
  # Re-read mutable state after serialization, before any target access/write.
  [ "$(get image)" = "$img" ] && [ "$(get bootcmd)" = bootipq ] &&
  [ -z "$(get changing_bootcmd || true)" ] && [ -z "$(get miami_storage_pending || true)" ] || {
@@ -297,7 +315,7 @@ preserved() {
 }
 case "$mode" in
 check)
- [ "$#" = 0 ] || fail 'check takes no arguments'
+ [ "$#" = 0 ] || { [ "$#" = 1 ] && [ "$1" = --fresh-enrolment ]; } || fail 'check takes only optional --fresh-enrolment'
  find_ubi
  [ -n "$UBI" ] || { echo 'Target is not attached; check did not attach or write anything'; exit 0; }
  inventory
@@ -309,9 +327,12 @@ check)
  ;;
 install|update)
  if [ "$mode" = install ]; then
-  case "$*" in '--yes --replace-inactive-bank --backed-up'|'--yes --replace-openwrt --backed-up') ;; *) fail 'install requires --yes --replace-inactive-bank --backed-up';; esac;
+  case "$*" in '--yes --replace-inactive-bank --backed-up'|'--yes --replace-inactive-bank --backed-up --fresh-enrolment'|'--yes --replace-openwrt --backed-up') ;; *) fail 'install requires --yes --replace-inactive-bank --backed-up';; esac;
  else [ "$*" = '--yes --backed-up' ] || fail 'update requires --yes --backed-up'; fi
  for tool in wget ubiupdatevol ubimkvol ubirmvol tar fw_setenv; do command -v "$tool" >/dev/null || fail "missing $tool"; done
+ [ -n "${CAMBIUM_INSTALL_SERVER:-}" ] || fail 'operator must provide CAMBIUM_INSTALL_SERVER'
+ case "$CAMBIUM_INSTALL_SERVER" in http://*|https://*) ;; *) fail 'operator URL must use http or https';; esac
+ case "$CAMBIUM_INSTALL_SERVER" in *[[:space:]]*|*\?*|*\#*|*@*) fail 'operator URL must not contain credentials, query or fragment';; esac
  select_payload; fetch "$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE"; fetch "$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE"
  attach; inventory
  if [ "$BANK_KIND" = oem ]; then
@@ -323,18 +344,28 @@ install|update)
  OEM_SHA=$(sha256sum "$R/dev/mtd${O}ro" | cut -d ' ' -f1)
  cert=$(volume certificates || true)
  if [ "$mode" = install ]; then
-  [ -z "$cert" ] || fail 'certificate store already exists; use update, never clean it'
+  if [ "$FRESH" = 1 ]; then
+   [ "$BANK_KIND" = openwrt ] && [ -n "$cert" ] &&
+   [ "$(cat "$R/sys/class/ubi/$cert/reserved_ebs")" = 64 ] || fail 'fresh enrollment needs exact existing OpenWiFi store'
+   if payload_matches kernel "$KERNEL_SHA" "$KERNEL_SIZE" && payload_matches rootfs "$ROOTFS_SHA" "$ROOTFS_SIZE"; then :
+   else prior_payload_pair || fail 'fresh enrollment prior pair not independently pinned'; fi
+  else
+   [ -z "$cert" ] || fail 'certificate store already exists; explicit fresh enrollment required'
+  fi
   if trial=$(volume miami_openwifi_trial); then
    [ "$(head -c 26302672 "$R/dev/$trial" | sha256sum | cut -d ' ' -f1)" = 389d3dc6a9ec11f363bee2619569874488752b557a27475369f6759da569a837 ] || fail 'RAM trial not the known current image'
   fi
   free=$(cat "$R/sys/class/ubi/$UBI/avail_eraseblocks")
   for name in kernel ubi_rootfs rootfs rootfs_data miami_openwifi_trial; do v=$(volume "$name" || true); [ -z "$v" ] || free=$((free+$(cat "$R/sys/class/ubi/$v/reserved_ebs"))); done
+  if [ "$FRESH" = 1 ]; then free=$((free+64)); fi
   VAULT_NEW_LEBS=0
   [ "$BANK_KIND" != oem ] || VAULT_NEW_LEBS=72
   DATALEBS=$((free-POOL-64-VAULT_NEW_LEBS))
   [ "$DATALEBS" -ge 67 ] || fail 'insufficient overlay/certificate/upgrade space; no volumes changed'
   busy
   put miami_storage_pending "install:$SLOT:$KERNEL_SHA:$ROOTFS_SHA"
+  sync
+  if [ "$FRESH" = 1 ]; then ubirmvol "$R/dev/$UBI" -N certificates; fi
   # Explicit inactive-volume removals only; running OEM and existing vault stay intact.
   for name in kernel ubi_rootfs rootfs rootfs_data miami_openwifi_trial; do v=$(volume "$name" || true); [ -z "$v" ] || ubirmvol "$R/dev/$UBI" -N "$name"; done
   ubimkvol "$R/dev/$UBI" -n 2 -N rootfs_data -s "$((DATALEBS*126976))"
@@ -370,6 +401,12 @@ install|update)
  if [ "$mode" = update ]; then
   [ "$(sha256sum "$R/dev/$data" | cut -d ' ' -f1)" = "$DATA_SHA" ] && [ "$(sha256sum "$R/dev/$cert" | cut -d ' ' -f1)" = "$CERT_SHA" ] || fail 'persistent settings/store changed'
  fi
+ if [ "$FRESH" = 1 ]; then
+  for key in miami_installer_target miami_installer_job miami_installer_image; do
+   [ -z "$(get "$key" || true)" ] || remove "$key"
+  done
+ fi
+ sync
  remove miami_storage_pending
  echo 'Persistent images installed and read back; OEM/vault preserved. No boot armed or reboot performed.'
  ;;
