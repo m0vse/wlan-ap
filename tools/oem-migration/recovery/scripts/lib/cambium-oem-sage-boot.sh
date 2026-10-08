@@ -30,7 +30,10 @@ cos_arm() (
     local image=$1 work target trial key value
     cos_boot_preflight && ow_settings_context "$image" || exit 1
     target=$(cos_native_target_command) || exit 1
-    trial="setenv bootcmd run sage_stable$OW_EXPECT_SOURCE; setenv image $OW_EXPECT_SOURCE; setenv sage_ab_state trial-started; saveenv; run sage_boot$OW_EXPECT_TARGET; run sage_boot$OW_EXPECT_SOURCE"
+    # Restore only the previous working boot, never a stable command which
+    # could fall through to the still-unconfirmed candidate on the next reset.
+    # Failure of any environment command or save must skip candidate loading.
+    trial="setenv bootcmd run sage_boot$OW_EXPECT_SOURCE && setenv image $OW_EXPECT_SOURCE && setenv sage_ab_state trial-started && saveenv && run sage_boot$OW_EXPECT_TARGET; run sage_boot$OW_EXPECT_SOURCE"
     umask 077
     work=$(mktemp -d /tmp/cambium-oem-arm.XXXXXX) || exit 1
     trap 'rm -f "$work/environment"; rmdir "$work"' EXIT
@@ -39,7 +42,7 @@ cos_arm() (
     {
         printf 'sage_boot%s %s\n' "$OW_EXPECT_SOURCE" "$COS_OEM_BOOT_COMMAND"
         printf 'sage_boot%s %s\n' "$OW_EXPECT_TARGET" "$target"
-        printf 'sage_stable%s run sage_boot%s; run sage_boot%s\n' "$OW_EXPECT_SOURCE" "$OW_EXPECT_SOURCE" "$OW_EXPECT_TARGET"
+        printf 'sage_stable%s run sage_boot%s\n' "$OW_EXPECT_SOURCE" "$OW_EXPECT_SOURCE"
         printf 'sage_stable%s run sage_boot%s; run sage_boot%s\n' "$OW_EXPECT_TARGET" "$OW_EXPECT_TARGET" "$OW_EXPECT_SOURCE"
         printf 'sage_ab_version 1\n'
         printf 'sage_ab_confirmed %s\nsage_ab_target %s\nsage_ab_state armed\n' "$OW_EXPECT_SOURCE" "$OW_EXPECT_TARGET"

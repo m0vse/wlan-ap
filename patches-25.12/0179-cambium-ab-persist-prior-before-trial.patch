@@ -1,0 +1,19 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: persist only the prior working boot before a trial
+
+Do not load a candidate after failed environment commands or saveenv. Persist
+the previous boot function alone: the stable function's secondary fallback
+could otherwise retry an unconfirmed candidate after a reset. Stable commands
+for explicitly confirmed firmware remain unchanged.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-ab/files/cambium-ab.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab.sh
+@@ -250,5 +250,5 @@
+ # Only named variables are used, so no nested quoting reaches U-Boot.
+ ab_trial_command() {
+ 	ab_stable_command "$1" "$2" >/dev/null || return 1
+-	echo "setenv bootcmd run ${AB_ENV}_stable$1; setenv image $1; setenv ${AB_ENV}_ab_state trial-started; saveenv; run ${AB_ENV}_boot$2; run ${AB_ENV}_boot$1"
++	echo "setenv bootcmd run ${AB_ENV}_boot$1 && setenv image $1 && setenv ${AB_ENV}_ab_state trial-started && saveenv && run ${AB_ENV}_boot$2; run ${AB_ENV}_boot$1"
+ }

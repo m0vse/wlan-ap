@@ -29,14 +29,14 @@ csr_arm_oem() (
     CSR_ALLOW_CHANGED_ENV=0
     csr_preflight && csr_boot_preflight && csr_configuration_empty_check || exit 1
     target=$((1 - CSR_ACTIVE))
-    trial="setenv bootcmd run sage_stable$CSR_ACTIVE; setenv image $CSR_ACTIVE; setenv sage_ab_state trial-started; saveenv; run sage_boot$target; run sage_boot$CSR_ACTIVE"
+    trial="setenv bootcmd run sage_boot$CSR_ACTIVE && setenv image $CSR_ACTIVE && setenv sage_ab_state trial-started && saveenv && run sage_boot$target; run sage_boot$CSR_ACTIVE"
     umask 077
     work=$(mktemp -d /tmp/cambium-oem-recovery-arm.XXXXXX) || exit 1
     trap 'rm -f "$work/metadata"; rmdir "$work"' EXIT
     {
         # Keep the exact qualified native source boot command unchanged.
         printf 'sage_boot%s setenv image %s; bootipq\n' "$target" "$target"
-        printf 'sage_stable%s run sage_boot%s; run sage_boot%s\n' "$CSR_ACTIVE" "$CSR_ACTIVE" "$target"
+        printf 'sage_stable%s run sage_boot%s\n' "$CSR_ACTIVE" "$CSR_ACTIVE"
         printf 'sage_stable%s run sage_boot%s; run sage_boot%s\n' "$target" "$target" "$CSR_ACTIVE"
         printf 'sage_ab_version 1\nsage_ab_confirmed %s\nsage_ab_target %s\nsage_ab_state armed\nsage_oem_fallback %s\n' "$CSR_ACTIVE" "$target" "$target"
     } > "$work/metadata" || exit 1

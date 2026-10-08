@@ -60,7 +60,9 @@ cos_arm image
                     self.assertIn(f'root=/dev/ubiblock0_{2*target+1}', state[f'sage_boot{target}'])
                     self.assertIn(f'bootm 0x84000000#{fit}', state[f'sage_boot{target}'])
                     self.assertEqual(state[f'sage_stable{target}'], f'run sage_boot{target}; run sage_boot{source}')
-                    self.assertIn(f'setenv bootcmd run sage_stable{source}', state['bootcmd'])
+                    self.assertEqual(state[f'sage_stable{source}'], f'run sage_boot{source}')
+                    self.assertIn(f'setenv bootcmd run sage_boot{source}', state['bootcmd'])
+                    self.assertIn(f'&& saveenv && run sage_boot{target}', state['bootcmd'])
                     self.assertLess(state['bootcmd'].index('saveenv'), state['bootcmd'].index(f'run sage_boot{target}'))
                     self.assertEqual(writes, ['batch', 'bootcmd'])
 
