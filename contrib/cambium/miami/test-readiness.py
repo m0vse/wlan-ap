@@ -70,6 +70,10 @@ printf '%s:%s\n' "$AB_UPGRADE_READY" "$AB_UPGRADE_REASON"
         assert not list(work.iterdir())
     for slot in ('0','1'):
         run('onboarded:ab-profile-not-installed',FIXTURE_SLOT=slot)
+        # Actual est_client publication: the operational leaf/CA are 0440.
+        for name in ('operational.pem','operational.ca'):(store/name).chmod(0o440)
+        run('onboarded:ab-profile-not-installed',FIXTURE_SLOT=slot)
+        for name in ('operational.pem','operational.ca'):(store/name).chmod(0o600)
         run('unsupported:native-onboarding-pending',FIXTURE_SLOT=slot,FIXTURE_PENDING=slot)
         run('onboarded:ab-qualification-pending',FIXTURE_SLOT=slot,FIXTURE_HOOK='1')
         run('onboarded:ab-confirmation-pending',FIXTURE_SLOT=slot,FIXTURE_HOOK='1',FIXTURE_QUALIFIED='1')
@@ -87,4 +91,6 @@ printf '%s:%s\n' "$AB_UPGRADE_READY" "$AB_UPGRADE_REASON"
     old=(store/'key.pem').read_bytes();crypto('genpkey','-algorithm','EC','-pkeyopt','ec_paramgen_curve:prime256v1','-out',store/'key.pem')
     run('unsupported:native-identity-invalid');(store/'key.pem').write_bytes(old)
     journal.chmod(0o755);run('unsupported:native-identity-invalid');journal.chmod(0o700)
-    print('PASS: 19 actual read-only callback/crypto cases; private identity unchanged; policy/device boundary mocks do not qualify hardware')
+    for mode in (0o640,0o644,0o440):
+        (store/'key.pem').chmod(mode);run('unsupported:native-identity-invalid');(store/'key.pem').chmod(0o600)
+    print('PASS: 24 actual read-only callback/crypto cases; native public 0440 accepted, private key stays 0600; policy/device boundary mocks do not qualify hardware')

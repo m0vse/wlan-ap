@@ -101,7 +101,7 @@ ab_miami_oem_return_ready() {
 # Check the existing native identity without importing/rebinding the completed
 # journal or invoking enrollment/renewal. Only temporary public-key data is made.
 ab_miami_readiness_identity() (
- local root=${AB_MIAMI_READINESS_ROOT:-} store work serial field file size fingerprint
+ local root=${AB_MIAMI_READINESS_ROOT:-} store work serial field file size fingerprint public_readonly
  store=$root/certificates
  [ -d "$store" ] && [ ! -L "$store" ] && [ "$(readlink -f "$store")" = "$store" ] || return 1
  [ -d "$store/.installer-import" ] && [ ! -L "$store/.installer-import" ] || return 1
@@ -111,7 +111,11 @@ ab_miami_readiness_identity() (
  for field in key.pem cert.pem operational.pem operational.ca .installer-import/transaction.json .installer-import/completion.json; do
   file=$store/$field
   [ -f "$file" ] && [ ! -L "$file" ] || return 1
-  LC_ALL=C ls -ldn "$file" | awk '$1=="-rw-------" && $2==1 && $3==0 {good=1} END {exit !good}' || return 1
+  public_readonly=0
+  case "$field" in operational.pem|operational.ca) public_readonly=1 ;; esac
+  LC_ALL=C ls -ldn "$file" | awk -v public_readonly="$public_readonly" '
+   ($1=="-rw-------" || (public_readonly==1 && $1=="-r--r-----")) && $2==1 && $3==0 {good=1}
+   END {exit !good}' || return 1
   size=$(wc -c < "$file") || return 1
   [ "$size" -gt 0 ] && [ "$size" -le 131072 ] || return 1
  done
