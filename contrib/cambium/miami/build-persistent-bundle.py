@@ -20,7 +20,7 @@ for slot in (0,1):
 prior_receipt=None
 if a.prior_bundle:
  prior_receipt=json.loads(a.prior_bundle.read_text())
- assert prior_receipt['source_commit'] in ('cc5bdc8c3074a4c37de5e525cf31d701f7050f25','c319093b6f54a710064c3fafac0209561e6a7459','204aee68e7a2ce847faf6a4f48f1e9b04aecef0b','5336c013f8990da63092dbe293186b4aca743fa2')
+ assert prior_receipt['source_commit'] in ('cc5bdc8c3074a4c37de5e525cf31d701f7050f25','c319093b6f54a710064c3fafac0209561e6a7459','204aee68e7a2ce847faf6a4f48f1e9b04aecef0b','5336c013f8990da63092dbe293186b4aca743fa2','e0722e68c6da323d052b101c15a8039a6d826987')
  assert (prior_receipt['family'],prior_receipt['model'],prior_receipt['certificate_lebs'],prior_receipt['vault_lebs'])==('miami','X7-35X',64,72)
  expected_kernel=['820e89d64d1ef8f089180a50abba13e01b6e00fa54a08690b618f326169192df','40d43dbbb6b099287341f31aa88f1010b58124ef2300e4de84bdf855fb6f4ea8']
  kernel_size=4856368;root_size=22499154;root_digest='3aab706eb51ccf0a0a7fa74e6a52a4bdce6df1f73288ac64b105f7d57488f87a'
@@ -33,6 +33,9 @@ if a.prior_bundle:
  if prior_receipt['source_commit']=='5336c013f8990da63092dbe293186b4aca743fa2':
   expected_kernel=['6b6baa76059306ff8f0e9d5689198f9fe5609250fcdf3a622ab53f591016be99','a93dd7990cf502e45eee23158e52662eff6503c960abeac4ba26f78bd73f226e']
   kernel_size=4856068;root_size=22501726;root_digest='f0682165303cb3e36c9180c2be070db188a885131a0491dbce7a316d9a04747f'
+ if prior_receipt['source_commit']=='e0722e68c6da323d052b101c15a8039a6d826987':
+  expected_kernel=['9c22c101aad1325ca0e1cfac9c52a3d84b3c3a5bfc46a99667dc491c3765712b','dcf685056218b88a8685ea2c60c8cc0fceef5a39dcc168691541f9fb90e4a255']
+  kernel_size=4855880;root_size=22502162;root_digest='471d6d7f229f238920c43cd0231c75247bae82cf2d7f1a697a31b88a3bf832f9'
  for slot in (0,1):
   for kind,suffix,digest,size in [('kernel','kernel.itb',expected_kernel[slot],kernel_size),('rootfs','rootfs.squashfs',root_digest,root_size)]:
    item=prior_receipt['images'][f'miami-persistent-slot{slot}-{suffix}']
