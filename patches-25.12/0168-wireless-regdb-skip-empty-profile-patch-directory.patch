@@ -1,0 +1,30 @@
+From: Phil Taylor <phil@m0vse.uk>
+Date: Thu, 8 Oct 2026 20:00:00 +0100
+Subject: [PATCH] wireless-regdb: skip the optional patch directory without a profile
+
+An empty profile expands the optional patch path to / and attempts to patch
+with files from the build host root. Preserve default patches and only invoke
+the optional profile pass when a real target profile is selected.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/firmware/wireless-regdb/Makefile
++++ b/package/firmware/wireless-regdb/Makefile
+@@ -2,7 +2,7 @@
+ 
+ PKG_NAME:=wireless-regdb
+ PKG_VERSION:=2026.05.30
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ PKG_LICENSE:=ISC
+ PKG_LICENSE_FILES:=LICENSE
+ 
+@@ -29,7 +29,7 @@
+ 
+ define Build/Patch
+ 	$(Build/Patch/Default)
+-	$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_PROFILE_NAME)/,profile/)
++	$(if $(strip $(TARGET_PROFILE)),$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_PROFILE_NAME)/,profile/))
+ endef
+ 
+ define Build/Compile
