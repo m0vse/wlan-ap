@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory(prefix='miami-storage-source-') as td:
  (root/'mtd').mkdir();(root/'ubi/ubi0').mkdir(parents=True);(root/'ubi/ubi0/mtd_num').write_text('2\n')
  mtdrows=[]
  for idx,name,size in [(2,'rootfs',0x6000000),(3,'rootfs_1',0x6000000),(18,'0:APPSBLENV',65536),(4,'0:NVRAM',0x2f40000),(5,'crashLog',0x1000000),(6,'0:ART',0x100000),(7,'mfginfo',65536),(8,'0:SBL1',0x80000),(9,'0:SBL1_1',0x80000),(10,'0:APPSBL',0xa0000),(11,'0:APPSBL_1',0xa0000)]:
-  d=root/f'mtd/mtd{idx}';d.mkdir();(d/'flags').write_text('0xc00' if idx in (2,18) else '0x800');mtdrows.append(f'mtd{idx}: {size:08x} '+('00020000' if idx in (2,3) else '00010000')+f' "{name}"')
+  d=root/f'mtd/mtd{idx}';d.mkdir();(d/'type').write_text('nand' if idx in (2,3,4,5) else 'nor');(d/'flags').write_text('0xc00' if idx in (2,18) else '0x800');mtdrows.append(f'mtd{idx}: {size:08x} '+('00020000' if idx in (2,3) else '00010000')+f' "{name}"')
  (root/'proc-mtd').write_text('\n'.join(mtdrows)+'\n');(root/'cmdline').write_text('console=ttyMSM0,115200n8 ubi.mtd=rootfs root=/dev/ubiblock0_1 rootfstype=squashfs rootwait\n')
  for idx,name in enumerate(['kernel','rootfs','rootfs_data','cambium_device_data','certificates']):
   d=root/f'ubi/ubi0_{idx}';d.mkdir();(d/'name').write_text(name+'\n');(d/'reserved_ebs').write_text('64\n' if idx==4 else '72\n')
@@ -38,15 +38,16 @@ with tempfile.TemporaryDirectory(prefix='miami-storage-source-') as td:
  check('ab_identity && ab_miami_boot_command 1 | grep -F "ubi.mtd=rootfs_1 root=/dev/ubiblock0_1"')
  slot.write_bytes(struct.pack('>I',0));(root/'cmdline').write_text('ubi.mtd=rootfs root=/dev/ubiblock0_1 rootfstype=squashfs rootwait\n');(root/'ubi/ubi0/mtd_num').write_text('2\n')
  (root/'mtd/mtd2/flags').write_text('0xc00');(root/'mtd/mtd3/flags').write_text('0x800')
- # Apply actual shared certificate policy patch to copies, never the build tree.
- copied=root/'patch-tree/package/cambium/cambium-ab';(copied/'files').mkdir(parents=True)
- for name in ['cambium-ab-upgrade.sh','cambium-ab-certificates.sh']:shutil.copy2(a.core/name,copied/'files'/name)
- # The patch also bumps the package release; minimal copy uses actual base.
- make=a.core.parent/'miami-shared-ab-Makefile'
- if not make.exists():make=Path('/private/tmp/miami-shared-ab-Makefile')
- (copied/'Makefile').write_text(make.read_text())
- r=subprocess.run(['patch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0164-cambium-ab-miami-certificate-capacity.patch')],cwd=root/'patch-tree',capture_output=True,text=True);assert r.returncode==0,(r.stdout,r.stderr)
- policy=(copied/'files/cambium-ab-upgrade.sh').read_text();start=policy.index('ab_certificate_lebs() {');end=policy.index('\n}\n',start)+3;func=policy[start:end]
+ # Current generated core already contains the certificate policy; older
+ # supplied base source may be replayed in an isolated copy.
+ policy=(a.core/'cambium-ab-upgrade.sh').read_text()
+ if '64-LEB policy requires exact Miami model' not in policy:
+  copied=root/'patch-tree/package/cambium/cambium-ab';(copied/'files').mkdir(parents=True)
+  for name in ['cambium-ab-upgrade.sh','cambium-ab-certificates.sh','cambium-return-oem']:shutil.copy2(a.core/name,copied/'files'/name)
+  shutil.copy2(a.core.parent/'Makefile',copied/'Makefile')
+  r=subprocess.run(['patch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0164-cambium-ab-miami-certificate-capacity.patch')],cwd=root/'patch-tree',capture_output=True,text=True);assert r.returncode==0,(r.stdout,r.stderr)
+  policy=(copied/'files/cambium-ab-upgrade.sh').read_text()
+ start=policy.index('ab_certificate_lebs() {');end=policy.index('\n}\n',start)+3;func=policy[start:end]
  for family,model,lebs,ok in [('miami','X7-35X',64,True),('jaguar','XV2-2',20,True),('sage','E410',0,True),('thor','XV3-8',64,False),('miami','X7-other',64,False),('miami','X7-35X',63,False)]:
   r=subprocess.run(['sh','-c','ab_fail(){ :; }; '+func+'\nAB_FAMILY=$1; AB_MODEL=$2; AB_CERTIFICATE_LEBS=$3; ab_certificate_lebs','fixture',family,model,str(lebs)],capture_output=True,text=True);assert (r.returncode==0)==ok
   if ok:assert r.stdout.strip()==str(lebs)
