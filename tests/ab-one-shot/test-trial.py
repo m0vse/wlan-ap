@@ -19,6 +19,20 @@ def load_created_core():
     section = text.split(marker, 1)[1].split('\ndiff --git ', 1)[0]
     return ''.join(line[1:] + '\n' for line in section.splitlines() if line.startswith('+'))
 
+def prepare_recipe(root):
+    relative = 'package/cambium/cambium-ab/Makefile'
+    initial = (REPO/'patches-25.12/0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch').read_text().split('+++ b/'+relative+'\n',1)[1].split('\ndiff --git ',1)[0]
+    recipe = root/relative
+    recipe.write_text(''.join(x[1:]+'\n' for x in initial.splitlines() if x.startswith('+')))
+    for prefix in ('0126-','0127-','0128-','0129-','0130-','0142-'):
+        path = next((REPO/'patches-25.12').glob(prefix+'*.patch'))
+        body = path.read_text().split('--- a/'+relative+'\n',1)[1]
+        body = body.split('\ndiff --git ',1)[0].split('\n--- a/',1)[0]
+        patch = root/'recipe.patch'; patch.write_text('--- a/'+relative+'\n'+body)
+        subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(patch)],cwd=root,check=True,capture_output=True)
+    assert 'PKG_RELEASE:=17\n' in recipe.read_text()
+    return recipe
+
 def run_script(script, prior, fail='', reset=False):
     with tempfile.TemporaryDirectory(prefix='ab-trial-script-') as td:
         p = Path(td)
@@ -86,6 +100,7 @@ def main():
         core = root/'package/cambium/cambium-ab/files/cambium-ab.sh'
         core.parent.mkdir(parents=True)
         core.write_text(load_created_core())
+        recipe = prepare_recipe(root)
         old = subprocess.check_output(['sh','-c','. "$CORE"; AB_ENV=sage; ab_trial_command 0 1'], env=dict(os.environ, CORE=str(core), CAMBIUM_AB_MODULES=str(root/'no-modules')), text=True).strip()
         try:
             check_command(old, 0)
@@ -94,6 +109,7 @@ def main():
         else:
             raise AssertionError('negative control did not detect unsafe original armer')
         subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(REPO/'patches-25.12/0179-cambium-ab-persist-prior-before-trial.patch')], cwd=root, check=True, capture_output=True)
+        assert 'PKG_RELEASE:=18\n' in recipe.read_text()
         sources = [core] + ([args.core.resolve()] if args.core else [])
         for source in sources:
             for family in ('sage','jaguar','cheetah','thor','gambit','miami'):

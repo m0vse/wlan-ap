@@ -8,6 +8,13 @@ for explicitly confirmed firmware remain unchanged.
 
 Signed-off-by: Phil Taylor <phil@m0vse.uk>
 ---
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -3,3 +3,3 @@
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=17
++PKG_RELEASE:=18
+ PKG_LICENSE:=GPL-2.0-only
 --- a/package/cambium/cambium-ab/files/cambium-ab.sh
 +++ b/package/cambium/cambium-ab/files/cambium-ab.sh
 @@ -250,5 +250,5 @@
