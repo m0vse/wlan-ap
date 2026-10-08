@@ -281,7 +281,20 @@ fetch() {
  file=$1 hash=$2 size=$3
  case "$file" in ''|*[!A-Za-z0-9_.-]*) fail 'unsafe payload name';; esac
  [ ! -L "$R/tmp/$file" ] || fail 'payload path is a symlink'
+ if [ -n "${CAMBIUM_INSTALL_CACHE_DIR:-}" ]; then
+  cache=$CAMBIUM_INSTALL_CACHE_DIR
+  case "$cache" in /*) ;; *) fail 'cache must use an absolute path';; esac
+  [ -d "$cache" ] && [ ! -L "$cache" ] && [ "$(readlink -f "$cache")" = "$cache" ] || fail 'unsafe local cache'
+  LC_ALL=C ls -ldn "$cache" | awk '$1=="drwx------" && $3==0 {good=1} END {exit !good}' || fail 'cache is not private and root-owned'
+  [ -f "$cache/$file" ] && [ ! -L "$cache/$file" ] || fail 'required cached object missing'
+  LC_ALL=C ls -ldn "$cache/$file" | awk '$1=="-rw-------" && $2==1 && $3==0 {good=1} END {exit !good}' || fail 'unsafe cached object'
+  [ "$(wc -c < "$cache/$file")" = "$size" ] && [ "$(sha256sum "$cache/$file" | cut -d ' ' -f1)" = "$hash" ] || fail 'cached payload validation failed'
+  [ "$cache/$file" = "$R/tmp/$file" ] || cp "$cache/$file" "$R/tmp/$file" || fail 'local cached copy failed'
+ elif [ "${CAMBIUM_INSTALL_LOCAL_ONLY:-0}" = 1 ]; then
+  fail 'local-only operation requires the verified cache'
+ fi
  if [ ! -f "$R/tmp/$file" ] || [ "$(sha256sum "$R/tmp/$file" | cut -d ' ' -f1)" != "$hash" ]; then
+  [ "${CAMBIUM_INSTALL_LOCAL_ONLY:-0}" != 1 ] && [ -z "${CAMBIUM_INSTALL_CACHE_DIR:-}" ] || fail 'cached object changed; network fallback forbidden'
   wget -O "$R/tmp/$file" "${CAMBIUM_INSTALL_SERVER:?Set CAMBIUM_INSTALL_SERVER to the operator image server URL}/$file" || fail 'payload download failed'
  fi
  [ "$(wc -c < "$R/tmp/$file")" -eq "$size" ] && [ "$(sha256sum "$R/tmp/$file" | cut -d ' ' -f1)" = "$hash" ] || fail 'payload hash or size differs'
@@ -334,6 +347,10 @@ install|update)
  case "$CAMBIUM_INSTALL_SERVER" in http://*|https://*) ;; *) fail 'operator URL must use http or https';; esac
  case "$CAMBIUM_INSTALL_SERVER" in *[[:space:]]*|*\?*|*\#*|*@*) fail 'operator URL must not contain credentials, query or fragment';; esac
  select_payload; fetch "$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE"; fetch "$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE"
+ # Every later arm dependency is validated locally before the first write.
+ if [ "${ENROLMENT_READY:-0}" = 1 ]; then
+  case "$SLOT" in 0) fetch "$PAIR0" "$PAIR0_SHA" "$PAIR0_SIZE" ;; 1) fetch "$PAIR1" "$PAIR1_SHA" "$PAIR1_SIZE" ;; esac
+ fi
  attach; inventory
  if [ "$BANK_KIND" = oem ]; then
   [ "$mode" = install ] && [ "$*" = '--yes --replace-inactive-bank --backed-up' ] || fail 'OEM target requires clean install with --replace-inactive-bank'
