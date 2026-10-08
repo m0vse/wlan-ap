@@ -1,0 +1,134 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: add exact Miami storage policy and gated OEM return
+
+--- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -32,7 +32,8 @@
+ ab_certificate_lebs() {
+ 	case "${AB_CERTIFICATE_LEBS:-0}" in
+ 	0|20) echo "${AB_CERTIFICATE_LEBS:-0}" ;;
+-	*) ab_fail "invalid certificate-volume policy: expected 0 or 20 LEBs"; return 1 ;;
++	64) [ "$AB_FAMILY:$AB_MODEL" = miami:X7-35X ] || { ab_fail "64-LEB policy requires exact Miami model"; return 1; }; echo 64 ;;
++	*) ab_fail "invalid certificate-volume policy: expected 0/20 or exact Miami 64 LEBs"; return 1 ;;
+ 	esac
+ }
+ 
+@@ -218,7 +219,7 @@
+ 
+ 	# stage2 must prove the private snapshot survived the RAM copy BEFORE
+ 	# recording writes or erasing any inactive-bank data.
+-	if [ "$(ab_certificate_lebs)" = 20 ] && [ "$AB_LAYOUT" = banks ]; then
++	if [ "$(ab_certificate_lebs)" -gt 0 ] && [ "$AB_LAYOUT" = banks ]; then
+ 		type ab_certificate_validate_snapshot >/dev/null 2>&1 && ab_certificate_validate_snapshot ||
+ 			{ ab_fail 'RAM-stage certificate snapshot validation failed; no bank was written'; return 1; }
+ 	fi
+@@ -232,7 +233,7 @@
+ 	echo "cambium-ab: writing slot $AB_TARGET ($AB_TARGET_PART) from slot $AB_ACTIVE"
+ 	if ab_hook write_target; then
+ 		"ab_${AB_FAMILY}_write_target" || return 1
+-		if [ "$(ab_certificate_lebs)" = 20 ]; then
++		if [ "$(ab_certificate_lebs)" -gt 0 ]; then
+ 			type ab_certificate_restore >/dev/null 2>&1 && ab_certificate_restore ||
+ 				{ ab_record_failure write-failed 'cannot restore the certificate store'; return 1; }
+ 		fi
+@@ -252,7 +253,7 @@
+ 		{ AB_STEP_ERROR=; ab_record_failure write-failed "slot $AB_TARGET readback mismatch"; return 1; }
+ 	[ "$AB_VAULT" != 1 ] || ab_copy_vault ||
+ 		{ ab_record_failure write-failed "cannot copy the device-data vault"; return 1; }
+-	if [ "$(ab_certificate_lebs)" = 20 ]; then
++	if [ "$(ab_certificate_lebs)" -gt 0 ]; then
+ 		type ab_certificate_restore >/dev/null 2>&1 && ab_certificate_restore ||
+ 			{ ab_record_failure write-failed 'cannot restore the certificate store'; return 1; }
+ 	fi
+--- a/package/cambium/cambium-ab/files/cambium-ab-certificates.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-certificates.sh
+@@ -30,7 +30,9 @@
+ ab_certificate_export() {
+ 	local work source volume mounted=0 runtime=${AB_CERTIFICATE_RUNTIME:-/etc/ucentral}
+ 	local store=${AB_CERTIFICATE_STORE:-/certificates} hash binding rc=0 file magic
+-	[ "$(ab_certificate_lebs)" = 20 ] || return 0
++	local certificate_lebs
++	certificate_lebs=$(ab_certificate_lebs) || return 1
++	[ "$certificate_lebs" -gt 0 ] || return 0
+ 	ab_identity || return 1
+ 	[ "$AB_LAYOUT" = banks ] || return 0 # Sage's store is shared, not bank-local.
+ 	[ "$(cat "${AB_UBI_SYS:-/sys/class/ubi}/$AB_ACTIVE_UBI/mtd_num")" = "$AB_ACTIVE_MTD" ] ||
+@@ -84,7 +86,7 @@
+ 	find "$work/tree" -type f -exec chmod 0600 {} \;
+ 	(cd "$work/tree" && find . -type f ! -name .cambium-ab-manifest -exec sha256sum {} \; > .cambium-ab-manifest &&
+ 		tar cf "$work/archive" .) || return 1
+-	[ "$(wc -c < "$work/archive")" -le $((20 * AB_LEB)) ] ||
++	[ "$(wc -c < "$work/archive")" -le $((certificate_lebs * AB_LEB)) ] ||
+ 		{ ab_fail 'certificate snapshot exceeds reserved volume capacity'; return 1; }
+ 	hash=$(sha256sum "$work/archive"); hash=${hash%% *}
+ 	binding=$(ab_certificate_binding) || return 1
+@@ -100,7 +102,9 @@
+ 
+ ab_certificate_validate_snapshot() {
+ 	local hash expected binding
+-	[ "$(ab_certificate_lebs)" = 20 ] || return 0
++	local certificate_lebs
++	certificate_lebs=$(ab_certificate_lebs) || return 1
++	[ "$certificate_lebs" -gt 0 ] || return 0
+ 	[ "$AB_LAYOUT" = banks ] || return 0
+ 	ab_certificate_private_file "$AB_CERTIFICATE_ARCHIVE" &&
+ 		ab_certificate_private_file "$AB_CERTIFICATE_DESCRIPTOR" ||
+@@ -112,7 +116,7 @@
+ 	expected=$(sed -n '2p' "$AB_CERTIFICATE_DESCRIPTOR")
+ 	[ "$hash" = "$expected" ] || { ab_fail 'certificate snapshot checksum failed'; return 1; }
+ 	# Bound the archive again after the RAM copy, and reject special entries.
+-	[ "$(wc -c < "$AB_CERTIFICATE_ARCHIVE")" -le $((20 * AB_LEB)) ] || return 1
++	[ "$(wc -c < "$AB_CERTIFICATE_ARCHIVE")" -le $((certificate_lebs * AB_LEB)) ] || return 1
+ 	tar tf "$AB_CERTIFICATE_ARCHIVE" | LC_ALL=C awk '
+ 		/^\// || /(^|\/)\.\.(\/|$)/ || /[^A-Za-z0-9_.\/-]/ { bad=1 }
+ 		END { exit bad }' || return 1
+@@ -121,7 +125,9 @@
+ 
+ ab_certificate_restore() {
+ 	local work rc=0
+-	[ "$(ab_certificate_lebs)" = 20 ] || return 0
++	local certificate_lebs
++	certificate_lebs=$(ab_certificate_lebs) || return 1
++	[ "$certificate_lebs" -gt 0 ] || return 0
+ 	[ "$AB_LAYOUT" = banks ] || return 0
+ 	ab_certificate_validate_snapshot || return 1
+ 	[ "$(cat "${AB_UBI_SYS:-/sys/class/ubi}/$AB_TARGET_UBI/mtd_num")" = "$AB_TARGET_MTD" ] &&
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=17
++PKG_RELEASE:=18
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
+@@ -36,6 +36,7 @@
+ 	$(INSTALL_BIN) ./files/cambium-ab-guard $(1)/usr/sbin/
+ 	$(INSTALL_BIN) ./files/cambium-ab-convert $(1)/usr/sbin/
+ 	$(INSTALL_BIN) ./files/cambium-ab-status $(1)/usr/sbin/
++	$(INSTALL_BIN) ./files/cambium-return-oem $(1)/usr/sbin/
+ 	$(INSTALL_BIN) ./files/cambium-ab-guard.init $(1)/etc/init.d/cambium-ab-guard
+ 	$(INSTALL_BIN) ./files/18_cambium_ab_guard $(1)/etc/uci-defaults/
+ endef
+--- /dev/null
++++ b/package/cambium/cambium-ab/files/cambium-return-oem
+@@ -0,0 +1,17 @@
++#!/bin/sh
++# Select the retained OEM firmware for the next manual reboot. No flash erase.
++set -e
++. /lib/functions/system.sh
++. /lib/functions/cambium-ab.sh
++case "${1:-}" in --check|--arm) ;; *) echo 'usage: cambium-return-oem --check|--arm' >&2; exit 2 ;; esac
++ab_identity >/dev/null || exit 1
++! ab_converted || { echo 'OEM return unavailable after bank conversion' >&2; exit 1; }
++ab_hook oem_return_ready && "ab_${AB_FAMILY}_oem_return_ready" || exit 1
++[ "$1" != --check ] || { echo 'Retained OEM bank and boot contract verified'; exit 0; }
++/etc/init.d/cambium-ab-guard stop
++# Stock command first; an interruption can only leave the existing OEM path.
++ab_setenv bootcmd "$AB_STOCK_BOOTCMD" || exit 1
++[ "$AB_MARKER" != 1 ] || ab_setenv changing_bootcmd
++[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || exit 1
++[ "$AB_MARKER" != 1 ] || [ -z "$(ab_getenv changing_bootcmd)" ] || exit 1
++echo 'OEM selected for the next boot. Reboot manually; OpenWiFi volumes are preserved.'

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Hold both ath12k devices until their own-unit firmware/data are staged.
+miami_radio_hold() {
+	local p
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "cambiumnetworks,x7-35x" ] || {
+		[ "$(tr '\000' '\n' < /proc/device-tree/compatible | head -n1)" = "cambiumnetworks,x7-35x" ] || return 0
+	}
+	for p in /sys/bus/platform/devices/c000000.wifi /sys/bus/pci/devices/0001:01:00.0; do
+		[ -f "$p/driver_override" ] || continue
+		[ ! -L "$p/driver" ] || {
+			echo 'miami-radio: driver bound before own-unit staging' > /dev/kmsg
+			return 1
+		}
+		echo miami-radio-held > "$p/driver_override" || return 1
+	done
+}
+boot_hook_add preinit_essential miami_radio_hold

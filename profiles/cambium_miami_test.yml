@@ -1,0 +1,20 @@
+---
+profile: cambiumnetworks_miami-test-recovery
+target: ipq53xx
+subtarget: generic
+description: Experimental X7-35X RAM test image; no persistent migration admission
+image: bin/targets/ipq53xx/generic/openwrt-ipq53xx-cambiumnetworks_miami-test-recovery-initramfs.itb
+feeds:
+  - name: qca
+    path: ../../feeds/qca-wifi-7
+include:
+  - ucentral-ap
+packages:
+  - ipq53xx
+  - cambium-miami-radio
+  - ucentral-netconsole
+  - ucentral-radio-crash
+diffconfig: |
+  CONFIG_TARGET_ROOTFS_INITRAMFS=y
+  CONFIG_TARGET_INITRAMFS_FORCE=y
+  CONFIG_KERNEL_IPQ_MEM_PROFILE=0

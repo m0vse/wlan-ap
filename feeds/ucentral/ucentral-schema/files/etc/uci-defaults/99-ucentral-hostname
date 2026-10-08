@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+# Native boot has no package-install root. Define the variable expected by
+# OpenWrt's function library while retaining this script's strict checks.
+IPKG_INSTROOT=${IPKG_INSTROOT:-}
 . /lib/functions/system.sh
 hname=$(get_mac_label)
 [ -n "$hname" ] || {

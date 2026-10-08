@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/* Only the OpenWiFi bank and environment are writable; preserve OEM. */
+#include "ipq5332-cambium-x7-35x-recovery.dts"
+/ {
+ model = "Cambium Networks X7-35X";
+ cambium-platform { storage-slot = <0>; };
+};
+&miami_rootfs { /delete-property/ read-only; };
+&miami_appsblenv { /delete-property/ read-only; };

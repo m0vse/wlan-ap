@@ -34,15 +34,24 @@ mkdir -p /certificates /etc/ucentral/
 # Bind the mount to the core's validated active MTD/UBI mapping, not ubi0/ubi1.
 if [ -f /lib/functions/cambium-ab.sh ]; then
 	. /lib/functions/cambium-ab.sh
-	if ab_family && { [ "${AB_CERTIFICATE_LEBS:-0}" = 20 ] || [ "$AB_LAYOUT" = pair ]; }; then
+	if ab_family && { [ "${AB_CERTIFICATE_LEBS:-0}" = 20 ] || [ "$AB_LAYOUT" = pair ] ||
+		[ "$AB_FAMILY:$AB_MODEL:${AB_CERTIFICATE_LEBS:-0}" = miami:X7-35X:64 ]; }; then
 		ab_identity || exit 1
+		if [ "$AB_FAMILY" = miami ]; then
+			. /lib/functions/system.sh
+			ab_miami_storage_context || exit 1
+		fi
 		cert_volume=$(ab_ubi_volume "$AB_ACTIVE_UBI" certificates) || exit 1
+		if [ "$AB_FAMILY" = miami ]; then
+			[ "$(cat "${AB_UBI_SYS:-/sys/class/ubi}/$cert_volume/reserved_ebs")" = 64 ] || exit 1
+		fi
 		if awk '$2=="/certificates" { found=1 } END { exit !found }' /proc/mounts; then
 			awk -v dev="/dev/$cert_volume" -v named="$AB_ACTIVE_UBI:certificates" \
 				'$2=="/certificates" && ($1==dev || $1==named) { good=1 } END { exit !good }' /proc/mounts || exit 1
 		else
 			mount -t ubifs "/dev/$cert_volume" /certificates || exit 1
 		fi
+		if [ "$AB_FAMILY" = miami ]; then ab_miami_certificate_mount || exit 1; fi
 		# Initial native enrollment needs a proven mounted empty store.
 		# This exception is confined to the active pending installer trial.
 		if [ "${1:-}" = --installer-empty ]; then

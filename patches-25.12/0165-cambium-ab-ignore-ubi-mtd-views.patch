@@ -1,0 +1,32 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: exclude UBI-export MTD views from physical lookup
+
+--- a/package/cambium/cambium-ab/files/cambium-ab.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab.sh
+@@ -81,12 +81,23 @@
+ }
+ 
+ ab_mtd_index() {
+-	awk -v wanted="\"$1\"" '$4 == wanted { sub(/^mtd/, "", $1); sub(/:$/, "", $1); print $1 }' \
+-		"${AB_PROC_MTD:-/proc/mtd}"
++	awk -v wanted="\"$1\"" -v sys="${AB_MTD_SYS:-/sys/class/mtd}" '
++	$4 == wanted {
++		idx=$1; sub(/^mtd/, "", idx); sub(/:$/, "", idx)
++		path=sys "/mtd" idx "/type"
++		kind=""; getline kind < path; close(path)
++		if (kind != "ubi") print idx
++	}' "${AB_PROC_MTD:-/proc/mtd}"
+ }
+ 
+ ab_mtd_geometry() {
+-	awk -v wanted="\"$1\"" '$4 == wanted { print $2, $3 }' "${AB_PROC_MTD:-/proc/mtd}"
++	awk -v wanted="\"$1\"" -v sys="${AB_MTD_SYS:-/sys/class/mtd}" '
++	$4 == wanted {
++		idx=$1; sub(/^mtd/, "", idx); sub(/:$/, "", idx)
++		path=sys "/mtd" idx "/type"
++		kind=""; getline kind < path; close(path)
++		if (kind != "ubi") print $2, $3
++	}' "${AB_PROC_MTD:-/proc/mtd}"
+ }
+ 
+ ab_mtd_writable() {

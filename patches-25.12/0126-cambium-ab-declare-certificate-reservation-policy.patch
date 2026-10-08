@@ -1,5 +1,6 @@
 From: Phil Taylor <phil@m0vse.uk>
-Subject: [PATCH] cambium-ab: declare certificate reservation policy
+Date: Fri, 2 Oct 2026 01:58:51 +0100
+Subject: [PATCH] jaguar: carry certificate reservation policy through sysupgrade RAM stage
 
 diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
 index 8291bc6a35..401baa353b 100644

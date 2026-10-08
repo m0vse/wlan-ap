@@ -1,0 +1,66 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi: ath12k: retain X7-35X split-PHY and device-regdb policies
+
+Adapt the working Miami policies to the existing OpenWiFi IPQ53xx SDK.
+Keep all other boards on their existing paths. The validated firmware PHY
+count determines HTC endpoints only in the fallback mode; do not force a
+hardware mode. Kernel compilation and hardware acceptance remain pending.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+
+--- a/drivers/net/wireless/ath/ath12k/mhi.c
++++ b/drivers/net/wireless/ath/ath12k/mhi.c
+@@ -296,6 +296,11 @@
+ 				   "dualmac fw selected for board id: %x\n", board_id);
+ 		}
+ 	}
++
++	/* X7-35X uses separate 5/6 GHz PHYs despite its OTP selector. */
++	if (ab->hw_rev == ATH12K_HW_QCN9274_HW20 &&
++	    of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		dualmac = true;
+ 
+ 	if (dualmac) {
+ 		ab->is_dualmac = true;
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -823,6 +823,14 @@
+ 	char boardname[BOARD_NAME_SIZE], default_boardname[BOARD_NAME_SIZE];
+ 	int ret;
+ 
++	/* Own-unit Acadia regdb must precede a generic bundled board entry. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		ret = ath12k_core_fetch_board_data_api_1(ab, bd,
++						 ATH12K_REGDB_FILE_NAME);
++		if (!ret)
++			goto exit;
++	}
++
+ 	ret = ath12k_core_create_board_name(ab, boardname, BOARD_NAME_SIZE);
+ 	if (ret) {
+ 		ath12k_dbg(ab, ATH12K_DBG_BOOT,
+--- a/drivers/net/wireless/ath/ath12k/htc.c
++++ b/drivers/net/wireless/ath/ath12k/htc.c
+@@ -5,6 +5,7 @@
+  */
+ #include <linux/skbuff.h>
+ #include <linux/ctype.h>
++#include <linux/of.h>
+ 
+ #include "debug.h"
+ #include "hif.h"
+@@ -822,7 +823,13 @@
+ 		htc->wmi_ep_count = 3;
+ 		break;
+ 	default:
+-		htc->wmi_ep_count = ab->hw_params->max_radios;
++		/* Use only a validated firmware count on Miami, never force a mode. */
++		if (of_machine_is_compatible("cambiumnetworks,x7-35x") &&
++		    ab->qmi.num_radios > 0 &&
++		    ab->qmi.num_radios <= ab->hw_params->max_radios)
++			htc->wmi_ep_count = ab->qmi.num_radios;
++		else
++			htc->wmi_ep_count = ab->hw_params->max_radios;
+ 		break;
+ 	}
+ 

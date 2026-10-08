@@ -1,0 +1,25 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi: ath12k: retain separate PHYs for Miami RAM testing
+
+The SDK's MLO path combines firmware radios under one wiphy even when
+there is no inter-device WSI group. Miami needs separate AHB 2 GHz and
+PCI 5/6 GHz PHYs for the existing native discovery/renderer path. Disable
+MLO capability only for this exact machine until separately qualified;
+leave the firmware hardware-mode selection and other boards unchanged.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -4722,6 +4722,12 @@
+ 	struct ath12k_base *ab;
+ 	int i;
+ 
++	/* Miami's native renderer requires one wiphy per firmware PHY. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		ag->mlo_capable = false;
++		return;
++	}
++
+ 	if (ath12k_ftm_mode || !ath12k_mlo_capable)
+ 		return;
+ 

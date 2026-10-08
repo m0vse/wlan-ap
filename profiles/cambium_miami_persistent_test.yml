@@ -1,0 +1,25 @@
+---
+profile: cambiumnetworks_miami-persistent-slot0
+target: ipq53xx
+subtarget: generic
+description: X7-35X persistent OEM-preserving storage pilot; no automatic enrollment
+image: bin/targets/ipq53xx/generic/openwrt-ipq53xx-cambiumnetworks_miami-persistent-slot0-squashfs-kernel.itb
+feeds:
+  - name: qca
+    path: ../../feeds/qca-wifi-7
+include:
+  - ucentral-ap
+packages:
+  - ipq53xx
+  - cambium-miami-persistent
+  - ucentral-netconsole
+  - ucentral-radio-crash
+diffconfig: |
+  CONFIG_TARGET_MULTI_PROFILE=y
+  CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+  CONFIG_TARGET_DEVICE_ipq53xx_generic_DEVICE_cambiumnetworks_miami-persistent-slot0=y
+  CONFIG_TARGET_DEVICE_ipq53xx_generic_DEVICE_cambiumnetworks_miami-persistent-slot1=y
+  CONFIG_TARGET_ROOTFS_SQUASHFS=y
+  # CONFIG_TARGET_ROOTFS_INITRAMFS is not set
+  # CONFIG_TARGET_INITRAMFS_FORCE is not set
+  CONFIG_KERNEL_IPQ_MEM_PROFILE=0

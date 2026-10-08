@@ -1,0 +1,127 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] remoteproc: preserve Miami OEM bootinfo with one user-PD owner
+
+The SDK ath12k controls UserPD1 firmware and spawn/stop IRQs. Keep only the
+root remoteproc on X7-35X, while publishing its existing OEM PID2 SMEMv2
+record from the checked user ELF before root firmware starts. Preserve the
+file extent and IU preload without requiring a competing child driver.
+Other boards retain their current child enumeration and loading paths.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+
+--- a/drivers/remoteproc/qcom_q6v5_mpd.c
++++ b/drivers/remoteproc/qcom_q6v5_mpd.c
+@@ -821,6 +821,80 @@
+ 	return ret;
+ }
+ 
++static int copy_miami_userpd_bootargs(struct device *dev,
++				    struct bootargs_smem_info *boot_args)
++{
++	struct q6_userpd_bootargs record = {0};
++	struct device_node *np;
++	struct reserved_mem *region;
++	struct rproc *rproc = dev_get_drvdata(dev);
++	const struct firmware *fw;
++	const struct elf32_hdr *ehdr;
++	ssize_t file_size;
++	u64 entry;
++	u16 count;
++	int ret;
++
++	/* The SDK ath12k owns UserPD1; the OEM boot record still uses PID 2. */
++	ret = request_firmware(&fw, "IPQ5332/q6_fw1.mdt", dev);
++	if (ret)
++		return ret;
++
++	ret = -EBADMSG;
++	if (fw->size < sizeof(*ehdr))
++		goto release;
++	ehdr = (const struct elf32_hdr *)fw->data;
++	if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) ||
++	    ehdr->e_ident[EI_CLASS] != ELFCLASS32 ||
++	    ehdr->e_ident[EI_DATA] != ELFDATA2LSB ||
++	    ehdr->e_phoff != sizeof(*ehdr) ||
++	    ehdr->e_phentsize != sizeof(struct elf32_phdr) ||
++	    !ehdr->e_phnum ||
++	    ehdr->e_phnum > (fw->size - sizeof(*ehdr)) /
++			   sizeof(struct elf32_phdr))
++		goto release;
++
++	entry = rproc_get_boot_addr(rproc, fw);
++	file_size = qcom_mdt_get_file_size(fw);
++	if (file_size <= 0 || file_size > U32_MAX || entry > U32_MAX)
++		goto release;
++
++	np = of_parse_phandle(dev->of_node, "memory-region", 0);
++	region = of_reserved_mem_lookup(np);
++	of_node_put(np);
++	if (!region || entry < region->base ||
++	    entry - region->base >= region->size ||
++	    (u64)file_size > region->size - (entry - region->base))
++		goto release;
++
++	count = readw(boot_args->smem_elem_cnt_ptr);
++	if (count > Q6_BOOT_ARGS_SMEM_SIZE - 4 - sizeof(record) ||
++	    (u8 *)boot_args->smem_bootargs_ptr <
++		(u8 *)boot_args->smem_base_ptr + 4 ||
++	    (u8 *)boot_args->smem_bootargs_ptr + sizeof(record) >
++		(u8 *)boot_args->smem_base_ptr + Q6_BOOT_ARGS_SMEM_SIZE) {
++		ret = -E2BIG;
++		goto release;
++	}
++
++	record.header.type = UPD_BOOTARGS_HEADER_TYPE;
++	record.header.length = sizeof(record) - sizeof(record.header);
++	record.pid = 2;
++	record.bootaddr = entry;
++	/* File extent, deliberately not the rounded p_memsz. */
++	record.data_size = file_size;
++	memcpy_toio(boot_args->smem_bootargs_ptr, &record, sizeof(record));
++	boot_args->smem_bootargs_ptr += sizeof(record);
++	count += sizeof(record);
++	memcpy_toio(boot_args->smem_elem_cnt_ptr, &count, sizeof(count));
++	dev_info(dev, "Miami UserPD bootinfo v2 pid=2 entry=%#llx file_size=%#zx\n",
++		 entry, (size_t)file_size);
++	ret = 0;
++release:
++	release_firmware(fw);
++	return ret;
++}
++
+ static int load_userpd_params_to_bootargs(struct device *dev,
+ 					  struct bootargs_smem_info *boot_args)
+ {
+@@ -833,6 +907,9 @@
+ 
+ 	if (!of_property_read_bool(dev->of_node, "qcom,userpd-bootargs"))
+ 		return -EINVAL;
++
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		return copy_miami_userpd_bootargs(dev, boot_args);
+ 
+ 	for_each_available_child_of_node(dev->of_node, upd_np) {
+ 		if (!strstr(upd_np->name, "pd"))
+@@ -975,7 +1052,7 @@
+ 
+ 	ret = request_firmware(&m3_fw, m3_fw_name, wcss->dev);
+ 	if (ret)
+-		return 0;
++		return of_machine_is_compatible("cambiumnetworks,x7-35x") ? ret : 0;
+ 
+ 	ret = qcom_mdt_load_no_init(wcss->dev, m3_fw,
+ 				    m3_fw_name, 0,
+@@ -1026,6 +1103,13 @@
+ 	}
+ 	rproc->bootaddr = rproc_get_boot_addr(rproc, fw);
+ #endif
++
++	/* Miami has one root rproc; ath12k owns the user PD and its IRQs. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		ret = load_m3_firmware(wcss->dev->of_node, wcss);
++		if (ret)
++			return ret;
++	}
+ 
+ 	/* load m3 firmware */
+ 	for_each_available_child_of_node(wcss->dev->of_node, upd_np) {

@@ -3,12 +3,13 @@ from pathlib import Path
 import os,subprocess,sys,tempfile
 root,source,patch=map(Path,sys.argv[1:4]);d=Path(tempfile.mkdtemp(prefix='diag-led-phase-'))
 target=d/'package/base-files/files/etc/diag.sh';target.parent.mkdir(parents=True);target.write_bytes((root/'etc/diag.sh').read_bytes())
-subprocess.run(['patch','--fuzz=0','-p1','-d',str(d),'-i',str(patch.resolve())],check=True,capture_output=True)
+if '/usr/libexec/ucentral-led.sh' not in target.read_text():subprocess.run(['patch','--fuzz=0','-p1','-d',str(d),'-i',str(patch.resolve())],check=True,capture_output=True)
 led=d/'leds';led.mkdir()
 for name in ['blue:status','green:status','orange:status','red:status']:
  p=led/name;p.mkdir()
  for prop,v in [('trigger','none'),('brightness','0'),('max_brightness','255'),('delay_on','0'),('delay_off','0')]: (p/prop).write_text(v)
-f=d/'functions.sh';f.write_text('board_name() { echo cambiumnetworks,xv3-8; }\nuci() { echo "$TEST_OFF"; }\n')
+board=sys.argv[4] if len(sys.argv)>4 else 'cambiumnetworks,xv3-8'
+f=d/'functions.sh';f.write_text('board_name() { echo '+board+'; }\nuci() { echo "$TEST_OFF"; }\n')
 helper=d/'helper';helper.write_text(source.read_text().replace('/lib/functions.sh',str(f)).replace('/sys/class/leds',str(led)).replace('/tmp/ucentral-led-phase',str(d/'phase')))
 q=['/usr/bin/qemu-aarch64','-0','ash','-L',str(root),str(root/'bin/busybox')]
 # The real diagnostic shell invokes the helper through a harmless test wrapper.

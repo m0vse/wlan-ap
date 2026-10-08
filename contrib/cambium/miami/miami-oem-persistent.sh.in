@@ -1,0 +1,401 @@
+#!/bin/sh
+# Exact X7-35X OEM -> OpenWiFi persistent storage pilot.
+# Approved old kernel/root/settings only; never format bank or delete vault/OEM.
+set -eu
+set +x
+umask 077
+mode=${1:-}; shift || true
+ENROLMENT_KEY=
+if [ "$mode" = arm ] && [ "$#" = 3 ] && [ "$1" = --yes ] && [ "$2" = --enrolment-key ]; then
+ ENROLMENT_KEY=$3
+ case "$ENROLMENT_KEY" in ''|*[!A-Za-z0-9_-]*) echo 'Invalid enrolment key' >&2; exit 1 ;; esac
+ [ "${#ENROLMENT_KEY}" = 64 ] || { echo 'Invalid enrolment key' >&2; exit 1; }
+ set -- --yes
+fi
+case "$mode" in check|install|update|arm) ;; *) echo 'usage: cambium-oem-install.sh check | install --yes --replace-inactive-bank --backed-up | update --yes --backed-up | arm --yes' >&2; exit 2 ;; esac
+fail() { echo "cambium-oem-install: $*" >&2; exit 1; }
+get() { value=$(fw_printenv "$1" 2>/dev/null) || return 1; case "$value" in "$1="*) printf '%s\n' "${value#*=}" ;; *) return 1;; esac; }
+put() { fw_setenv "$1" "$2"; [ "$(get "$1")" = "$2" ] || fail "environment readback failed: $1"; }
+remove() { fw_setenv "$1"; ! get "$1" >/dev/null || fail "environment deletion failed: $1"; }
+quote() { case "$1" in *"'"*|*'
+'*) fail 'unsupported single quote/newline in environment';; esac; }
+# Internal fixture root; production always uses the actual filesystem.
+R=${CAMBIUM_OEM_INSTALL_ROOT:-}
+mtd() {
+ found=; count=0
+ for d in "$R"/sys/class/mtd/mtd*; do
+  # OEM exposes read-only mtdNro aliases and UBI-volume MTD views. Neither
+  # is another physical flash partition; geometry is checked by the caller.
+  case "${d##*/mtd}" in ''|*[!0-9]*) continue ;; esac
+  [ -f "$d/name" ] || continue
+  case "$(cat "$d/type" 2>/dev/null)" in nand|nor) ;; *) continue ;; esac
+  [ "$(cat "$d/name")" != "$1" ] || { found=${d##*/mtd}; count=$((count+1)); }
+ done
+ [ "$count" = 1 ] || return 1
+ echo "$found"
+}
+[ ! -f "$R/etc/openwrt_release" ] || fail 'run from OEM, not OpenWrt; return using cambium-return-oem first'
+for tool in fw_printenv sha256sum dd; do command -v "$tool" >/dev/null || fail "missing $tool"; done
+sku=
+if [ -r "$R/proc/device-tree/cambium-platform/board-sku" ]; then
+ hex=$(od -An -tx1 "$R/proc/device-tree/cambium-platform/board-sku" | tr -d ' \n'); sku=$(printf '%d' "0x$hex")
+elif [ -r "$R/proc/sku" ]; then sku=$(tr -dc '0-9' < "$R/proc/sku"); fi
+[ "$sku" = 44 ] || fail 'requires X7-35X / SKU44'
+run=$(sed -n 's/.*ubi\.mtd=\([^ ]*\).*/\1/p' "$R/proc/cmdline")
+img=$(get image) || fail 'missing OEM image selector'
+case "$run:$img" in
+ rootfs:0) OEM=rootfs TARGET=rootfs_1 SLOT=1 OFFSET=0x60c0000 ;;
+ rootfs_1:1) OEM=rootfs_1 TARGET=rootfs SLOT=0 OFFSET=0xc0000 ;;
+ *) fail "OEM cmdline bank '$run' and image '$img' disagree" ;;
+esac
+T=$(mtd "$TARGET") || fail 'target bank missing'
+O=$(mtd "$OEM") || fail 'OEM bank missing'
+E=$(mtd 0:APPSBLENV) || fail 'environment missing'
+for n in "$T" "$O"; do
+ [ "$(cat "$R/sys/class/mtd/mtd$n/size")" = 100663296 ] &&
+ [ "$(cat "$R/sys/class/mtd/mtd$n/type")" = nand ] &&
+ [ "$(cat "$R/sys/class/mtd/mtd$n/erasesize")" = 131072 ] &&
+ [ "$(cat "$R/sys/class/mtd/mtd$n/writesize")" = 2048 ] || fail 'bank NAND geometry differs'
+done
+[ $(( $(cat "$R/sys/class/mtd/mtd$T/flags") & 0x400 )) -ne 0 ] || fail 'target bank is read-only'
+[ "$(cat "$R/sys/class/mtd/mtd$E/type")" = nor ] &&
+[ "$(cat "$R/sys/class/mtd/mtd$E/writesize")" = 1 ] &&
+[ $(( $(cat "$R/sys/class/mtd/mtd$E/flags") & 0x400 )) -ne 0 ] || fail 'environment geometry/write policy differs'
+[ "$(cat "$R/sys/class/mtd/mtd$E/size")" = 65536 ] || fail 'unexpected environment size'
+# Captured Miami NOR exposes 4KiB erase sectors inside the full 64KiB
+# environment partition. fwtools uses one complete 64KiB environment region.
+case "$(cat "$R/sys/class/mtd/mtd$E/erasesize")" in
+ 4096|65536) ;; *) fail 'unexpected environment erase size' ;;
+esac
+for spec in "$T:$OFFSET:$TARGET" "$O:$([ "$OEM" = rootfs ] && echo 0xc0000 || echo 0x60c0000):$OEM"; do
+ n=${spec%%:*}; rest=${spec#*:}; off=${rest%%:*}; name=${rest#*:}
+ if [ -r "$R/sys/class/mtd/mtd$n/offset" ]; then
+  [ "$(cat "$R/sys/class/mtd/mtd$n/offset")" = "$((off))" ] || fail 'bank offset differs'
+ else
+  bounds=$(printf '0x%012x-0x%012x : "%s"' "$((off))" "$((off+100663296))" "$name")
+  dmesg | grep -F "$bounds" >/dev/null || fail "cannot confirm offset for $name from sysfs/dmesg"
+ fi
+done
+[ "$(get bootcmd)" = bootipq ] || fail 'bootcmd is not idle bootipq'
+! get changing_bootcmd >/dev/null || [ -z "$(get changing_bootcmd)" ] || fail 'boot change already pending'
+[ "$(get miami_ab_version || true)" != 1 ] || fail 'already converted; OEM-preserving route unavailable'
+for key in miami_installer_target miami_installer_job miami_installer_image; do
+ [ -z "$(get "$key" || true)" ] || { [ "$mode" = arm ] && [ -n "$ENROLMENT_KEY" ]; } || fail 'native enrollment transaction pending; storage pilot cannot overwrite it'
+done
+[ -z "$(get miami_storage_pending || true)" ] || fail 'interrupted storage transaction; retain OEM and inspect before recovery'
+config=
+for c in "$R/tmp/fw_env.config" "$R/etc/fw_env.config"; do [ ! -f "$c" ] || { config=$c; break; }; done
+[ -n "$config" ] || fail 'no fw_env.config'
+awk -v m="/dev/mtd$E" '!/^#/ && NF {if($1!=m && $1!=m "ro")bad=1;n++} END{exit(bad || n!=1)}' "$config" || fail 'fw_env.config does not select only APPSBLENV'
+# Require one complete environment block and reject disagreeing competing configs.
+fields=$(awk '!/^#/ && NF {print NF}' "$config")
+[ "$fields" = 3 ] || [ "$fields" = 4 ] || [ "$fields" = 5 ] || fail 'unexpected fw_env.config fields'
+geom=$(mktemp "$R/tmp/miami-env-geometry.XXXXXX")
+awk '!/^#/ && NF {print}' "$config" > "$geom"
+read -r envdev envoffset envsize enverase envsectors < "$geom"
+rm -f "$geom"
+# Legacy OEM configs omit optional erase/sector fields; geometry above proves
+# the full 64KiB NOR partition those defaults select.
+enverase=${enverase:-65536}
+for number in "$envoffset" "$envsize" "$enverase" "${envsectors:-1}"; do
+ case "$number" in ''|*[!0-9a-fA-Fx]*) fail 'invalid environment geometry';; esac
+done
+[ $((envoffset)) -eq 0 ] && [ $((envsize)) -eq 65536 ] && [ $((enverase)) -eq 65536 ] && [ $(( ${envsectors:-1} )) -eq 1 ] || fail 'environment offsets/sizes differ'
+for c in "$R/tmp/fw_env.config" "$R/etc/fw_env.config"; do
+ [ ! -f "$c" ] || [ "$(awk '!/^#/ && NF {print}' "$c")" = "$(awk '!/^#/ && NF {print}' "$config")" ] || fail 'competing environment configs differ'
+done
+# Captured OEM fwtools may use /tmp config instead of /etc. Verify actual access.
+command -v strace >/dev/null || fail 'strace missing; cannot verify OEM environment device access'
+trace=$(mktemp "$R/tmp/miami-bank-env.XXXXXX")
+strace -f -e trace=open,openat -o "$trace" fw_printenv bootcmd >/dev/null 2>"$trace.stderr" || fail 'environment access/CRC validation failed'
+[ ! -s "$trace.stderr" ] || fail 'fw_printenv reported environment warning; no default-CRC fallback'
+grep -F "\"${config#$R}\"" "$trace" >/dev/null || fail 'fwtool is not using the inspected config'
+{ grep -F "\"/dev/mtd$E\"" "$trace" >/dev/null || grep -F "\"/dev/mtd${E}ro\"" "$trace" >/dev/null; } || fail 'fwtool did not open APPSBLENV'
+grep -oE '"/dev/mtd[0-9]+(ro)?"' "$trace" | while read -r device; do
+ case "$device" in "\"/dev/mtd$E\""|"\"/dev/mtd${E}ro\"") ;; *) fail 'fwtool opened an unexpected MTD device';; esac
+done
+rm -f "$trace" "$trace.stderr"
+lock=
+if [ "$mode" != check ]; then
+ lock="$R/tmp/cambium-oem-install.lock"
+ mkdir "$lock" || fail 'another installer is active; inspect stale lock before retry'
+ chmod 0700 "$lock"
+ # Re-read mutable state after serialization, before any target access/write.
+ [ "$(get image)" = "$img" ] && [ "$(get bootcmd)" = bootipq ] &&
+ [ -z "$(get changing_bootcmd || true)" ] && [ -z "$(get miami_storage_pending || true)" ] || {
+  rmdir "$lock"; fail 'boot or transaction state changed before lock acquisition'
+ }
+fi
+owned=0 UBI=
+release() { if [ "$owned" = 1 ]; then ubidetach -m "$T" >/dev/null 2>&1 || echo 'target UBI detach failed' >&2; fi; }
+finish() { release; [ -z "$lock" ] || rmdir "$lock"; }
+trap finish EXIT
+find_ubi() { UBI=; count=0; for d in "$R"/sys/class/ubi/ubi[0-9]*; do [ -f "$d/mtd_num" ] || continue; [ "$(cat "$d/mtd_num")" != "$T" ] || { UBI=${d##*/}; count=$((count+1)); }; done; [ "$count" -le 1 ] || fail 'multiple UBI devices for target'; }
+volume() { found=; count=0; for d in "$R/sys/class/ubi/$UBI"_[0-9]*; do [ -f "$d/name" ] || continue; [ "$(cat "$d/name")" != "$1" ] || { found=${d##*/}; count=$((count+1)); }; done; [ "$count" -le 1 ] || fail 'duplicate volume name'; [ -n "$found" ] || return 1; echo "$found"; }
+busy() {
+ # Refuse active mappings, including aliases/UBIFS name forms, without unmounting.
+ for table in "$R/proc/mounts" "$R/proc/self/mountinfo"; do
+  [ -r "$table" ] || continue
+  grep -E "(^|[[:space:]/])${UBI}([_:]|[[:space:]])|(^|[[:space:]/])ubiblock${UBI#ubi}_|(^|[[:space:]:])(rootfs_data|cambium_device_data|miami_openwifi_trial)([[:space:]]|$)" "$table" >/dev/null && fail 'target or ambiguous target volume is mounted'
+ done
+ for d in "$R"/sys/class/block/ubiblock*; do [ ! -e "$d" ] || case "${d##*/}" in ubiblock${UBI#ubi}_*) fail 'target has a block-device mapping';; esac; done
+ for fd in "$R"/proc/[0-9]*/fd/*; do
+  [ -L "$fd" ] || continue
+  path=$(readlink "$fd" 2>/dev/null || true)
+  case "$path" in /dev/$UBI|/dev/${UBI}_*|/dev/mtd$T|/dev/mtd${T}ro) fail 'target has an open userspace device';; esac
+ done
+}
+attach() {
+ for tool in ubiattach ubidetach; do command -v "$tool" >/dev/null || fail "missing $tool"; done
+ find_ubi
+ if [ -z "$UBI" ]; then ubiattach "$R/dev/ubi_ctrl" -m "$T" >/dev/null; owned=1; find_ubi; fi
+ [ -n "$UBI" ] || fail 'target did not attach'
+ busy
+
+ [ "$(cat "$R/sys/class/ubi/$UBI/ro_mode")" = 0 ] || fail 'target UBI is read-only'
+}
+# Resolve exact IDs and reject every foreign/duplicate volume before mutation.
+inventory() {
+ BANK_KIND=openwrt
+ if volume ubi_rootfs >/dev/null; then BANK_KIND=oem; fi
+ for d in "$R/sys/class/ubi/$UBI"_[0-9]*; do
+  [ -f "$d/name" ] || continue
+  [ "$(cat "$d/upd_marker")" = 0 ] && [ "$(cat "$d/corrupted")" = 0 ] || fail 'target contains interrupted/corrupt UBI volume'
+  id=${d##*_}; name=$(cat "$d/name")
+  case "$BANK_KIND:$id:$name" in
+  oem:0:kernel|oem:1:ubi_rootfs) ;;
+  openwrt:0:kernel|openwrt:1:rootfs|openwrt:2:rootfs_data|openwrt:3:cambium_device_data|openwrt:4:miami_openwifi_trial|openwrt:4:certificates) ;;
+  *) fail "unapproved $BANK_KIND target volume $id:$name" ;;
+  esac
+ done
+ volume kernel >/dev/null || fail 'missing kernel'
+ [ "$(cat "$R/sys/class/ubi/$UBI/min_io_size")" = 2048 ] && [ "$(cat "$R/sys/class/ubi/$UBI/eraseblock_size")" = 126976 ] || fail 'unexpected LEB size'
+ if [ "$BANK_KIND" = oem ]; then
+  volume ubi_rootfs >/dev/null || fail 'missing OEM ubi_rootfs'
+ else
+  for name in rootfs rootfs_data cambium_device_data; do volume "$name" >/dev/null || fail "missing $name"; done
+  vault=$(volume cambium_device_data)
+  [ "$(cat "$R/sys/class/ubi/$vault/reserved_ebs")" = 72 ] || fail 'vault is not the qualified 72-LEB allocation; no resize'
+ fi
+}
+# Build a radio vault in tmpfs from the running OEM, before any bank mutation.
+# It uses exactly the existing runtime's own-unit archive format and file set.
+vault_stage_oem() {
+ local f rel size hash count=0 art artsha srcpath srcroot
+ VAULT_STAGE=$(mktemp -d "$R/tmp/miami-oem-vault.XXXXXX")
+ mkdir "$VAULT_STAGE/files"
+ srcroot=$(readlink -f "$R/lib/firmware") || fail 'OEM firmware tree missing'
+ art=$(mtd 0:ART) || fail 'ART missing'
+ artsha=$(sha256sum "$R/dev/mtd${art}ro" | cut -d ' ' -f1)
+ printf 'format 1\nboard cambiumnetworks,x7-35x\nsku 0000002c\nart_sha256 %s\n' "$artsha" > "$VAULT_STAGE/MANIFEST"
+ for f in "$R"/lib/firmware/IPQ5332/WIFI_FW/q6_fw0.mdt "$R"/lib/firmware/IPQ5332/WIFI_FW/q6_fw0.b* \
+  "$R"/lib/firmware/IPQ5332/WIFI_FW/q6_fw1.mdt "$R"/lib/firmware/IPQ5332/WIFI_FW/q6_fw1.b* \
+  "$R"/lib/firmware/IPQ5332/WIFI_FW/iu_fw.mdt "$R"/lib/firmware/IPQ5332/WIFI_FW/iu_fw.b* \
+  "$R"/lib/firmware/IPQ5332/WIFI_FW/bdwlan.b12-acadia "$R"/lib/firmware/IPQ5332/WIFI_FW/regdb.bin-acadia \
+  "$R"/lib/firmware/qcn9224/WIFI_FW/bdwlan.b1019-acadia* "$R"/lib/firmware/qcn9224/WIFI_FW/regdb.bin-acadia; do
+  [ -f "$f" ] || continue
+  srcpath=$(readlink -f "$f") || fail 'OEM firmware source cannot resolve'
+  case "$srcpath" in "$srcroot"/*) ;; *) fail 'OEM firmware link leaves firmware tree' ;; esac
+  [ -s "$f" ] || fail 'empty OEM firmware source'
+  rel=${f#"$R"/}
+  mkdir -p "$VAULT_STAGE/files/${rel%/*}"
+  cp "$f" "$VAULT_STAGE/files/$rel"
+  size=$(wc -c < "$f" | tr -d '[:space:]'); hash=$(sha256sum "$f" | cut -d ' ' -f1)
+  [ "$(sha256sum "$VAULT_STAGE/files/$rel" | cut -d ' ' -f1)" = "$hash" ] || fail 'OEM firmware copy differs'
+  printf 'file %s %s %s\n' "$rel" "$size" "$hash" >> "$VAULT_STAGE/MANIFEST"
+  count=$((count+1))
+ done
+ [ "$count" -gt 0 ] || fail 'running OEM radio firmware not found'
+ for rel in lib/firmware/IPQ5332/WIFI_FW/q6_fw0.mdt lib/firmware/IPQ5332/WIFI_FW/q6_fw1.mdt lib/firmware/IPQ5332/WIFI_FW/iu_fw.mdt lib/firmware/IPQ5332/WIFI_FW/bdwlan.b12-acadia lib/firmware/IPQ5332/WIFI_FW/regdb.bin-acadia lib/firmware/qcn9224/WIFI_FW/bdwlan.b1019-acadia lib/firmware/qcn9224/WIFI_FW/bdwlan.b1019-acadia.uk lib/firmware/qcn9224/WIFI_FW/regdb.bin-acadia; do
+  [ -s "$VAULT_STAGE/files/$rel" ] || fail "required OEM radio file missing: $rel"
+ done
+ (cd "$VAULT_STAGE" && tar cf vault.tar MANIFEST files)
+ VAULT_FILE=$VAULT_STAGE/vault.tar
+ VAULT_SIZE=$(wc -c < "$VAULT_FILE" | tr -d '[:space:]')
+ [ "$VAULT_SIZE" -le 9142272 ] || fail 'OEM radio archive exceeds reserved vault; no bank changed'
+ VAULT_PAYLOAD_SHA=$(sha256sum "$VAULT_FILE" | cut -d ' ' -f1)
+}
+
+vault_check() {
+ vault=$(volume cambium_device_data) || fail 'missing vault'
+ VAULT_SHA=$(sha256sum "$R/dev/$vault" | cut -d ' ' -f1)
+ art=$(mtd 0:ART) || fail 'ART missing'
+ artsha=$(sha256sum "$R/dev/mtd${art}ro" | cut -d ' ' -f1)
+ work=$(mktemp -d "$R/tmp/miami-vault-check.XXXXXX")
+ # Never extract an unchecked path or special entry from device data.
+ tar tf "$R/dev/$vault" > "$work/list" || fail 'vault archive unreadable'
+ awk '/^\// || /(^|\/)\.\.?(\/|$)/ || /[^A-Za-z0-9_.\/-]/ {bad=1} END{exit bad}' "$work/list" || fail 'unsafe vault archive path'
+ tar tvf "$R/dev/$vault" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {bad=1} END{exit bad}' || fail 'special vault archive entry'
+ tar xf "$R/dev/$vault" -C "$work" || fail 'vault extraction failed'
+ [ "$(sed -n 's/^format //p' "$work/MANIFEST")" = 1 ] &&
+ [ "$(sed -n 's/^board //p' "$work/MANIFEST")" = cambiumnetworks,x7-35x ] &&
+ [ "$(sed -n 's/^sku //p' "$work/MANIFEST")" = 0000002c ] &&
+ [ "$(sed -n 's/^art_sha256 //p' "$work/MANIFEST")" = "$artsha" ] || fail 'vault is not bound to this exact board/ART'
+ count=0
+ while read -r tag path size hash; do
+  [ "$tag" = file ] || continue
+  case "$path:$size:$hash" in *[!A-Za-z0-9_./:-]*) fail 'malformed vault manifest';; esac
+  case "$path" in lib/firmware/IPQ5332/WIFI_FW/*|lib/firmware/qcn9224/WIFI_FW/*) ;; *) fail 'foreign vault file';; esac
+  [ -f "$work/files/$path" ] && [ ! -L "$work/files/$path" ] &&
+  [ "$(wc -c < "$work/files/$path")" -eq "$size" ] &&
+  [ "$(sha256sum "$work/files/$path" | cut -d ' ' -f1)" = "$hash" ] || fail 'vault file checksum mismatch'
+  count=$((count+1))
+ done < "$work/MANIFEST"
+ [ "$count" -gt 0 ] || fail 'empty vault manifest'
+ for name in lib/firmware/IPQ5332/WIFI_FW/q6_fw0.mdt lib/firmware/IPQ5332/WIFI_FW/q6_fw1.mdt lib/firmware/IPQ5332/WIFI_FW/iu_fw.mdt lib/firmware/IPQ5332/WIFI_FW/bdwlan.b12-acadia lib/firmware/IPQ5332/WIFI_FW/regdb.bin-acadia lib/firmware/qcn9224/WIFI_FW/bdwlan.b1019-acadia; do
+  [ -s "$work/files/$name" ] || fail 'required radio file absent in vault'
+  grep -F "file $name " "$work/MANIFEST" >/dev/null || fail 'required radio file is not covered by manifest'
+ done
+ rm -rf "$work"
+}
+select_payload() {
+ case "$SLOT" in
+ 0) KERNEL=$KERNEL0 KERNEL_SHA=$KERNEL0_SHA KERNEL_SIZE=$KERNEL0_SIZE ROOTFS=$ROOTFS0 ROOTFS_SHA=$ROOTFS0_SHA ROOTFS_SIZE=$ROOTFS0_SIZE ;;
+ 1) KERNEL=$KERNEL1 KERNEL_SHA=$KERNEL1_SHA KERNEL_SIZE=$KERNEL1_SIZE ROOTFS=$ROOTFS1 ROOTFS_SHA=$ROOTFS1_SHA ROOTFS_SIZE=$ROOTFS1_SIZE ;;
+ esac
+ for pin in "$KERNEL_SHA" "$ROOTFS_SHA"; do case "$pin" in ''|*[!0-9a-f]*) fail 'unbuilt payload';; esac; [ "${#pin}" = 64 ] || fail 'unbuilt payload'; done
+ case "$KERNEL_SIZE:$ROOTFS_SIZE" in *[!0-9:]*) fail 'unbuilt payload';; esac
+ [ "$KERNEL_SIZE" -gt 0 ] && [ "$ROOTFS_SIZE" -gt 0 ] || fail 'empty payload'
+ KLEBS=$(((KERNEL_SIZE+126975)/126976)); RLEBS=$(((ROOTFS_SIZE+126975)/126976)); POOL=$(((50331648+126975)/126976))
+ [ "$((KLEBS+RLEBS))" -le "$POOL" ] || fail 'images exceed 48MiB upgrade pool'
+}
+fetch() {
+ file=$1 hash=$2 size=$3
+ case "$file" in ''|*[!A-Za-z0-9_.-]*) fail 'unsafe payload name';; esac
+ [ ! -L "$R/tmp/$file" ] || fail 'payload path is a symlink'
+ if [ ! -f "$R/tmp/$file" ] || [ "$(sha256sum "$R/tmp/$file" | cut -d ' ' -f1)" != "$hash" ]; then
+  wget -O "$R/tmp/$file" "${CAMBIUM_INSTALL_SERVER:?Set CAMBIUM_INSTALL_SERVER to the operator image server URL}/$file" || fail 'payload download failed'
+ fi
+ [ "$(wc -c < "$R/tmp/$file")" -eq "$size" ] && [ "$(sha256sum "$R/tmp/$file" | cut -d ' ' -f1)" = "$hash" ] || fail 'payload hash or size differs'
+}
+readback() {
+ v=$(volume "$1") || fail "missing $1"
+ [ "$(head -c "$3" "$R/dev/$v" | sha256sum | cut -d ' ' -f1)" = "$2" ] || fail "$1 readback differs"
+}
+payload_matches() {
+ local v size=$3 hash=$2
+ case "$size" in ''|*[!0-9]*) return 1 ;; esac
+ case "$hash" in ''|*[!0-9a-f]*) return 1 ;; esac
+ [ "${#hash}" = 64 ] && [ "$size" -gt 0 ] || return 1
+ v=$(volume "$1") || return 1
+ [ "$size" -le "$(( $(cat "$R/sys/class/ubi/$v/reserved_ebs") * 126976 ))" ] || return 1
+ [ "$(head -c "$size" "$R/dev/$v" | sha256sum | cut -d ' ' -f1)" = "$hash" ]
+}
+prior_payload_pair() {
+ local ks kh rs rh
+ case "$SLOT" in
+ 0) ks=${PRIOR_KERNEL0_SIZE:-0};kh=${PRIOR_KERNEL0_SHA:-};rs=${PRIOR_ROOTFS0_SIZE:-0};rh=${PRIOR_ROOTFS0_SHA:-} ;;
+ 1) ks=${PRIOR_KERNEL1_SIZE:-0};kh=${PRIOR_KERNEL1_SHA:-};rs=${PRIOR_ROOTFS1_SIZE:-0};rh=${PRIOR_ROOTFS1_SHA:-} ;;
+ *) return 1 ;;
+ esac
+ payload_matches kernel "$kh" "$ks" && payload_matches rootfs "$rh" "$rs"
+}
+preserved() {
+ [ "$(sha256sum "$R/dev/$vault" | cut -d ' ' -f1)" = "$VAULT_SHA" ] || fail 'vault changed'
+ [ "$(sha256sum "$R/dev/mtd${O}ro" | cut -d ' ' -f1)" = "$OEM_SHA" ] || fail 'OEM bank changed'
+ [ "$(get image)" = "$img" ] && [ "$(get bootcmd)" = bootipq ] || fail 'OEM boot default changed'
+}
+case "$mode" in
+check)
+ [ "$#" = 0 ] || fail 'check takes no arguments'
+ find_ubi
+ [ -n "$UBI" ] || { echo 'Target is not attached; check did not attach or write anything'; exit 0; }
+ inventory
+ echo "OEM=$OEM retained; target=$TARGET slot=$SLOT UBI=$UBI layout=$BANK_KIND; LEB=126976"
+ if [ "$BANK_KIND" = oem ]; then echo "Clean OEM target: radio vault will be staged from running OEM before writes"; else echo "Existing 72-LEB radio vault will be checked and preserved"; fi
+ for d in "$R/sys/class/ubi/$UBI"_[0-9]*; do [ ! -f "$d/name" ] || echo "${d##*/} $(cat "$d/name") reserved=$(cat "$d/reserved_ebs")"; done
+ echo 'Read-only check complete. Before install/arm, remove only the verified idle rootfs mapping:'
+ echo "ubiblock --remove /dev/${UBI}_1"
+ ;;
+install|update)
+ if [ "$mode" = install ]; then
+  case "$*" in '--yes --replace-inactive-bank --backed-up'|'--yes --replace-openwrt --backed-up') ;; *) fail 'install requires --yes --replace-inactive-bank --backed-up';; esac;
+ else [ "$*" = '--yes --backed-up' ] || fail 'update requires --yes --backed-up'; fi
+ for tool in wget ubiupdatevol ubimkvol ubirmvol tar fw_setenv; do command -v "$tool" >/dev/null || fail "missing $tool"; done
+ select_payload; fetch "$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE"; fetch "$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE"
+ attach; inventory
+ if [ "$BANK_KIND" = oem ]; then
+  [ "$mode" = install ] && [ "$*" = '--yes --replace-inactive-bank --backed-up' ] || fail 'OEM target requires clean install with --replace-inactive-bank'
+  vault_stage_oem
+ else
+  vault_check
+ fi
+ OEM_SHA=$(sha256sum "$R/dev/mtd${O}ro" | cut -d ' ' -f1)
+ cert=$(volume certificates || true)
+ if [ "$mode" = install ]; then
+  [ -z "$cert" ] || fail 'certificate store already exists; use update, never clean it'
+  if trial=$(volume miami_openwifi_trial); then
+   [ "$(head -c 26302672 "$R/dev/$trial" | sha256sum | cut -d ' ' -f1)" = 389d3dc6a9ec11f363bee2619569874488752b557a27475369f6759da569a837 ] || fail 'RAM trial not the known current image'
+  fi
+  free=$(cat "$R/sys/class/ubi/$UBI/avail_eraseblocks")
+  for name in kernel ubi_rootfs rootfs rootfs_data miami_openwifi_trial; do v=$(volume "$name" || true); [ -z "$v" ] || free=$((free+$(cat "$R/sys/class/ubi/$v/reserved_ebs"))); done
+  VAULT_NEW_LEBS=0
+  [ "$BANK_KIND" != oem ] || VAULT_NEW_LEBS=72
+  DATALEBS=$((free-POOL-64-VAULT_NEW_LEBS))
+  [ "$DATALEBS" -ge 67 ] || fail 'insufficient overlay/certificate/upgrade space; no volumes changed'
+  busy
+  put miami_storage_pending "install:$SLOT:$KERNEL_SHA:$ROOTFS_SHA"
+  # Explicit inactive-volume removals only; running OEM and existing vault stay intact.
+  for name in kernel ubi_rootfs rootfs rootfs_data miami_openwifi_trial; do v=$(volume "$name" || true); [ -z "$v" ] || ubirmvol "$R/dev/$UBI" -N "$name"; done
+  ubimkvol "$R/dev/$UBI" -n 2 -N rootfs_data -s "$((DATALEBS*126976))"
+  ubimkvol "$R/dev/$UBI" -n 4 -N certificates -s 8126464
+  if [ "$BANK_KIND" = oem ]; then
+   ubimkvol "$R/dev/$UBI" -n 3 -N cambium_device_data -s 9142272
+   vault=$(volume cambium_device_data)
+   ubiupdatevol "$R/dev/$vault" "$VAULT_FILE"
+   [ "$(head -c "$VAULT_SIZE" "$R/dev/$vault" | sha256sum | cut -d ' ' -f1)" = "$VAULT_PAYLOAD_SHA" ] || fail 'new vault readback differs'
+   vault_check
+  fi
+ else
+  [ -n "$cert" ] && [ "$(cat "$R/sys/class/ubi/$cert/reserved_ebs")" = 64 ] || fail 'missing exact certificate store'
+  if payload_matches kernel "$KERNEL_SHA" "$KERNEL_SIZE" && payload_matches rootfs "$ROOTFS_SHA" "$ROOTFS_SIZE"; then
+   : # Reinstall of the exact current pilot.
+  else
+   prior_payload_pair || fail 'prior kernel/rootfs pair not independently pinned for this pilot updater'
+  fi
+  data=$(volume rootfs_data)
+  DATA_SHA=$(sha256sum "$R/dev/$data" | cut -d ' ' -f1); CERT_SHA=$(sha256sum "$R/dev/$cert" | cut -d ' ' -f1)
+  free=$(cat "$R/sys/class/ubi/$UBI/avail_eraseblocks")
+  for name in kernel rootfs; do v=$(volume "$name"); free=$((free+$(cat "$R/sys/class/ubi/$v/reserved_ebs"))); done
+  [ "$free" -ge "$((KLEBS+RLEBS))" ] || fail 'new images do not fit without altering settings'
+  busy
+  put miami_storage_pending "update:$SLOT:$KERNEL_SHA:$ROOTFS_SHA"
+  ubirmvol "$R/dev/$UBI" -N kernel; ubirmvol "$R/dev/$UBI" -N rootfs
+ fi
+ ubimkvol "$R/dev/$UBI" -n 0 -N kernel -s "$((KLEBS*126976))"
+ ubimkvol "$R/dev/$UBI" -n 1 -N rootfs -s "$((RLEBS*126976))"
+ v=$(volume kernel); ubiupdatevol "$R/dev/$v" "$R/tmp/$KERNEL"
+ v=$(volume rootfs); ubiupdatevol "$R/dev/$v" "$R/tmp/$ROOTFS"
+ sync; readback kernel "$KERNEL_SHA" "$KERNEL_SIZE"; readback rootfs "$ROOTFS_SHA" "$ROOTFS_SIZE"; preserved
+ if [ "$mode" = update ]; then
+  [ "$(sha256sum "$R/dev/$data" | cut -d ' ' -f1)" = "$DATA_SHA" ] && [ "$(sha256sum "$R/dev/$cert" | cut -d ' ' -f1)" = "$CERT_SHA" ] || fail 'persistent settings/store changed'
+ fi
+ remove miami_storage_pending
+ echo 'Persistent images installed and read back; OEM/vault preserved. No boot armed or reboot performed.'
+ ;;
+arm)
+ [ "$*" = --yes ] || fail 'arm requires --yes'
+ command -v fw_setenv >/dev/null || fail 'missing fw_setenv'
+ select_payload; attach; inventory
+ [ "$BANK_KIND" = openwrt ] || fail 'no installed OpenWiFi layout to arm'
+ vault_check
+ cert=$(volume certificates) || fail 'missing certificate store'
+ [ "$(cat "$R/sys/class/ubi/$cert/reserved_ebs")" = 64 ] || fail 'wrong certificate allocation'
+ readback kernel "$KERNEL_SHA" "$KERNEL_SIZE"; readback rootfs "$ROOTFS_SHA" "$ROOTFS_SIZE"
+ if [ -n "$ENROLMENT_KEY" ]; then
+  command -v miami_enrolment_stage >/dev/null || fail 'enrolment integration absent from this installer'
+  miami_enrolment_stage "$ENROLMENT_KEY" || fail 'enrolment staging failed; OEM boot not armed'
+  ENROLMENT_KEY=
+ fi
+ release; owned=0
+ restore='setenv bootcmd bootipq && setenv changing_bootcmd && saveenv'
+ load="nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts 'mtdparts=nand0:0x6000000@$OFFSET(fs)' && ubi part fs && ubi read 0x60000000 kernel && setenv bootargs console=ttyMSM0,115200n8 ubi.mtd=$TARGET root=/dev/ubiblock0_1 rootfstype=squashfs rootwait && bootm 0x60000000#config@mi01.6-acadia-slot$SLOT; reset"
+ armed=0
+ rollback() { if [ "$armed" != 1 ]; then fw_setenv bootcmd bootipq || echo 'Cannot restore bootcmd; do not reboot' >&2; fw_setenv changing_bootcmd || echo 'Cannot clear marker; do not reboot' >&2; fi; finish; }
+ trap rollback EXIT
+ put miami_persistent_restore "$restore"; put miami_persistent_load "$load"; put miami_persistent_slot "$SLOT"
+ put changing_bootcmd 1; put bootcmd 'run miami_persistent_restore && run miami_persistent_load || bootipq'
+ armed=1; trap - EXIT; sync; finish
+ echo 'Guarded persistent boot armed. Restore/save OEM default precedes loading; reboot manually with serial logging.'
+ ;;
+esac

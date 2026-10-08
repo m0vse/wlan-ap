@@ -1,5 +1,6 @@
 From: Phil Taylor <phil@m0vse.uk>
-Subject: [PATCH] qualcommax: add Cambium Thor OpenWiFi
+Date: Sat, 3 Oct 2026 10:38:12 +0100
+Subject: [PATCH] thor: publish reviewed XV3-8 profile and hardware integration
 
 diff --git a/include/image-commands.mk b/include/image-commands.mk
 index ca9e527c64..14eecdf494 100644

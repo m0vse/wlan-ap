@@ -1,4 +1,5 @@
 From: Phil Taylor <phil@m0vse.uk>
+Date: Thu, 1 Oct 2026 18:42:20 +0100
 Subject: OpenWiFi: early network activation gates and temporary protocol diagnostics
 
 Keep stock bridge topology. The XV2-2T1 diagnostic candidate records device

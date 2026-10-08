@@ -1,5 +1,6 @@
 From: Phil Taylor <phil@m0vse.uk>
-Subject: [PATCH] cambium-ab: check management default in configured table
+Date: Fri, 2 Oct 2026 03:13:15 +0100
+Subject: [PATCH] cambium: carry selected management routing-table health check
 
 diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
 index 66027c1485..04f408f590 100644

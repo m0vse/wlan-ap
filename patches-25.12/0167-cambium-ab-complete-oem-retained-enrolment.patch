@@ -1,0 +1,31 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] Complete native enrolment after OEM-retained boot confirmation
+
+--- a/package/cambium/cambium-ab/files/cambium-ab-guard
++++ b/package/cambium/cambium-ab/files/cambium-ab-guard
+@@ -220,6 +220,13 @@
+ 		! ab_hook healthy_boot || "ab_${AB_FAMILY}_healthy_boot" || return 1
+ 		[ "$AB_MARKER" != 1 ] || ab_setenv changing_bootcmd 1 || return 1
+ 		ab_setenv bootcmd "$bootcmd" || return 1
++		[ "$(ab_getenv bootcmd)" = "$bootcmd" ] || return 1
++		if command -v ab_installer_legacy_complete >/dev/null 2>&1; then
++			ab_installer_legacy_complete "$slot" || {
++				log "native installer completion remains pending"
++				return 1
++			}
++		fi
+ 		log "healthy; guarded OpenWrt boot of slot $slot rearmed"
+ 		return 0
+ 	fi
+
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=19
++PKG_RELEASE:=20
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 

@@ -1,0 +1,71 @@
+--- a/renderer/wifi/phy.uc
++++ b/renderer/wifi/phy.uc
+@@ -21,6 +21,14 @@
+ 		return (freq - 5000) / 5;
+ }
+ 
++// Drivers may rename a WIPHY independently of its numeric netlink index.
++function phy_name(phy) {
++	if (type(phy.wiphy_name) == 'string' &&
++	    match(phy.wiphy_name, /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/))
++		return phy.wiphy_name;
++	return 'phy' + phy.wiphy;
++}
++
+ function phy_get(wdev) {
+         let res = nl.request(def.NL80211_CMD_GET_WIPHY, def.NLM_F_DUMP, { split_wiphy_dump: true });
+ 
+@@ -51,7 +59,7 @@
+ 			phys = fs.glob(sprintf('/sys/devices/platform/%s/ieee80211/phy*', section.path));
+ 		if (!length(phys))
+ 			continue;
+-		sort(phys);
++		sort(phys, (a, b) => +fs.readfile(a + '/index') - +fs.readfile(b + '/index'));
+ 		let index = 0;
+ 		for (let phy in phys)
+ 			add_path(section.path, phy, index++);
+@@ -108,7 +116,7 @@
+ 					nl_phys = {};
+ 					for (let p in phy_get() || [])
+ 						if (exists(p, 'wiphy'))
+-							nl_phys['phy' + p.wiphy] = p;
++							nl_phys[phy_name(p)] = p;
+ 				}
+ 
+ 				for (let nl_band in nl_phys[name]?.wiphy_bands || [])
+@@ -229,7 +237,7 @@
+ 	for (let phy in phys) {
+ 		if (!exists(phy, 'wiphy'))
+ 			continue;
+-		let phyname = 'phy' + phy.wiphy;
++		let phyname = phy_name(phy);
+ 		let path = paths[phyname];
+ 		if (!path)
+ 			continue;
+@@ -242,7 +250,7 @@
+ 		let p = {};
+ 		p.is_morse_phy = true;
+ 
+-		let temp = get_hwmon('phy' + phy.wiphy);
++		let temp = get_hwmon(phy_name(phy));
+ 		if (temp)
+ 			p.temperature = temp / 1000;
+ 
+@@ -309,7 +317,7 @@
+ 	for (let phy in phys) {
+ 		if (!exists(phy, 'wiphy'))
+ 			continue;
+-		let phyname = 'phy' + phy.wiphy;
++		let phyname = phy_name(phy);
+ 		let path = paths[phyname];
+ 		if (!path)
+ 			continue;
+@@ -326,7 +334,7 @@
+ 
+ 		p.is_morse_phy = isMorse;  // save result in is_morse_phy
+ 
+-		let temp = get_hwmon('phy' + phy.wiphy);
++		let temp = get_hwmon(phy_name(phy));
+ 		if (temp)
+ 			p.temperature = temp / 1000;
+ 

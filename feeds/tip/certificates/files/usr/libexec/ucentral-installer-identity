@@ -163,7 +163,8 @@ function validate(seed) {
         !((binding.family == 'sage' && binding.model in ['E410', 'E410B']) ||
           (binding.family == 'jaguar' && binding.model in ['XV2-2', 'XV2-2T1', 'XE3-4']) ||
           (binding.family == 'cheetah' && binding.model == 'XV2-21X') ||
-          (binding.family == 'thor' && binding.model == 'XV3-8')) ||
+          (binding.family == 'thor' && binding.model == 'XV3-8') ||
+          (binding.family == 'miami' && binding.model == 'X7-35X')) ||
         !(binding.source_slot + ':' + binding.target_slot in ['0:1', '1:0'])) fail('Invalid hardware identity binding');
     for (let key in ['image_sha256', 'job_id', 'source_contract_sha256'])
         if (!match(binding[key], /^[0-9a-f]{64}$/)) fail('Invalid identity binding digest');

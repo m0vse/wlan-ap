@@ -38,7 +38,7 @@ copy_certificates() {
 		country=$(fw_printenv -n country)
 	}
 	[ -z "$country" ] && country=US
-	echo "options cfg80211 ieee80211_regdom="$country > /etc/modules.conf 
+	run_stage module-country /usr/libexec/ucentral-module-country "$country" || return 1
 	echo -n $country > /etc/ucentral/country
 	sync
 	exit 0

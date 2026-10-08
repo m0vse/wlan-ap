@@ -1,5 +1,6 @@
 From: Phil Taylor <phil@m0vse.uk>
-Subject: [PATCH] cambium-ab: retain bank-local certificate content
+Date: Fri, 2 Oct 2026 02:17:57 +0100
+Subject: [PATCH] certificates: retain verified active-bank identity across A/B upgrades
 
 diff --git a/package/cambium/cambium-ab/Makefile b/package/cambium/cambium-ab/Makefile
 index 401baa353b..b3d9241d67 100644

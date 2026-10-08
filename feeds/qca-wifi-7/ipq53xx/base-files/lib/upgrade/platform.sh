@@ -178,6 +178,12 @@ emmc_do_upgrade() {
 }
 
 platform_check_image() {
+	# OEM-preserving Miami profiles are updated from the OEM shell.
+	# Enable sysupgrade only after separately qualified release of the OEM slot.
+	if [ "$(board_name)" = "cambiumnetworks,x7-35x" ]; then
+		echo "Miami OEM-preserving profile: update through OEM; sysupgrade is not enabled" >&2
+		return 1
+	fi
 	local magic_long="$(get_magic_long "$1")"
 
 	board=$(board_name)
@@ -258,6 +264,12 @@ platform_check_image() {
 }
 
 platform_do_upgrade() {
+	# OEM-preserving Miami profiles are updated from the OEM shell.
+	# Enable sysupgrade only after separately qualified release of the OEM slot.
+	if [ "$(board_name)" = "cambiumnetworks,x7-35x" ]; then
+		echo "Miami OEM-preserving profile: update through OEM; sysupgrade is not enabled" >&2
+		return 1
+	fi
 	CI_UBIPART="rootfs"
 	CI_ROOTPART="ubi_rootfs"
 	CI_IPQ807X=1

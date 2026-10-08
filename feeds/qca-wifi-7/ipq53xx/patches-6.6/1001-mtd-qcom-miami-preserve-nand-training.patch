@@ -1,0 +1,26 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] mtd: qcom: avoid NAND training writes on Cambium X7-35X
+
+The SDK serial-training routine erases and programs a training page during
+probe, before read-only fixed partitions are registered. Miami recovery
+must preserve the complete OEM NAND, including its training partition.
+Use the supported 50 MHz feedback-clock mode on this exact board instead.
+Do not change other boards' training or the Miami NAND/ECC layout.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3714,6 +3714,13 @@
+ 			reg) | FEEDBACK_CLK_EN),
+ 			NAND_QSPI_MSTR_CONFIG);
+ 
++	/* Recovery must not erase/program OEM training data during probe. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		dev_info(nandc->dev,
++			 "Miami: preserve NAND training data, use 50MHz feedback clock\n");
++		return clk_set_rate(nandc->iomacro_clk, IO_MACRO_50_MHZ);
++	}
++
+ 	/* Read the training offset patched from u-boot */
+ 	if (of_property_read_u32(np, "qcom,training_offset",
+ 				&training_offset)) {

@@ -242,3 +242,63 @@ define Device/indio_um-325be
   DEVICE_PACKAGES := ath12k-wifi-indio-um-325be ath12k-firmware-qcn92xx ath12k-firmware-ipq5332
 endef
 TARGET_DEVICES += indio_um-325be
+# Experimental X7-35X RAM image. All OEM flash/environment stays read-only.
+# No persistent/factory/sysupgrade image or production migration admission.
+define Device/cambiumnetworks_miami-test-recovery
+  DEVICE_VENDOR := Cambium Networks
+  DEVICE_MODEL := X7-35X
+  DEVICE_VARIANT := OpenWiFi test recovery
+  DEVICE_DTS := ipq5332-cambium-x7-35x-recovery
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.6-acadia
+  KERNEL_LOADADDR := 0x41000000
+  KERNEL_ENTRY := 0x41000000
+  KERNEL_SUFFIX := .itb
+  KERNEL_INITRAMFS := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  SUPPORTED_DEVICES := cambiumnetworks,x7-35x
+  IMAGES :=
+  DEVICE_PACKAGES := cambium-miami-radio ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += cambiumnetworks_miami-test-recovery
+
+# Separate FIT/squashfs for OEM-driven installation; no sysupgrade artifact.
+define Device/cambiumnetworks_miami-persistent-slot0
+  DEVICE_VENDOR := Cambium Networks
+  DEVICE_MODEL := X7-35X
+  DEVICE_VARIANT := OEM-preserving storage pilot slot 0
+  DEVICE_DTS := ipq5332-cambium-x7-35x-persistent-slot0
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.6-acadia-slot0
+  KERNEL_LOADADDR := 0x41000000
+  KERNEL_ENTRY := 0x41000000
+  KERNEL_SUFFIX := .itb
+  KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  ROOTFSNAME_IN_UBI := rootfs
+  SUPPORTED_DEVICES := cambiumnetworks,x7-35x
+  IMAGES := kernel.itb rootfs.squashfs
+  IMAGE/kernel.itb := append-kernel
+  IMAGE/rootfs.squashfs := append-rootfs
+  DEVICE_PACKAGES := cambium-miami-persistent ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += cambiumnetworks_miami-persistent-slot0
+
+# Separate FIT/squashfs for OEM-driven installation; no sysupgrade artifact.
+define Device/cambiumnetworks_miami-persistent-slot1
+  DEVICE_VENDOR := Cambium Networks
+  DEVICE_MODEL := X7-35X
+  DEVICE_VARIANT := OEM-preserving storage pilot slot 1
+  DEVICE_DTS := ipq5332-cambium-x7-35x-persistent-slot1
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.6-acadia-slot1
+  KERNEL_LOADADDR := 0x41000000
+  KERNEL_ENTRY := 0x41000000
+  KERNEL_SUFFIX := .itb
+  KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  ROOTFSNAME_IN_UBI := rootfs
+  SUPPORTED_DEVICES := cambiumnetworks,x7-35x
+  IMAGES := kernel.itb rootfs.squashfs
+  IMAGE/kernel.itb := append-kernel
+  IMAGE/rootfs.squashfs := append-rootfs
+  DEVICE_PACKAGES := cambium-miami-persistent ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += cambiumnetworks_miami-persistent-slot1

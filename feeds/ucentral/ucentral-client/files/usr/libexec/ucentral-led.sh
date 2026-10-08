@@ -31,11 +31,13 @@ cambiumnetworks,e400)
 	done
 	exit 0
 	;;
-cambiumnetworks,xv3-8|cambiumnetworks,xv2-21x)
+cambiumnetworks,xv3-8|cambiumnetworks,xv2-21x|cambiumnetworks,x7-35x)
 	LED_PATH="/sys/class/leds/blue:status"
 	RUNNING_LED_PATH="/sys/class/leds/green:status"
 	PHASE_LED_PATHS="/sys/class/leds/orange:status"
-	[ "$(board_name)" != cambiumnetworks,xv3-8 ] || PHASE_LED_PATHS="$PHASE_LED_PATHS /sys/class/leds/red:status"
+	case "$(board_name)" in
+	cambiumnetworks,xv3-8|cambiumnetworks,x7-35x) PHASE_LED_PATHS="$PHASE_LED_PATHS /sys/class/leds/red:status" ;;
+	esac
 	;;
 cambium,e410|cambiumnetworks,e410|cambiumnetworks,e410b)
 	LED_PATH="/sys/class/leds/blue:status"

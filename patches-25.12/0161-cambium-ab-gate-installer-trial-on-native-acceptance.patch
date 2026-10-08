@@ -1,5 +1,6 @@
 From: Phil Taylor <phil@m0vse.uk>
-Subject: [PATCH] cambium-ab: gate installer trial on native acceptance
+Date: Sun, 4 Oct 2026 23:27:18 +0100
+Subject: [PATCH] migration: import AP-local identity and confirm native configuration
 
 --- a/package/cambium/cambium-ab/files/cambium-ab-guard
 +++ b/package/cambium/cambium-ab/files/cambium-ab-guard
