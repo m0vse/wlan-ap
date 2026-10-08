@@ -7,3 +7,7 @@ Use software mode (`frame_mode=1`, `ppe_ds_enable=0`) and leave the optional PPE
 The persistent installer takes an operator-selected `CAMBIUM_INSTALL_SERVER` URL and a command-line enrolment key. No server URL, key, deployment country or live configuration is embedded in this source. Updates preserve existing overlay and certificates; a clean enrolment test requires the separately reviewed fresh-install mode. Never reload or unbind the radio driver to apply boot-only settings.
 
 This sanitized source revision has its own Git hash. Earlier hardware and image receipts refer to their original revisions and are not release evidence for this branch. Historical host-specific receipts and stock snapshots remain local. Build and flash only after the current source and operator procedure are verified.
+
+## Optional PPE offload experiment
+
+This branch retains the matching SDK PPE ath-client package and its archive/header build dependencies. The experiment registered virtual ports but did not establish stable accelerated client traffic. It failed stability acceptance and remains disabled. It must not be selected in the normal profile or treated as a validated feature.

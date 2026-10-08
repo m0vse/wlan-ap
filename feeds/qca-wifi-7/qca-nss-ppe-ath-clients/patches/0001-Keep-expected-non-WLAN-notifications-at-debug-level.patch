@@ -1,0 +1,11 @@
+--- a/clients/ath_client/nss_ppe_ath_client.c
++++ b/clients/ath_client/nss_ppe_ath_client.c
+@@ -132,7 +132,7 @@ static int nss_ppe_ath_client_netdevice_event(struct notifier_block *unused,
+ 
+ 	dev = is_vlan_dev(dev) ? vlan_dev_real_dev(dev) : dev;
+ 	if (!dev->ieee80211_ptr) {
+-		nss_ppe_ath_client_info("Dev: %s not a WLAN dev\n", dev->name);
++		pr_debug("Dev: %s not a WLAN dev\n", dev->name);
+ 		return NOTIFY_DONE;
+ 	}
+ 
