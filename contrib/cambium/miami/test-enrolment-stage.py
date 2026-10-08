@@ -37,6 +37,10 @@ miami_enrolment_stage "$1"
  p=run('short');assert p.returncode!=0 and not envfile.read_text()
  env['FAIL_ESN']='1';p=run('X'*64);assert p.returncode!=0 and not envfile.read_text()
  env.pop('FAIL_ESN')
+ for controller in ['', 'controller.example.test;bad', 'https://controller.example.test', '.example.test', 'example.test.']:
+  env['CAMBIUM_ENROLMENT_SERVER']=controller
+  p=run('X'*64);assert p.returncode!=0 and not envfile.read_text()
+ env['CAMBIUM_ENROLMENT_SERVER']='controller.example.test'
  p=run('X'*64);assert p.returncode==0,(p.stdout,p.stderr)
  seed=overlay/'upper/root/.cambium-installer-settings'
  assert seed.is_dir() and seed.stat().st_mode&0o777==0o700
