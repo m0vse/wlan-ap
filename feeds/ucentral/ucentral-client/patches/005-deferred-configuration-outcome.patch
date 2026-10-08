@@ -1,0 +1,64 @@
+--- a/apply.c
++++ b/apply.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: BSD-3-Clause */
+ 
+ #include "ucentral.h"
++#include "apply-status.h"
+ 
+ int apply_pending = 0;
+ 
+@@ -23,7 +24,12 @@
+ {
+ 	apply_pending = 0;
+ 
+-	if (ret) {
++	if (ret == UCENTRAL_APPLY_DEFERRED && !t->cancelled) {
++		ULOG_INFO("configuration accepted; reboot required\n");
++		return;
++	}
++
++	if (ret || t->cancelled) {
+ 		ULOG_ERR("apply task returned %d\n", ret);
+ 		config_init(0, id);
+ 		return;
+--- a/task.c
++++ b/task.c
+@@ -1,6 +1,8 @@
+ /* SPDX-License-Identifier: BSD-3-Clause */
+ 
+ #include "ucentral.h"
++#include "apply-status.h"
++#include <sys/wait.h>
+ 
+ struct ucentral_task {
+ 	int admin;
+@@ -19,7 +21,9 @@
+ 	struct runqueue_process *t = container_of(p, struct runqueue_process, proc);
+ 	struct ucentral_task *u = container_of(t, struct ucentral_task, proc);
+ 
+-	u->ret = ret;
++	/* uloop passes the raw waitpid status, not the child exit code. */
++	u->ret = WIFEXITED(ret) && WEXITSTATUS(ret) == UCENTRAL_APPLY_DEFERRED
++		? UCENTRAL_APPLY_DEFERRED : ret;
+ 
+ 	runqueue_task_complete(&t->task);
+ }
+@@ -64,7 +68,8 @@
+ {
+ 	struct ucentral_task *t = container_of(task, struct ucentral_task, proc.task);
+ 	t->task->cancelled = task->cancelled;
+-	if (t->task == &apply_task)
++	if (t->task == &apply_task &&
++	    (t->ret != UCENTRAL_APPLY_DEFERRED || task->cancelled))
+ 		session_applied(t->session, t->uuid, t->id, !t->ret && !task->cancelled);
+ 	t->task->complete(t->task, t->uuid, t->id, t->ret);
+ 	if (t->task->periodic) {
+--- /dev/null
++++ b/apply-status.h
+@@ -0,0 +1,5 @@
++/* Accepted for a later boot, never a successful live apply. */
++#ifndef UCENTRAL_APPLY_STATUS_H
++#define UCENTRAL_APPLY_STATUS_H
++#define UCENTRAL_APPLY_DEFERRED 75
++#endif

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-client
-PKG_RELEASE:=14
+PKG_RELEASE:=15
 
 PKG_SOURCE_URL=https://github.com/m0vse/wlan-ucentral-client.git
 PKG_MIRROR_HASH:=537453c59f515013c2eb5fb6b106ab086700f5ea3b85d051aa79e25b76128150
