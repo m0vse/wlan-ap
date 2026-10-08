@@ -1,0 +1,39 @@
+#!/bin/sh
+# Read-only proof. Never create identity, alter selectors or extend trial time.
+set -e
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+ab_family && ab_identity || exit 1
+case "${AB_ENV:-}" in ''|*[!A-Za-z0-9_]*) exit 1 ;; esac
+volume=$(ab_ubi_volume "$AB_ACTIVE_UBI" certificates) || exit 1
+awk -v dev="/dev/$volume" -v named="$AB_ACTIVE_UBI:certificates" '
+$2=="/certificates" {count++; if (($1==dev || $1==named) && $3=="ubifs" && ("," $4 ",") ~ /,rw,/) good++}
+index($2,"/certificates/")==1 {child++}
+END {exit !(count==1 && good==1 && !child)}' /proc/mounts || exit 1
+board=$(board_name)
+serial=$(get_mac_label | tr -d : | tr A-F a-f)
+physical=$(get_mac_label_dt | tr -d : | tr A-F a-f)
+[ "$serial" = "$physical" ] && [ "${#serial}" = 12 ] || exit 1
+case "$serial" in *[!0-9a-f]*) exit 1 ;; esac
+case "$board" in *[!a-zA-Z0-9,._-]*) exit 1 ;; esac
+case "$AB_ACTIVE" in 0|1) ;; *) exit 1 ;; esac
+job=$(ab_getenv "${AB_ENV}_installer_job") || job=
+target=$(ab_getenv "${AB_ENV}_installer_target") || target=
+if [ -n "$job$target" ]; then
+	[ "${#job}" = 64 ] || exit 1
+	case "$job" in *[!0-9a-f]*) exit 1 ;; esac
+	[ "$target" = "$AB_ACTIVE" ] || exit 1
+else
+	job=-; target=-
+fi
+case "$AB_LAYOUT" in banks|pair) ;; *) exit 1 ;; esac
+state=$(ab_getenv "${AB_ENV}_ab_state") || state=
+confirmed=$(ab_getenv "${AB_ENV}_ab_confirmed") || confirmed=
+bank_target=$(ab_getenv "${AB_ENV}_ab_target") || bank_target=
+case "$state" in confirmed|trial-started|armed|writing|fallback|rolled-back|'') ;; *) exit 1 ;; esac
+case "$confirmed" in 0|1|'') ;; *) exit 1 ;; esac
+case "$bank_target" in 0|1|'') ;; *) exit 1 ;; esac
+# Identity acceptance and cryptographic checks are performed by the backend;
+# this helper supplies only proven physical/store context.
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$board" "$serial" "$AB_ACTIVE" "$job" "$target" \
+	"$AB_LAYOUT" "${state:--}" "${confirmed:--}" "${bank_target:--}"

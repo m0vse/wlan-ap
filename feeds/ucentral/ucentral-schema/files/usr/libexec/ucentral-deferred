@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+umask 077
+directory=/etc/ucentral/deferred-settings
+[ ! -L /etc/ucentral ] && [ -d /etc/ucentral ] || exit 1
+case "$(stat -c '%u:%a' /etc/ucentral)" in 0:755|0:750|0:700) ;; *) exit 1 ;; esac
+if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+	mkdir -m 700 "$directory" 2>/dev/null || :
+fi
+[ ! -L "$directory" ] && [ -d "$directory" ] &&
+	[ "$(stat -c '%u:%a' "$directory")" = 0:700 ] || exit 1
+lock=$directory/lock
+if [ -e "$lock" ] || [ -L "$lock" ]; then
+	[ ! -L "$lock" ] && [ "$(stat -c '%u:%a:%h' "$lock")" = 0:600:1 ] || exit 1
+fi
+exec 9>"$lock" || exit 1
+flock -x 9 || exit 1
+exec /usr/bin/ucode /usr/share/ucentral/deferred_cli.uc "$@"

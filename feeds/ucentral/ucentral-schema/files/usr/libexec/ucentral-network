@@ -17,6 +17,7 @@ fail() {
 }
 
 [ ! -e /tmp/thor-topology.failed ] || fail 'Thor pre-module topology validation failed'
+[ ! -e /tmp/ucentral-deferred.failed ] || fail 'Deferred pre-module settings validation failed'
 
 # A dangling active symlink is an error, not an unconfigured device.
 active=/etc/ucentral/ucentral.active

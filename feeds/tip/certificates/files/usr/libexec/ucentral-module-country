@@ -1,0 +1,54 @@
+#!/bin/sh
+# Update country without discarding explicit driver settings in modules.conf.
+case "$1" in
+	[A-Z][A-Z]|00) country="$1" ;;
+	*) echo "invalid module country" >&2; exit 1 ;;
+esac
+conf=${UCENTRAL_MODULE_CONF:-/etc/modules.conf}
+if [ -n "${UCENTRAL_MODULE_LOCK:-}" ]; then
+	lock=$UCENTRAL_MODULE_LOCK
+else
+	[ ! -L /etc/ucentral ] && [ -d /etc/ucentral ] || exit 1
+	case "$(stat -c '%u:%a' /etc/ucentral)" in 0:755|0:750|0:700) ;; *) exit 1 ;; esac
+	lockdir=/etc/ucentral/.module-country-lock
+	if [ ! -e "$lockdir" ] && [ ! -L "$lockdir" ]; then mkdir -m 700 "$lockdir" 2>/dev/null || :; fi
+	[ ! -L "$lockdir" ] && [ -d "$lockdir" ] &&
+		[ "$(stat -c '%u:%a' "$lockdir")" = 0:700 ] || exit 1
+	lock=$lockdir/lock
+fi
+umask 077
+if [ -e "$lock" ] || [ -L "$lock" ]; then
+	[ ! -L "$lock" ] && [ -f "$lock" ] &&
+		[ "$(stat -c '%u:%a:%h' "$lock")" = 0:600:1 ] || exit 1
+fi
+exec 9>"$lock" || exit 1
+flock -x 9 || exit 1
+tmp=$(mktemp "${conf}.XXXXXX") || exit 1
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+if [ -e "$conf" ] || [ -L "$conf" ]; then
+	[ ! -L "$conf" ] && [ -f "$conf" ] || exit 1
+	case "$(stat -c '%u:%a:%h' "$conf")" in 0:600:1|0:644:1|0:440:1) ;; *) exit 1 ;; esac
+else
+	umask 077
+	: > "$conf" || exit 1
+fi
+# Keep existing ownership and permissions, including locally restricted files.
+cp -p "$conf" "$tmp" || exit 1
+awk -v country="$country" '
+$1 == "options" && $2 == "cfg80211" {
+	line = "options cfg80211"; comment = ""
+	for (i = 3; i <= NF; i++) {
+		if ($i ~ /^#/) {
+			for (; i <= NF; i++) comment = comment " " $i
+			break
+		}
+		if ($i !~ /^ieee80211_regdom=/) line = line " " $i
+	}
+	if (!seen++) line = line " ieee80211_regdom=" country
+	print line comment
+	next
+}
+{ print }
+END { if (!seen) print "options cfg80211 ieee80211_regdom=" country }
+' "$conf" > "$tmp" || exit 1
+mv -f "$tmp" "$conf"

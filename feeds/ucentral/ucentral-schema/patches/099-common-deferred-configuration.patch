@@ -1,0 +1,131 @@
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -70,28 +70,28 @@
+ 	}
+ }
+ 
+-// A requested topology change is accepted for the next boot before any
+-// service, live UCI, or active configuration changes are made.
+-if (!boot_render && !custom_config &&
+-    trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,xv3-8') {
++// Validate and durably accept boot-only changes before any live effects.
++if (!boot_render) {
+  try {
+   let validated = schemareader.validate(inputjson, logs);
+   assert(validated && !length(filter(logs, m => substr(m, 0, 3) == '[E]')),
+-         'Invalid topology configuration');
+-  assert(!validated.strict || !length(logs), 'Strict topology configuration rejected');
+-  assert(match(ARGV[0], /^\/etc\/ucentral\/ucentral\.cfg\.[0-9]+$/), 'Invalid controller config filename');
+-  assert(system('/usr/libexec/thor-topology stage ' + ARGV[0]) == 0, 'Thor topology rejected');
+-  let pending = json(fs.readfile('/etc/ucentral/thor-topology.pending') || '{}');
+-  if (pending.reboot_required && pending.uuid == inputjson.uuid) {
+-   ubus.call('ucentral', 'result', {uuid:inputjson.uuid, id:+ARGV[1] || 0,
+-     status:{error:0, text:'Reboot required', reboot_required:true,
+-             active_topology:pending.active, desired_topology:pending.desired}});
+-   exit(0);
++         'Invalid deferred configuration');
++  assert(!validated.strict || !length(logs), 'Strict deferred configuration rejected');
++  let response;
++  if (custom_config)
++   assert(!require('deferred_backend').needs(inputjson), 'Boot-only setting requires a saved controller configuration');
++  else
++   response = require('deferred_apply').prepare(ARGV[0], inputjson, +ARGV[1] || 0);
++  if (response) {
++   ubus.call('ucentral', 'result', response);
++   // Accepted does not mean applied. The native task must preserve the old
++   // active UUID and must not issue an enrollment/applied receipt.
++   exit(require('deferred_settings').DEFERRED_EXIT);
+   }
+  } catch (e) {
+-  warn('Thor configuration rejected before network changes: ', e, '\n');
++  warn('Configuration rejected before live changes: ', e, '\n');
+   ubus.call('ucentral', 'result', {uuid:inputjson.uuid || 0,id:+ARGV[1] || 0,
+-      status:{error:2,text:'Failed',rejected:['Invalid Thor radio topology']}});
++      status:{error:2,text:'Failed',rejected:['Deferred setting refused']}});
+   exit(1);
+  }
+ }
+--- a/system/state.uc
++++ b/system/state.uc
+@@ -114,6 +114,25 @@
+  }
+ }
+ 
++try {
++ let pipe = fs.popen('/usr/libexec/ucentral-deferred state');
++ let pending = json(pipe?.read('all') || 'null');
++ if (pipe && pipe.close() == 0 && pending) {
++  state.unit ??= {};
++  state.unit.deferred_settings = pending;
++  if (state.unit.cambium?.radio_topology) {
++   for (let change in pending.changes || []) {
++    if (change.setting != 'topology') continue;
++    state.unit.cambium.radio_topology.desired = pending.reboot_required ? change.desired : state.unit.cambium.radio_topology.active;
++    state.unit.cambium.radio_topology.reboot_required = pending.reboot_required;
++   }
++  }
++ }
++} catch (e) {
++ state.exceptions ??= {};
++ state.exceptions.deferred_settings = {message:'Deferred settings unavailable'};
++}
++
+ printf("%.J\n", state);
+ 
+ let msg = {
+--- a/command/cmd_upgrade.uc
++++ b/command/cmd_upgrade.uc
+@@ -123,6 +123,7 @@
+ 	"/etc/ucentral/boot-reporting",
+ 	"/etc/ucentral/radio-crash",
+ 	"/etc/ucentral/thor-topology.pending.json", "/etc/ucentral/thor-topology.pending",
++	"/etc/ucentral/deferred-settings",
+ 	"/etc/ucentral/key.pem", "/etc/ucentral/cert.pem",
+ 	"/etc/ucentral/gateway.json", "/etc/ucentral/gateway.flash",
+ 	"/etc/ucentral/profile.json", "/etc/ucentral/operational.pem",
+--- a/command/cmd_fixedconfig.uc
++++ b/command/cmd_fixedconfig.uc
+@@ -1,26 +1,18 @@
+-
+-if (!args.country) {
+-	result(2, 'Country code is missing.');
+-	return;
++// Legacy RPC name, common safe lifecycle. No reset, reboot or live changes.
++try {
++	assert(type(args) == 'object' && length(keys(args)) == 1 &&
++	       type(args.country) == 'string' && match(args.country, /^[A-Z]{2}$/),
++	       'Only a country setting is supported');
++	let active = json(fs.readfile('/etc/ucentral/ucentral.active') || '{}');
++	assert(type(active.uuid) == 'int' && active.uuid >= 0 && type(+id) == 'int' && +id >= 0,
++	       'Configuration correlation is unavailable');
++	let pipe = fs.popen('/usr/libexec/ucentral-deferred stage-country ' +
++		args.country + ' ' + active.uuid + ' ' + +id);
++	assert(pipe, 'Cannot stage country');
++	let response = json(pipe.read('all') || 'null'), rc = pipe.close();
++	assert(rc == 0, 'Country setting was not accepted');
++	if (response) ctx.call('ucentral', 'result', response);
++	else result_json({error: 0, text: 'Country already active', reboot_required: false});
++} catch (e) {
++	result_json({error: 2, text: 'Country setting refused'});
+ }
+-
+-if (capab.country_code && !(args.country in capab.country_code)) {
+-	result(2, 'Country code "%s" is not allowed.', args.country);
+-	return;
+-}
+-
+-if (fs.stat('/tmp/squashfs')) {
+-	system('fw_setenv country ' + args.country);
+-} else { 
+-	system('mount_certs');
+-	fs.writefile('/certificates/ucentral.defaults', args);
+-}
+-fs.writefile('/etc/modules.conf', 'options cfg80211 ieee80211_regdom=' + args.country);
+-
+-include('reboot_cause.uc', { reason: 'fixedconfig' });
+-result(0, "Applied fixed config, rebooting");
+-sleep(5);
+-system('umount /certificates');
+-system('ubidetach -d 3');
+-system("(sleep 10; jffs2reset -r -y)&");
+-system("/etc/init.d/ucentral stop");

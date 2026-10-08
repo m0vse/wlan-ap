@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-schema
-PKG_RELEASE:=27
+PKG_RELEASE:=31
 
 PKG_SOURCE_URL=https://github.com/Telecominfraproject/wlan-ucentral-schema.git
 PKG_MIRROR_HASH:=89821bce0ed6a0d9cb7a21b704a8a38a4c0f26c84145b3fa5e33bac83fc0870e
@@ -17,7 +17,7 @@ define Package/ucentral-schema
   SECTION:=ucentral
   CATEGORY:=uCentral
   TITLE:=OpenWrt uCentral schema
-  DEPENDS+= +ucode-mod-nl80211 +ucode-mod-rtnl +ucode-mod-log +coreutils-timeout +hostapd-utils +ucentral-boot-report
+  DEPENDS+= +ucode-mod-nl80211 +ucode-mod-rtnl +ucode-mod-log +coreutils-timeout +hostapd-utils +ucentral-boot-report +flock +openssl-util
 endef
 
 define Package/ucentral-recovery
@@ -50,6 +50,9 @@ define Package/ucentral-schema/install
 	$(LN) /usr/share/ucentral/schemareader.uc $(1)/usr/share/ucode
 	$(LN) /usr/share/ucentral/ucentral.uc $(1)/usr/bin/ucentral_apply
 	$(CP) ./files/* $(1)
+	$(INSTALL_BIN) ./files/usr/libexec/ucentral-deferred $(1)/usr/libexec/ucentral-deferred
+	$(INSTALL_BIN) ./files/usr/libexec/ucentral-deferred-context $(1)/usr/libexec/ucentral-deferred-context
+	$(INSTALL_BIN) ./files/etc/init.d/ucentral-deferred $(1)/etc/init.d/ucentral-deferred
 	# Recursive copies preserve checkout directory modes; normalize last.
 	$(INSTALL_DIR) $(1)/etc/ucentral
 endef

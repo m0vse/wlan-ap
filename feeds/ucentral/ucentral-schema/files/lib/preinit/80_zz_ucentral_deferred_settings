@@ -1,0 +1,15 @@
+ucentral_deferred_boot() {
+	[ -f /etc/ucentral/deferred-settings/pending.json ] || return 0
+	/usr/bin/mount_certs >/dev/null 2>&1 || {
+		# The strict context check still runs; a failed mount never licenses a
+		# write to an ordinary root directory or an alternate-bank store.
+		echo 'deferred settings: certificate mount did not pass' >&2
+	}
+	/usr/libexec/ucentral-deferred boot || {
+		echo 'deferred settings: boot activation refused; controller apply blocked' >&2
+		: > /tmp/ucentral-deferred.failed
+		return 1
+	}
+}
+
+boot_hook_add preinit_main ucentral_deferred_boot

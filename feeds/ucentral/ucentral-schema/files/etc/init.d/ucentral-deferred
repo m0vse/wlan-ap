@@ -1,0 +1,10 @@
+#!/bin/sh /etc/rc.common
+START=98
+
+start() {
+	[ -f /etc/ucentral/deferred-settings/pending.json ] || return 0
+	/usr/libexec/ucentral-deferred confirm || {
+		logger -t ucentral-deferred 'hardware settings remain pending; not reported applied'
+		return 1
+	}
+}
