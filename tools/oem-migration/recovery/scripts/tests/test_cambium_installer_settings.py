@@ -122,6 +122,8 @@ class SettingsTests(unittest.TestCase):
         dest=self.mount/'upper/root/.cambium-installer-settings'
         self.assertEqual({p.name:p.read_bytes() for p in dest.iterdir()},
                          {p.name:p.read_bytes() for p in self.input.iterdir()})
+        self.assertEqual((self.mount/'upper').stat().st_mode & 0o777,0o755)
+        self.assertEqual((self.mount/'upper/root').stat().st_mode & 0o777,0o700)
         self.assertEqual(dest.stat().st_mode & 0o777,0o700)
         self.assertTrue(all(p.stat().st_mode & 0o777==0o600 for p in dest.iterdir()))
         self.assertFalse((dest/'key.pem').exists())
@@ -177,6 +179,43 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn('staged.',result.stdout)
         self.assertFalse((self.mount/'upper/root/.cambium-installer-settings').exists())
         self.assertTrue((self.mount/'upper/root/.cambium-installer-settings.pending').exists())
+
+    def test_initialized_overlay_preserves_modes_identity_and_same_job(self):
+        upper=self.mount/'upper'; upper.mkdir(mode=0o755); upper.chmod(0o755)
+        root=upper/'root'; root.mkdir(mode=0o755); root.chmod(0o755)
+        sentinel=root/'existing-identity'; sentinel.write_bytes(b'prior identity')
+        sentinel.chmod(0o600)
+        self.assertEqual(self.run_stage().returncode,0)
+        paths=[upper,root,sentinel,root/'.cambium-installer-settings']
+        before=[(p.stat().st_mode,p.stat().st_uid,p.stat().st_mtime_ns) for p in paths]
+        self.assertEqual(self.run_stage().returncode,0)
+        self.assertEqual(before,[(p.stat().st_mode,p.stat().st_uid,p.stat().st_mtime_ns) for p in paths])
+        self.assertEqual(sentinel.read_bytes(),b'prior identity')
+
+    def test_unsafe_existing_overlay_root_refuses_without_repair(self):
+        upper=self.mount/'upper'; upper.mkdir(mode=0o700)
+        before=upper.stat()
+        self.assertNotEqual(self.run_stage().returncode,0)
+        self.assertEqual(upper.stat().st_mode,before.st_mode)
+        self.assertEqual(upper.stat().st_mtime_ns,before.st_mtime_ns)
+        self.assertEqual(list(upper.iterdir()),[])
+
+    def test_symlinked_overlay_root_refuses_without_touching_target(self):
+        target=self.root/'foreign'; target.mkdir(mode=0o755)
+        (self.mount/'upper').symlink_to(target,target_is_directory=True)
+        self.assertNotEqual(self.run_stage().returncode,0)
+        self.assertEqual(list(target.iterdir()),[])
+
+    @unittest.skipUnless(os.geteuid()==0, 'Requires root to create a foreign-owned overlay')
+    def test_overlay_directory_readback_owner_must_match(self):
+        upper=self.mount/'upper'; upper.mkdir(mode=0o755); upper.chmod(0o755)
+        os.chown(upper,81,81)
+        before=upper.stat()
+        self.assertNotEqual(self.run_stage().returncode,0)
+        after=upper.stat()
+        self.assertEqual((after.st_mode,after.st_uid,after.st_gid,after.st_mtime_ns),
+                         (before.st_mode,before.st_uid,before.st_gid,before.st_mtime_ns))
+        self.assertEqual(list(upper.iterdir()),[])
 
     def miami(self):
         self.values.update(family='miami',model='X7-35X')

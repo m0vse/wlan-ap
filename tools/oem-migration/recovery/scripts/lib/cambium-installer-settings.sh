@@ -6,7 +6,7 @@
 
 ow_settings_fail() { echo 'Installer settings refused.' >&2; return 1; }
 # Old qualified stock BusyBox lacks stat. Numeric ls is already available;
-# decode only the two accepted private modes, not arbitrary permission text.
+# decode the private modes and the public overlay root, not arbitrary modes.
 # Absolute paths prevent option interpretation; one complete output row is
 # mandatory. File type, symlinks and single-link files remain checked by caller.
 ow_settings_metadata() {
@@ -17,6 +17,7 @@ ow_settings_metadata() {
         NR==1 && NF>=4 && $2~/^[0-9]+$/ && $3~/^[0-9]+$/ && $4~/^[0-9]+$/ {
             if($1=="-rw-------")mode="600"
             else if($1=="drwx------")mode="700"
+            else if($1=="drwxr-xr-x")mode="755"
             else exit 1
             result=$3 ":" mode ":" $2;good=1
         }
@@ -175,9 +176,21 @@ ow_settings_stage_overlay() {
         END {exit !(n==1 && good && !bad)}
     ' "${OW_SETTINGS_MOUNTS:-/proc/mounts}" || return 1
     umask 077
-    for path in "$mnt/upper" "$mnt/upper/root"; do
-        [ ! -L "$path" ] && { [ -d "$path" ] || mkdir "$path"; } || return 1
-    done
+    # OverlayFS inherits this directory's attributes for /. A private
+    # umask must not prevent non-root early services from traversing it.
+    path=$mnt/upper
+    [ ! -L "$path" ] && { [ -d "$path" ] || mkdir -m 755 "$path"; } || return 1
+    case "$(ow_settings_metadata "$path")" in
+        "${OW_SETTINGS_OWNER:-0}:755:"*) ;;
+        *) return 1 ;;
+    esac
+    # Preserve existing valid directories; never repair permissions implicitly.
+    path=$mnt/upper/root
+    [ ! -L "$path" ] && { [ -d "$path" ] || mkdir -m 700 "$path"; } || return 1
+    case "$(ow_settings_metadata "$path")" in
+        "${OW_SETTINGS_OWNER:-0}:700:"*|"${OW_SETTINGS_OWNER:-0}:755:"*) ;;
+        *) return 1 ;;
+    esac
     dest=$mnt/upper/root/.cambium-installer-settings
     pending=$dest.pending
     [ ! -e "$pending" ] && [ ! -L "$pending" ] || return 1
