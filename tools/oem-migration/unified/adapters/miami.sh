@@ -49,11 +49,23 @@ oem_adapter_preflight() {
   set -- check
   . "$core" || exit 1
   select_payload || exit 1
-  oem_fetch_local "$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE" "$OEM_WORK/cache/$KERNEL" || exit 1
-  oem_fetch_local "$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE" "$OEM_WORK/cache/$ROOTFS" || exit 1
   [ "${ENROLMENT_READY:-0}" = 1 ] || exit 1
-  case "$SLOT" in 0) pair=$PAIR0 pin=$PAIR0_SHA size=$PAIR0_SIZE;; 1) pair=$PAIR1 pin=$PAIR1_SHA size=$PAIR1_SIZE;; *) exit 1;; esac
-  oem_fetch_local "$pair" "$pin" "$size" "$OEM_WORK/cache/$pair" || exit 1
+  case "$SLOT" in 0) pair=$PAIR0 pin=$PAIR0_SHA pair_size=$PAIR0_SIZE;; 1) pair=$PAIR1 pin=$PAIR1_SHA pair_size=$PAIR1_SIZE;; *) exit 1;; esac
+  # Native fetch copies the verified cache into legacy /tmp paths. Account
+  # for both selected copies, critical captures (ART 1 MiB + two 64 KiB
+  # records), and native OEM vault files plus tar, each bounded by 72 LEBs.
+  kernel_missing=$(oem_stage_missing_bytes "$OEM_WORK/cache/$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE") || exit 1
+  root_missing=$(oem_stage_missing_bytes "$OEM_WORK/cache/$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE") || exit 1
+  pair_missing=$(oem_stage_missing_bytes "$OEM_WORK/cache/$pair" "$pin" "$pair_size") || exit 1
+  legacy_bytes=$((KERNEL_SIZE+ROOTFS_SIZE+pair_size))
+  OEM_STAGE_RETAINED_BYTES=$((legacy_bytes+1048576+65536+65536+2*9142272))
+  oem_stage_space_check "$OEM_WORK/cache" "$((kernel_missing+root_missing+pair_missing+OEM_STAGE_RETAINED_BYTES))" || exit 1
+  OEM_STAGE_EXTRA_BYTES=$((root_missing+pair_missing+OEM_STAGE_RETAINED_BYTES))
+  oem_fetch_local "$KERNEL" "$KERNEL_SHA" "$KERNEL_SIZE" "$OEM_WORK/cache/$KERNEL" || exit 1
+  OEM_STAGE_EXTRA_BYTES=$((pair_missing+OEM_STAGE_RETAINED_BYTES))
+  oem_fetch_local "$ROOTFS" "$ROOTFS_SHA" "$ROOTFS_SIZE" "$OEM_WORK/cache/$ROOTFS" || exit 1
+  OEM_STAGE_EXTRA_BYTES=$OEM_STAGE_RETAINED_BYTES
+  oem_fetch_local "$pair" "$pin" "$pair_size" "$OEM_WORK/cache/$pair" || exit 1
   # Preserve the reviewed core checks, allowing only a proven idle rootfs
   # mapping during inspection. Its removal requires the outer INSTALL consent.
   busy() { oem_bank_idle_check "$R/sys/class/ubi" "$R/dev" "$R/proc" "$T" "$UBI" yes || fail 'target is busy or mapped ambiguously'; }

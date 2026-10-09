@@ -1,6 +1,32 @@
 #!/bin/sh
 # Bounded local staging only. No firmware/device writes, no enrollment secret.
 # Conservative aggregate budget: reserve an entire attempt before starting it.
+oem_stage_space_check() (
+ directory=$1 bytes=$2
+ case "$bytes" in ''|*[!0-9]*) return 1;; esac
+ oem_private_directory "$directory" || return 1
+ available=$(df -Pk "$directory" | awk 'NR==2 && $4~/^[0-9]+$/{print $4;good=1}END{if(!good)exit 1}') || return 1
+ [ "$available" -ge "$(((bytes+1023)/1024))" ] || {
+  oem_fail 'insufficient space for the actual local staging plan';return 1
+ }
+)
+
+# A validated existing cache consumes space already counted by df. Anything
+# else needs its full bounded object size, and an unsafe existing path refuses.
+oem_stage_missing_bytes() (
+ output=$1 expected=$2 size=$3
+ oem_hex64 "$expected" || return 1
+ case "$size" in ''|*[!0-9]*) return 1;; esac
+ [ "$size" -gt 0 ] && [ "$size" -le 268435456 ] || return 1
+ if [ -e "$output" ] || [ -L "$output" ]; then
+  oem_private_file "$output" && [ "$(wc -c < "$output")" -eq "$size" ] &&
+   [ "$(oem_sha "$output")" = "$expected" ] || return 1
+  printf '0\n'
+ else
+  printf '%s\n' "$size"
+ fi
+)
+
 oem_pid_stamp() {
  [ -r "/proc/$1/stat" ] || return 1
  awk '{print $22}' "/proc/$1/stat"
@@ -48,8 +74,7 @@ oem_fetch_local() {
  [ ! -e "$output" ] && [ ! -e "$output.part" ] || return 1
  extra=${OEM_STAGE_EXTRA_BYTES:-0}
  case "$extra" in ''|*[!0-9]*) return 1;; esac
- available=$(df -Pk "$directory" | awk 'NR==2 && $4~/^[0-9]+$/{print $4;good=1}END{if(!good)exit 1}') || return 1
- [ "$available" -ge "$(((size+extra+1023)/1024))" ] || { oem_fail 'insufficient space for the actual local staging plan';return 1; }
+ oem_stage_space_check "$directory" "$((size+extra))" || return 1
  attempt=0
  while [ "$attempt" -lt 2 ]; do
   [ "${OEM_NETWORK_BUDGET_LEFT:-0}" -ge 15 ] || return 1

@@ -4,6 +4,22 @@ from pathlib import Path
 BASE=Path(__file__).resolve().parents[1]
 
 class NetworkTests(unittest.TestCase):
+    def test_staging_plan_counts_verified_cache_and_all_future_copies(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();root.chmod(0o700)
+            common=root/'common.sh';common.write_text((BASE/'lib/common.sh').read_text().replace('$3==0',f'$3=={os.getuid()}').replace('$1=="drwx------"','$1~/^drwx------@?$/').replace('$1=="-rw-------"','$1~/^-rw-------@?$/'))
+            out=root/'payload';data=b'verified';pin=hashlib.sha256(data).hexdigest()
+            prefix=f'. "{common}";. "{BASE}/lib/network.sh";'
+            run=lambda body:subprocess.run(['sh','-c',prefix+body],capture_output=True,text=True)
+            p=run(f'oem_stage_missing_bytes "{out}" {pin} {len(data)}');self.assertEqual(p.stdout,str(len(data))+'\n');self.assertEqual(p.returncode,0)
+            out.write_bytes(data);out.chmod(0o600)
+            p=run(f'oem_stage_missing_bytes "{out}" {pin} {len(data)}');self.assertEqual(p.stdout,'0\n');self.assertEqual(p.returncode,0)
+            out.write_bytes(b'corrupt');self.assertNotEqual(run(f'oem_stage_missing_bytes "{out}" {pin} {len(data)}').returncode,0)
+            df='df(){ printf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 100 98 2 98%% /\\n"; };'
+            self.assertEqual(run(df+f'oem_stage_space_check "{root}" 2048').returncode,0)
+            self.assertNotEqual(run(df+f'oem_stage_space_check "{root}" 2049').returncode,0)
+            self.assertNotEqual(run(df+f'oem_stage_space_check "{root}" invalid').returncode,0)
+
     def test_valid_local_cache_never_contacts_provider(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();data=b'cached verified payload';out=root/'payload';out.write_bytes(data)
