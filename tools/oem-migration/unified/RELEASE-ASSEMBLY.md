@@ -21,7 +21,7 @@ source tests; a pending owner candidate does not enable a release row.
 |---|---|---|---|---|
 | E410, E410B | 4.2.3.3-r10, exact factory variant | Sage 2026.10.07.1 | Private actual-data writer and enabled launcher validation complete | E410 actual-data carried return/confirmation/reset-retirement-actor/reinstall tests pass in both directions, including dynamic certificate IDs. Real reset and identity retirement remain separate operator actions; E410B reverse remains disabled |
 | XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Return and native confirmation checks pass. Confirmed-state known-native reuse and incoming radio-asset binding are now implemented; six model/slot carried source chains and fault tests pass. Final source-bound release assembly and real defaults/reset/identity-retirement acceptance remain separate |
-| XV3-8 | 7.2-r1, exact product/build | Thor 2026.10.05.8 | Actual incoming payloads retained; published component helpers need the owner's final composed writer and exact provider schema | No enabled reverse or confirmation claim from component tests |
+| XV3-8 | 7.2-r1, exact product/build | Thor 2026.10.05.8 | Both forward directions and confirmed-return native target reuse are implemented with pinned inputs and protected radio assets | Actual-data carried return/confirmation/reset-retirement-actor/reinstall chains pass in both directions, including incoming BDF mismatch and uncertain confirmation rollback. Final release assembly, real OEM reset and installed normal-upgrade support remain separate |
 | XV2-21X | 7.2-r1, exact product/build | Cheetah 2026.10.05.7 | Actual incoming payloads retained; final composed family source/provider integration remains separate from legacy components | Keep reverse disabled until the final owner adapter and provider are validated |
 | X7-35X | 7.2-r1, exact product/build | Existing reviewed Miami payload/PAIR objects | Private current backend assembly; required Linux replay remains pending | No inference of restore/confirmation or installed readiness from generated source |
 | E400; E600, E430W, E700, E430H, E510; XV2-2T0, XE3-4TN; XV2-22H, XV2-23T | No enabled exact-source row | None admitted by sibling evidence | Recognized unsupported; reject before changes | Unsupported |
@@ -40,6 +40,13 @@ implemented exact-model handlers; framework dispatch alone is insufficient.
 Sage forward migration does not require a new whole-bootloader hash capture.
 The existing E410-A OEM restoration/defaults path retains its independent
 bootloader proof; it does not qualify E410B restoration.
+
+Thor's retained .8 firmware does not gain corrected normal-upgrade support from
+these installer source commits. A single-native layout reports conversion
+required; an installed unsafe trial generator remains unsupported. Its OEM
+return also refuses nonempty `mtdids` or `fsbootargs`: the actual OEM startup
+would otherwise reset ENV and discard the saved source path. Source simulations
+do not prove those fields absent on every deployed converted unit.
 
 ## Provider directory
 
