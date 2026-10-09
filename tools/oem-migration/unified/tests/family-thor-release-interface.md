@@ -122,3 +122,26 @@ this migration does not fake that flag. Shared first-normal-upgrade integration
 and physical migration/restore qualification remain separate work. Both paths
 print readiness as unverified; source fixture success does not assert those
 hardware outcomes.
+
+## Targeted safety correction receipt
+
+Reverse source save narrows `thor_stableSOURCE` to exactly `run thor_bootSOURCE`
+in the same verified batch as source-only bootcmd/image. The shipped .8 guard's
+rollback recording and stable-default commit body were replayed on that actual
+wrapper: any later `run thor_stableSOURCE` selects only the working source.
+
+Before the last selector, the reverse path repeats the pinned local object
+checks and both staged kernel/root readbacks, UBI health, full physical/ENV
+preservation and private identity hash comparison, then reads every prepared
+arm field again. Late kernel/root, identity, unrelated ENV and four arm-field
+drifts refuse the selector. Forty-two full return cases passed across both
+banks, including the original eleven operation failures per direction.
+
+Before target attachment, direct mounted/open raw MTD, read-only MTD and block
+aliases are refused by canonical path and device number. Nine targeted cases
+proved busy sources cause no attachment. No real device/ENV action was taken.
+
+`../profiles/XV3-8/installer-runtime-inputs.json` records the exact c604 runtime
+root/file hashes and both already-decoded signed OEM object paths on cnbeacon.
+These are publisher input receipts, not new AP ELF/libc admission checks.
+Publication remains on hold pending review of these targeted corrections.

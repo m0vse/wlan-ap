@@ -127,15 +127,39 @@ oem_restore_thor_identity_snapshot() {
     done
 }
 
+# Last-selector boundary: repeat both pinned readbacks, protected identities,
+# the complete ENV preservation proof and every prepared arm-field readback.
+oem_restore_thor_final_candidate() {
+    local thor_id thor_name thor_node thor_bytes thor_sha thor_key thor_value
+    oem_restore_thor_payloads && oem_restore_thor_boundary || return 1
+    [ -f "$OEM_WORK/thor-restore-identities-before" ] || return 1
+    [ "$(ab_getenv "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
+        [ "$(ab_getenv bootcmd)" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
+        [ "$(ab_getenv image)" = "$OEM_SOURCE_SLOT" ] || return 1
+    for thor_id in 0 1; do
+        if [ "$thor_id" = 0 ]; then
+            thor_name=kernel thor_bytes=3905000 thor_sha=9650712dc69a82342ebe2dee753110805dd6154024f305db80ae91d1165a93aa
+        else
+            thor_name=ubi_rootfs thor_bytes=40233806 thor_sha=75bc545a6cad4fb66642798194318be02a32cf21cd4cd07caf08a75da48a3214
+        fi
+        oem_ubi_child_check "$AB_UBI_SYS" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" "$thor_id" "$thor_name" || return 1
+        thor_node=$(oem_thor_target_node "$thor_id") || return 1
+        [ "$(head -c "$thor_bytes" "$thor_node" | sha256sum | awk '{print $1}')" = "$thor_sha" ] || return 1
+    done
+    while read -r thor_key thor_value; do
+        [ "$(ab_getenv "$thor_key")" = "$thor_value" ] || return 1
+    done < "$OEM_WORK/thor-restore-metadata.tsv"
+}
+
 oem_restore_migrate() (
     local thor_node thor_bytes thor_sha thor_batch thor_prior thor_trial
     umask 077
     oem_restore_inspect && oem_restore_preflight || exit 1
     oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
-    printf '%s\n' bootcmd image thor_restore_prior thor_restore_oem thor_restore_state thor_restore_target > "$OEM_WORK/thor-env-allowed" || exit 1
+    printf '%s\n' "thor_stable$OEM_SOURCE_SLOT" bootcmd image thor_restore_prior thor_restore_oem thor_restore_state thor_restore_target > "$OEM_WORK/thor-env-allowed" || exit 1
     oem_thor_critical_check || exit 1
     # Read back the working source default before changing the inactive bank.
-    printf 'bootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-restore-source.tsv" || exit 1
+    printf 'thor_stable%s run thor_boot%s\nbootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-restore-source.tsv" || exit 1
     oem_thor_environment_batch "$OEM_WORK/thor-restore-source.tsv" || exit 1
     oem_thor_target_attachment after-source-save && oem_restore_preflight || exit 1
     oem_restore_thor_identity_snapshot > "$OEM_WORK/thor-restore-identities-before" || exit 1
@@ -165,14 +189,16 @@ oem_restore_migrate() (
     done
     oem_restore_thor_boundary && oem_restore_boot_preflight || exit 1
     thor_prior=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || exit 1
-    thor_batch=$OEM_WORK/thor-restore-arm.tsv
+    thor_batch=$OEM_WORK/thor-restore-metadata.tsv
     {
         printf 'thor_restore_prior %s\nthor_restore_oem setenv image %s && aq_load_fw && bootipq\n' "$thor_prior" "$OEM_TARGET_SLOT"
         printf 'thor_restore_state armed\nthor_restore_target %s\n' "$OEM_TARGET_SLOT"
     } > "$thor_batch" || exit 1
     oem_thor_environment_batch "$thor_batch" || exit 1
     thor_trial="setenv bootcmd run thor_restore_prior && setenv image $OEM_SOURCE_SLOT && setenv thor_restore_state trial-started && saveenv && run thor_restore_oem; run thor_restore_prior"
+    thor_batch=$OEM_WORK/thor-restore-selector.tsv
     printf 'bootcmd %s\n' "$thor_trial" > "$thor_batch" || exit 1
+    oem_restore_thor_final_candidate || exit 1
     if ! oem_thor_environment_batch "$thor_batch"; then
         printf 'bootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$thor_batch"
         oem_thor_environment_batch "$thor_batch" || :

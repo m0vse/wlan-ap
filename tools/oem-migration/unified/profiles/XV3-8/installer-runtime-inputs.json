@@ -1,0 +1,21 @@
+{
+  "runtime_source": "reviewed prepared OpenWiFi package source; concrete operator paths are retained privately",
+  "files": {
+    "runtime/cambium-ab.sh": "0d47714dea22473dea4e2fcb8ac29b701e86fa8b2a975974292e36e7261d51e5",
+    "runtime/cambium-ab-upgrade.sh": "c6c4857dd5f212ff0dad8c0dab0f374bd5dec62a167fb10691719a1170c475c9",
+    "runtime/cambium-ab-thor.sh": "4501a67fc910a79f8339c847e6e5470d6dbab51cc31ef84b830b13f241f3ffd3"
+  },
+  "retained_signed_oem_parts": [
+    {
+      "release_member": "payloads/XV3-8/oem/kernel.bin",
+      "bytes": 3905000,
+      "sha256": "9650712dc69a82342ebe2dee753110805dd6154024f305db80ae91d1165a93aa"
+    },
+    {
+      "release_member": "payloads/XV3-8/oem/rootfs.bin",
+      "bytes": 40233806,
+      "sha256": "75bc545a6cad4fb66642798194318be02a32cf21cd4cd07caf08a75da48a3214"
+    }
+  ],
+  "note": "Same input bytes used by successful c604 fixtures; installer runtime is separate from exact incoming .8 consumers. Operator hostnames and absolute evidence paths belong only in private receipts. No regeneration from current tree."
+}

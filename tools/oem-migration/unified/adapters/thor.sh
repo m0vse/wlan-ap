@@ -360,6 +360,47 @@ oem_thor_environment() (
     printf '%s\n' "$thor_snapshot"
 )
 
+# Direct raw-MTD users are checked before attachment can change UBI metadata.
+# Resolve named aliases and device numbers; this is the same target-only idle
+# boundary used after attachment, not a new source admission requirement.
+oem_thor_raw_target_idle() (
+    local thor_proc=${OEM_SYS_ROOT:-}/proc thor_dev=${OEM_SYS_ROOT:-}/dev
+    local thor_sys=${OEM_SYS_ROOT:-}/sys/class thor_n=$OEM_TARGET_MTD
+    local thor_table thor_path thor_link thor_fd thor_number thor_numbers= thor_listing
+    [ -r "$thor_proc/mounts" ] && [ -r "$thor_proc/self/mountinfo" ] || exit 1
+    for thor_path in "$thor_sys/mtd/mtd$thor_n/dev" "$thor_sys/mtd/mtd${thor_n}ro/dev" "$thor_sys/block/mtdblock$thor_n/dev"; do
+        [ -r "$thor_path" ] || continue
+        thor_number=$(cat "$thor_path") || exit 1
+        printf '%s\n' "$thor_number" | awk 'NR!=1 || $0!~/^[0-9]+:[0-9]+$/ {bad=1}END{exit bad}' || exit 1
+        thor_numbers="$thor_numbers $thor_number"
+        if [ "$thor_path" = "$thor_sys/mtd/mtd$thor_n/dev" ]; then
+            thor_numbers="$thor_numbers ${thor_number%:*}:$((${thor_number#*:}+1))"
+        fi
+    done
+    awk -v numbers="$thor_numbers" 'BEGIN{n=split(numbers,a," ");for(i=1;i<=n;i++)wanted[a[i]]=1} wanted[$3]{bad=1}END{exit bad}' "$thor_proc/self/mountinfo" || exit 1
+    while read -r thor_path thor_table; do
+        case "$thor_path" in
+            "mtd:$(cat "$thor_sys/mtd/mtd$thor_n/name")") exit 1 ;;
+            /*) thor_link=$(readlink -f "$thor_path" 2>/dev/null) || thor_link=$thor_path ;;
+            *) continue ;;
+        esac
+        case "$thor_link" in "$thor_dev/mtd$thor_n"|"$thor_dev/mtd${thor_n}ro"|"$thor_dev/mtdblock$thor_n") exit 1 ;; esac
+    done < "$thor_proc/mounts"
+    for thor_fd in "$thor_proc"/[0-9]*/fd/*; do
+        [ -L "$thor_fd" ] || continue
+        thor_link=$(readlink "$thor_fd") || exit 1
+        case "$thor_link" in
+            /*) thor_path=$(readlink -f "$thor_fd" 2>/dev/null) || thor_path=$thor_link
+                case "$thor_path" in "$thor_dev/mtd$thor_n"|"$thor_dev/mtd${thor_n}ro"|"$thor_dev/mtdblock$thor_n") exit 1 ;; esac ;;
+        esac
+        [ -n "$thor_numbers" ] || continue
+        thor_listing=$(LC_ALL=C ls -Lldn "$thor_fd" 2>/dev/null) || exit 1
+        thor_number=$(printf '%s\n' "$thor_listing" | awk 'NR==1 && $1~/^[cb]/ && $5~/^[0-9]+,$/ && $6~/^[0-9]+$/ {sub(/,$/,"",$5);print $5 ":" $6}') || exit 1
+        [ -n "$thor_number" ] || continue
+        case " $thor_numbers " in *" $thor_number "*) exit 1 ;; esac
+    done
+)
+
 # Preflight remains read-only. Attachment of a currently unattached inactive
 # bank occurs only inside the authorized transaction, after backup/source save.
 oem_thor_target_attachment() {
@@ -372,7 +413,7 @@ oem_thor_target_attachment() {
     done
     if [ "$thor_n" = 0 ]; then
         [ "$thor_allow" = after-source-save ] || return 2
-        oem_thor_critical_check && oem_thor_mtd_target_node >/dev/null || return 1
+        oem_thor_critical_check && oem_thor_mtd_target_node >/dev/null && oem_thor_raw_target_idle || return 1
         awk -F '\t' -v dst="$OEM_TARGET_MTD" -v src="$OEM_SOURCE_MTD" '
           $1==dst {d++;if($4!="target")bad=1} $1==src {s++;if($4!="active-oem")bad=1}
           END{exit bad || d!=1 || s!=1}' "$OEM_PROTECTED_RANGES" || return 1

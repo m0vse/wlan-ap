@@ -19,8 +19,8 @@ def main():
         top=Path(td).resolve();shared=top/'shared';shared.mkdir()
         for n in ('common.sh','protection.sh'): (shared/n).write_bytes((a.common_lib/n).read_bytes())
 
-        def fixture(fail=0,slot=1,unattached=False):
-            root=top/f'case-{slot}-{fail}-{unattached}';shutil.rmtree(root,ignore_errors=True);root.mkdir(mode=0o700)
+        def fixture(fail=0,slot=1,unattached=False,drift=""):
+            root=top/f'case-{slot}-{fail}-{unattached}-{drift}';shutil.rmtree(root,ignore_errors=True);root.mkdir(mode=0o700)
             bundle=root/'bundle';shutil.copytree(a.provider,bundle)
             runtime=bundle/'runtime';runtime.mkdir()
             for n,p in [('cambium-ab.sh','cambium-ab/files/cambium-ab.sh'),('cambium-ab-upgrade.sh','cambium-ab/files/cambium-ab-upgrade.sh'),('cambium-ab-thor.sh','cambium-thor-support/files/cambium-ab-thor.sh')]:
@@ -104,9 +104,15 @@ elif cmd=='ubimkvol':
 elif cmd=='mknod':Path(a[0]).write_bytes(b'fixture-node')
 elif cmd=='ubiupdatevol':Path(a[0]).write_bytes(Path(a[1]).read_bytes())
 elif cmd=='fw_setenv':
- data=json.loads((root/'environment.json').read_text());file=Path(a[a.index('-s')+1])
- for line in file.read_text().splitlines():
-  k,_,v=line.partition(' ');data[k]=v
+ data=json.loads((root/'environment.json').read_text())
+ if '-s' in a:
+  for line in Path(a[a.index('-s')+1]).read_text().splitlines():
+   k,_,v=line.partition(' ')
+   if v:data[k]=v
+   else:data.pop(k,None)
+ else:
+  if len(a)>3:data[a[2]]=a[3]
+  else:data.pop(a[2],None)
  (root/'environment.json').write_text(json.dumps(data))
 elif cmd=='mount':
  mnt=Path(a[-1]);store=root/'overlay-store';store.mkdir(exist_ok=True)
@@ -128,7 +134,28 @@ elif cmd=='ubirsvol':put(ubi/'ubi8_1/reserved_ebs',int(a[a.index('-s')+1])//1269
 else:sys.exit(99)
 ''');actor.chmod(0o700)
             for cmd in ('ubidetach','ubiformat','ubiattach','ubimkvol','mknod','ubiupdatevol','fw_setenv','fw_printenv','mount','umount','sync','ls','ubirmvol','ubirename','ubirsvol'): (tools/cmd).symlink_to('actor')
-            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/restore-thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='thor-2026.10.05.8',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),SLOT=str(slot),FAIL_OPERATION=str(fail))
+            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/restore-thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='thor-2026.10.05.8',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),SLOT=str(slot),FAIL_OPERATION=str(fail),DRIFT=drift)
+            # Late drift is external to the writer, after successful metadata
+            # readback and immediately before its actual final guard body.
+            adapter=root/'restore-actor.sh'
+            adapter.write_text((base/'adapters/restore-thor.sh').read_text().replace('oem_restore_thor_final_candidate()', 'oem_restore_thor_final_candidate_actual()')+r'''
+oem_restore_thor_final_candidate() {
+ python3 "$OEM_SYS_ROOT/drift.py" || return 1
+ oem_restore_thor_final_candidate_actual
+}
+''')
+            (root/'drift.py').write_text(r'''
+import os,json
+from pathlib import Path
+r=Path(os.environ['OEM_SYS_ROOT']);kind=os.environ['DRIFT'];d=json.loads((r/'environment.json').read_text())
+if kind in ('kernel','root'):
+ p=r/('dev/ubi8_'+('0' if kind=='kernel' else '1'));b=bytearray(p.read_bytes());b[0]^=1;p.write_bytes(b)
+elif kind=='identity':(r/'dev/ubi8_4').write_bytes(b'external-identity-drift')
+elif kind=='env-unlisted':d['factory_keep']='external-drift'
+elif kind.startswith('arm-'):d['thor_restore_'+kind[4:]]='external-drift'
+(r/'environment.json').write_text(json.dumps(d))
+''')
+            env['ADAPTER']=str(adapter)
             return root,env,names
 
         script=r'''
@@ -149,15 +176,16 @@ oem_restore_migrate
             protected={str(p):p.read_bytes() for p in (root/'dev').glob('mtd*ro')}
             protected.update({str(p):p.read_bytes() for p in (root/'dev').glob('ubi6*')})
             protected.update({str(root/f'dev/ubi8_{i}'):(root/f'dev/ubi8_{i}').read_bytes() for i in (3,4)})
-            r=subprocess.run(['sh','-c',script],env=env,text=True,capture_output=True,timeout=90)
+            r=subprocess.run(['sh','-c',script],env=env,text=True,capture_output=True,timeout=180)
             assert (r.returncode==0)==ok,(r.returncode,r.stdout,r.stderr[-4500:])
+            if env['DRIFT']=='identity':protected.pop(str(root/'dev/ubi8_4'))
             assert protected=={p:Path(p).read_bytes() for p in protected}
             count+=1;return r
         # Exact old slot command is produced by the authenticated real module.
         def boot_environment(root,env):
             cmd='. "$OEM_BUNDLE/runtime/cambium-ab.sh"; . "$OEM_BUNDLE/runtime/cambium-ab-thor.sh"; ab_thor_board cambiumnetworks,xv3-8; ab_thor_boot_command "$SLOT"'
             boot=subprocess.check_output(['sh','-c',cmd],env=env,text=True).strip()
-            data=__import__('json').loads((root/'environment.json').read_text());data['thor_boot'+env['SLOT']]=boot;(root/'environment.json').write_text(__import__('json').dumps(data))
+            data=__import__('json').loads((root/'environment.json').read_text());data['thor_boot'+env['SLOT']]=boot;data['thor_stable'+env['SLOT']]=f'run thor_boot{env["SLOT"]}; run thor_boot{1-int(env["SLOT"])}';(root/'environment.json').write_text(__import__('json').dumps(data))
         for slot in (0,1):
             root,env,names=fixture(slot=slot);boot_environment(root,env);r=run(root,env,True)
             assert 'handoff=one-shot-oem-armed' in r.stdout
@@ -165,6 +193,21 @@ oem_restore_migrate
             assert data['thor_ab_confirmed']==str(slot) and data['factory_keep']=='untouched'
             assert 'saveenv && run thor_restore_oem' in data['bootcmd']
             operations=int((root/'counter').read_text())
+            # Execute the shipped .8 rollback record and stable-default
+            # restoration body on the actual source-only wrapper just saved.
+            frozen=base/'tests/fixtures/thor-2026.10.05.8'
+            (root/'system.sh').write_text('')
+            guard=r'''
+. "$GUARD"
+AB_ENV=thor AB_ACTIVE=$SLOT
+record_rollback 'candidate did not boot' || exit 1
+commit_trial "$SLOT" || exit 1
+'''
+            genv={**env,'GUARD':str(frozen/'usr/sbin/cambium-ab-guard'),'CAMBIUM_SYSTEM_FUNCTIONS':str(root/'system.sh'),'CAMBIUM_AB_LIB':str(frozen/'lib/functions/cambium-ab.sh'),'CAMBIUM_AB_MODULES':str(frozen/'lib/functions'),'CAMBIUM_INSTALLER_HEALTH_LIB':str(frozen/'lib/functions/cambium-installer-health.sh'),'AB_GUARD_SOURCE_ONLY':'1','AB_ENV_CONFIG':str(root/'dummy')}
+            subprocess.run(['sh','-c',guard],env=genv,check=True,capture_output=True)
+            restored=__import__('json').loads((root/'environment.json').read_text())
+            assert restored['bootcmd']==f'run thor_stable{slot}'
+            assert restored[f'thor_stable{slot}']==f'run thor_boot{slot}'
             print('Thor restore slot',slot,'positive passed; sweeping',operations,'failure points',flush=True)
             def failed_case(fail):
                 root,env,names=fixture(fail,slot)
@@ -176,6 +219,10 @@ oem_restore_migrate
                 finally:shutil.rmtree(root)
             with ThreadPoolExecutor(max_workers=4) as workers:list(workers.map(failed_case,range(1,operations+1)))
             root,env,names=fixture(slot=slot,unattached=True);boot_environment(root,env);run(root,env,True)
+            for drift in ('kernel','root','identity','env-unlisted','arm-target','arm-state','arm-prior','arm-oem'):
+                root,env,names=fixture(slot=slot,drift=drift);boot_environment(root,env);run(root,env,False)
+                d=__import__('json').loads((root/'environment.json').read_text())
+                assert d['bootcmd']==f'run thor_boot{slot}' and d[f'thor_stable{slot}']==f'run thor_boot{slot}'
         print(f'PASS: {count} whole OEM-return cases, failures at all {operations} persistent/process steps; active bank and both identity children unchanged')
         print('Scope: actual vendor pins, common physical/ENV/idle checks and source writer. DT reader/device/fwtools are actors. No AP, factory reset, boot, build or identity export.')
 
