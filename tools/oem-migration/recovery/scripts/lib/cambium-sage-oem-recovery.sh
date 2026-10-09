@@ -68,8 +68,13 @@ csr_deferred_protected_snapshot() {
         id=${node%/name}; id=${id##*_}; name=$(cat "$node") || return 1
         case "$id" in ''|*[!0-9]*) return 1 ;; esac
         case "$name" in "linux$((1-CSR_ACTIVE))"|"rootfs$((1-CSR_ACTIVE))"|"rootfs_data$((1-CSR_ACTIVE))") continue ;; esac
+        [ "$(cat "${node%/name}/upd_marker")" = 0 ] && [ "$(cat "${node%/name}/corrupted")" = 0 ] &&
+            [ "$(cat "${node%/name}/usable_eb_size")" = 126976 ] || return 1
         lebs=$(cat "${node%/name}/reserved_ebs") && csp_number "$lebs" || return 1
-        hash=$(csr_hash "${CSR_DEV:-/dev}/ubi0_$id") && csr_digest "$hash" || return 1
+        case "$name" in
+            nvram|certificates|"rootfs_data$CSR_ACTIVE") hash=mutable-no-installer-writes ;;
+            *) hash=$(csr_hash "${CSR_DEV:-/dev}/ubi0_$id") && csr_digest "$hash" || return 1 ;;
+        esac
         printf '%s %s %s %s\n' "$id" "$name" "$lebs" "$hash" || return 1
     done
 }

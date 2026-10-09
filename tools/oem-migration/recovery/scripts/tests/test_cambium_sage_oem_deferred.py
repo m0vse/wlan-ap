@@ -10,6 +10,8 @@ class DeferredTests(unittest.TestCase):
         self.addCleanup(case.tearDown)
         f, root = case.f, case.r
         f.put('mtd/mtd10/flags', '0x800')
+        for identifier in (0, 1, 2, 3, 4, 6, 7):
+            f.put(f'ubi/ubi0_{identifier}/corrupted', '0')
         for identifier in (0, 1, 6):
             f.put(f'dev/ubi0_{identifier}', b'KEEP working source ' + str(identifier).encode())
         if slot == 1:
@@ -76,6 +78,28 @@ class DeferredTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('NOR', ops)
         self.assertFalse((directory/'appsblenv.bin').exists())
+
+    def test_concurrent_shared_store_change_does_not_block_safe_target_writer(self):
+        case, extra = self.fixture(0)
+        writer = case.f.bin/'ubiupdatevol'
+        writer.write_text(writer.read_text()+'\nif label=="ROOT": (p/"dev/ubi0_4").write_bytes(b"simulated independent daemon write")\n')
+        result, ops = case.invoke(extra=extra, operation='csr_restore_oem_deferred')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(ops, ['ENV_BATCH', 'ROOT', 'KERNEL', 'ENV_BATCH', 'ENV_SELECTOR'])
+        env = dict(row.split('=', 1) for row in (case.r/'env-snapshot').read_text().splitlines())
+        self.assertIn('saveenv && run sage_boot1; run sage_boot0', env['bootcmd'])
+        self.assertEqual(env['sage_oem_restore_state'], 'armed')
+        self.assertEqual((case.r/'dev/ubi0_4').read_bytes(), b'simulated independent daemon write')
+        self.assertIn('oem_candidate_armed=', result.stdout)
+
+    def test_source_kernel_mutation_is_still_detected_before_arm(self):
+        case, extra = self.fixture(0)
+        writer = case.f.bin/'ubiupdatevol'
+        writer.write_text(writer.read_text()+'\nif label=="ROOT": (p/"dev/ubi0_0").write_bytes(b"wrong source write")\n')
+        result, ops = case.invoke(extra=extra, operation='csr_restore_oem_deferred')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(ops, ['ENV_BATCH', 'ROOT', 'KERNEL'])
+        self.assertNotIn('oem_candidate_armed=', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()
