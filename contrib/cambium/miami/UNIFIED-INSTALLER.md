@@ -88,6 +88,16 @@ environment erase/program are not established by synthetic tests.
 commands. `cambium-ab-ready` is the common read-only readiness interface. Status
 must distinguish `onboarded` from `ready` and `unsupported`.
 
+`cambium-return-oem --check` checks only the retained mapping and changes no
+boot state. The corrected `--arm` requires reviewed one-shot readiness/arm
+hooks, preserving the exact current OpenWiFi default before loading OEM once.
+Without those hooks it refuses before stopping the guard or writing ENV.
+The current Miami pilot has no qualified OEM-return trial/confirmation hook;
+the older installed helper's permanent OEM selection is not the unified
+return workflow. No automatic OEM confirmation or converted-bank restoration
+is implied. This source correction joins the future aggregate shared A/B
+package release 20 to 21; no firmware build or runtime update accompanies it.
+
 The proven OEM-preserving b6d1a26f image is onboarded, not sysupgrade-ready:
 the other bank is read-only, the platform rejects Miami upgrades, and the
 image has no admitted sysupgrade artifact. A one-shot boot does not prove A/B

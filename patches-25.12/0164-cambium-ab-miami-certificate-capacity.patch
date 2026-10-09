@@ -114,21 +114,24 @@ Subject: [PATCH] cambium-ab: add exact Miami storage policy and gated OEM return
  endef
 --- /dev/null
 +++ b/package/cambium/cambium-ab/files/cambium-return-oem
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,20 @@
 +#!/bin/sh
-+# Select the retained OEM firmware for the next manual reboot. No flash erase.
++# Read-only retained OEM check, or a reviewed one-shot return. No implicit reboot.
 +set -e
 +. /lib/functions/system.sh
 +. /lib/functions/cambium-ab.sh
-+case "${1:-}" in --check|--arm) ;; *) echo 'usage: cambium-return-oem --check|--arm' >&2; exit 2 ;; esac
++[ "$#" = 1 ] || { echo 'usage: cambium-return-oem --check|--arm' >&2; exit 2; }
++case "$1" in --check|--arm) ;; *) echo 'usage: cambium-return-oem --check|--arm' >&2; exit 2 ;; esac
 +ab_identity >/dev/null || exit 1
 +! ab_converted || { echo 'OEM return unavailable after bank conversion' >&2; exit 1; }
 +ab_hook oem_return_ready && "ab_${AB_FAMILY}_oem_return_ready" || exit 1
-+[ "$1" != --check ] || { echo 'Retained OEM bank and boot contract verified'; exit 0; }
-+/etc/init.d/cambium-ab-guard stop
-+# Stock command first; an interruption can only leave the existing OEM path.
-+ab_setenv bootcmd "$AB_STOCK_BOOTCMD" || exit 1
-+[ "$AB_MARKER" != 1 ] || ab_setenv changing_bootcmd
-+[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || exit 1
-+[ "$AB_MARKER" != 1 ] || [ -z "$(ab_getenv changing_bootcmd)" ] || exit 1
-+echo 'OEM selected for the next boot. Reboot manually; OpenWiFi volumes are preserved.'
++[ "$1" != --check ] || { echo 'Retained OEM mapping verified; no return boot armed.'; exit 0; }
++# The family hook must preserve and save the exact current OpenWiFi source
++# before loading OEM once. Its absence never permits a permanent bootipq flip.
++ab_hook oem_return_trial_ready && ab_hook oem_return_arm_trial || {
++ echo 'Retained OEM one-shot return unavailable; no guard or boot state changed.' >&2
++ exit 1
++}
++"ab_${AB_FAMILY}_oem_return_trial_ready" || exit 1
++"ab_${AB_FAMILY}_oem_return_arm_trial" || exit 1
++echo 'Retained OEM one-shot armed. Reboot manually; OEM needs separate verified confirmation.'
