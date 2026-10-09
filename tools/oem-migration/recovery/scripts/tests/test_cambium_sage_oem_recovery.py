@@ -18,7 +18,7 @@ class RecoveryTests(unittest.TestCase):
         self.f.tool('ubirsvol','#!/bin/sh\necho FORBIDDEN >> "$FIXTURE/operations"\nexit 99\n')
         self.f.tool('ubiupdatevol','#!/usr/bin/env python3\nimport os,sys\nfrom pathlib import Path\np=Path(os.environ["FIXTURE"]);a=sys.argv[1:]\nif a[0]=="-t":\n assert a[1]==str(p/"dev/ubi0_4");label="NVRAM"\n data=b"\\xff"*(167*126976);dst=Path(a[1])\nelse:\n dst=Path(a[0]);assert dst.name in ("ubi0_2","ubi0_3");label="KERNEL" if dst.name=="ubi0_2" else "ROOT";data=Path(a[1]).read_bytes()\n(p/"operations").open("a").write(label+"\\n")\nif os.environ.get("FAULT")==label.lower():sys.exit(1)\ndst.write_bytes(data)\n')
     def tearDown(self):self.d.tearDown()
-    def invoke(self,fault='',extra=None,arm_only=False):
+    def invoke(self,fault='',extra=None,arm_only=False,operation=None):
         env={**os.environ,'PATH':str(self.f.bin)+':'+os.environ['PATH'],'FIXTURE':str(self.r),'LIB':str(LIB),'FAULT':fault,
             'CSR_RESET_QUALIFIED':'qualified','CSR_RECOVERY_BOOT_QUALIFIED':'qualified','CSR_OEM_DEFAULTS_QUALIFIED':'qualified',
             'CSR_MODEL':'E410','CSR_ACTIVE':'0','CSR_SOURCE_BOOT_PIN':hashlib.sha256(self.source_boot.encode()).hexdigest(),
@@ -36,7 +36,8 @@ csr_hash() {
  if [ "$1" = "$CSR_DEV/mtd6ro" ]; then echo 066bfcc317291b23e44bd42f1d10c4d08ca82ded6ca05abd15f5da280ae4dba1
  else sha256sum < "$1" | awk '{print $1}'; fi
 }
-'''+('csr_arm_oem' if arm_only else 'csr_restore_oem')
+csr_deferred_storage_boundary() { [ "${FAULT:-}" != boundary ]; }
+'''+(operation or ('csr_arm_oem' if arm_only else 'csr_restore_oem'))
         result=subprocess.run(['sh','-c',code],env=env,capture_output=True,text=True)
         ops=(self.r/'operations').read_text().splitlines() if (self.r/'operations').exists() else []
         return result,ops

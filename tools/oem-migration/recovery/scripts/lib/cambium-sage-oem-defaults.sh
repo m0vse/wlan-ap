@@ -13,6 +13,7 @@ csr_render_oem_defaults() {
     printf '%s\n' bootargs mtdids mtdparts sage_boot0 sage_boot1 sage_stable0 sage_stable1 \
         sage_ab_version sage_ab_confirmed sage_ab_target sage_ab_state sage_ab_last_failure \
         sage_oem_fallback sage_installer_target sage_installer_job sage_installer_image \
+        sage_oem_restore_target sage_oem_restore_state \
         owrt_trial_slot owrt_fallback_slot owrt_migration_state
 }
 csr_apply_oem_defaults() (
