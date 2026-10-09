@@ -127,6 +127,25 @@ perform that retirement. Until the exact store cleanup has been reviewed and
 explicitly performed, the restore/reset sequence is not a complete clean-test
 workflow. See [the operator retirement steps](RELEASE-ASSEMBLY.md#retire-an-old-native-identity-for-a-clean-test).
 
+After a both-native Jaguar or Thor returns to OEM, the other bank still has
+its old OpenWiFi software, overlay and radio vault. Retiring its old certificate
+store does not restore the original two-volume OEM target layout. A fresh
+install needs a reviewed known-native target reuse path that preserves the
+own-ART-bound vault, refuses remaining identity or unknown children, and reclaims
+only inactive software and nonunique configuration after consent and a saved
+source-only default. Jaguar also needs reviewed handling of the old conversion
+flag left by native confirmation; factory configuration reset alone does not
+clear it. Do not clear flags or format a parent bank manually to bypass these
+refusals. Until the complete model-specific sequence is implemented and checked,
+confirmation, reset and certificate retirement are insufficient to claim a
+working fresh-install roundtrip.
+
+Sage keeps the same named firmware pairs across conversion, so its reader can
+accept the existing inactive SquashFS pair and reviewed 67-LEB overlay. Its
+active OEM root, defaults, pending state, free space and absence of the shared
+certificate store still need the normal exact checks. This structural difference
+does not prove a completed reset or retirement procedure.
+
 The E410 pilot's nonempty NOR factory-config partition is read-only from
 OpenWiFi. Complete reset therefore needs a reviewed OEM-side procedure after
 healthy OEM confirmation, including refreshing the NOR config backup so stale
