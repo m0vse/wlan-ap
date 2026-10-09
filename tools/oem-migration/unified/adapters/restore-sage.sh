@@ -101,7 +101,7 @@ oem_restore_recovery() {
  OEM_RECOVERY_DIR=$OEM_WORK/critical
  oem_backup_capture "$plan" "$CSR_MTD_SYS" "$CSR_DEV" "$OEM_RECOVERY_DIR" && oem_backup_upload "$OEM_RECOVERY_DIR" || return 1
 }
-oem_restore_sage_write_check() {
+oem_restore_sage_write_check() (
  local operation=$1 id=$2 name file
  file=$(oem_restore_sage_member mtd.tsv) || return 1
  oem_physical_inventory "$file" "$CSR_MTD_SYS" "$OEM_PROTECTED_RANGES" && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
@@ -109,7 +109,7 @@ oem_restore_sage_write_check() {
  awk -F '\t' -v op="$operation" -v parent="$CSP_FS_MTD" -v id="$id" -v name="$name" \
   '$1==op && $2==parent && $3==id && $4==name {n++} END{exit n!=1}' "$OEM_WRITE_PLAN" || return 1
  oem_ubi_child_check "$CSP_SYS" "$CSP_FS_MTD" ubi0 "$id" "$name"
-}
+)
 oem_restore_migrate() (
  local id
  oem_restore_preflight && oem_restore_boot_preflight || return 1

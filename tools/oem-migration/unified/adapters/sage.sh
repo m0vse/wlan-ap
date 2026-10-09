@@ -188,7 +188,7 @@ oem_adapter_boot_preflight() {
 }
 # Each destructive UBI command remains the original writer operation, with an
 # additional live parent/name/health and exact plan proof immediately before it.
-oem_sage_write_check() {
+oem_sage_write_check() (
  local operation=$1 child=$2 name=$3 create=${4:-0} file
  file=$(oem_sage_member mtd.tsv) || return 1
  oem_physical_inventory "$file" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_PROTECTED_RANGES" && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
@@ -201,8 +201,8 @@ oem_sage_write_check() {
  else
   oem_ubi_child_check "$CSP_SYS" "$CSP_FS_MTD" ubi0 "$child" "$name"
  fi
-}
-oem_sage_critical_check() {
+)
+oem_sage_critical_check() (
  local kind label index bytes reason
  [ "$(cat "$OEM_WORK/critical/OFFDEVICE_VERIFIED")" = "$(oem_sha "$OEM_WORK/critical/SHA256SUMS")" ] || return 1
  (cd "$OEM_WORK/critical" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || return 1
@@ -215,8 +215,8 @@ oem_sage_critical_check() {
  oem_env_preserved "$OEM_WORK/env-before" "$OEM_WORK/env-after" "$OEM_WORK/env-allowed" || return 1
  oem_sage_protected_snapshot > "$OEM_WORK/protected-after" || return 1
  cmp -s "$OEM_WORK/protected-before" "$OEM_WORK/protected-after"
-}
-oem_sage_protected_snapshot() {
+)
+oem_sage_protected_snapshot() (
  local node id name bytes hash
  for node in "$CSP_SYS"/ubi0_*/name; do
   [ -r "$node" ] || continue
@@ -234,7 +234,7 @@ oem_sage_protected_snapshot() {
   esac
   printf '%s\t%s\t%s\t%s\n' "$id" "$name" "$bytes" "$hash" || return 1
  done
-}
+)
 oem_adapter_migrate() (
  set +x
  set +a
