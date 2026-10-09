@@ -6,7 +6,7 @@ and actual forward writer/FORMAT2/boot shell. Flash, ENV, mount, UBI and UID
 boundaries are disposable actors. Never executes target ELF or accesses an AP.
 """
 from pathlib import Path
-import importlib.util,hashlib,json,shutil,tarfile,unittest
+import importlib.util,hashlib,json,shutil,tarfile,unittest,os,subprocess
 import argparse
 parser=argparse.ArgumentParser(description='Verify actual Sage provider inputs using disposable device/ENV/mount actors; no AP or external network.')
 parser.add_argument('provider',type=Path)
@@ -71,7 +71,23 @@ class ActualProviderTests(forward.ForwardTests):
     self.assertNotEqual(result.returncode,0)
     self.assertFalse((root/'events').exists())
 
+ def test_actual_enabled_model_launcher_offline_check(self):
+  for model in ('E410','E410B'):
+   with self.subTest(model=model):
+    case=self.fixture(model);root,bundle,work,bin,model,sku=case
+    builder_spec=importlib.util.spec_from_file_location('package',BASE/'prepare-release.py');builder=importlib.util.module_from_spec(builder_spec);builder_spec.loader.exec_module(builder)
+    release=work/'release'
+    builder.prepare(PROVIDER,hashlib.sha256((PROVIDER/'SHA256SUMS').read_bytes()).hexdigest(),release,'controller.invalid','http://provider.invalid','http://backup.invalid')
+    launcher=release/'installer.sh';text=launcher.read_text().replace('OEM_SYS_ROOT=\n','OEM_SYS_ROOT=$FIXTURE\n').replace('/tmp/cambium-unified-oem.lock','$FIXTURE/installer.lock');launcher.write_text(text)
+    (bin/'id').write_text('#!/bin/sh\necho 0\n');(bin/'id').chmod(0o755)
+    env=dict(os.environ,PATH=str(bin)+':'+os.environ['PATH'],LC_ALL='C',FIXTURE=str(root),TARGET='1')
+    result=subprocess.run(['sh',str(launcher),'check'],env=env,capture_output=True,text=True,timeout=30)
+    self.assertEqual(result.returncode,0,result.stderr)
+    self.assertIn('status\tpreflight-passed',result.stdout)
+    self.assertNotIn('Onboarding key:',result.stdout)
+    self.assertFalse((root/'events').exists())
 
-suite=unittest.TestSuite([ActualProviderTests('test_both_models_slots_actual_writer_format2_then_arm'),ActualProviderTests('test_actual_provider_source_and_payload_refusals')])
+
+suite=unittest.TestSuite([ActualProviderTests('test_both_models_slots_actual_writer_format2_then_arm'),ActualProviderTests('test_actual_provider_source_and_payload_refusals'),ActualProviderTests('test_actual_enabled_model_launcher_offline_check')])
 result=unittest.TextTestRunner(verbosity=2).run(suite)
 raise SystemExit(not result.wasSuccessful())
