@@ -13,7 +13,7 @@ the authority for an operator's exact model and source version.
 | Family | Recognized models | Current release integration requirement |
 |---|---|---|
 | Gambit | E400 | No migration/restoration adapter; keep disabled |
-| Sage | E410, E410B | Existing writers and captured OEM 4.2.3.3-r10 evidence; exact factory variant, runtime, geometry, bootloader and payload profiles required |
+| Sage | E410, E410B | Existing writers and captured OEM 4.2.3.3-r10 evidence; exact factory variant, runtime, geometry, native source boot contract and payload profiles required |
 | Sage | E600, E430W, E700, E430H, E510 | No inference from E410; keep disabled without their own implemented path |
 | Jaguar | XV2-2, XV2-2T0, XV2-2T1, XE3-4, XE3-4TN | Adapter checks OEM 7.2-r1; each SKU needs its own actual profile and payloads |
 | Thor | XV3-8 | Actual boot generator tests exist; they do not establish a complete OEM installer or restore path |
@@ -25,6 +25,9 @@ The X7-35X b6 firmware's missing readiness hook must remain unsupported for
 normal-upgrade readiness. Source tests for a new hook do not change installed
 firmware. OEM restoration confirmation and clean factory reset also need
 implemented exact-model handlers; framework dispatch alone is insufficient.
+Sage forward migration does not require a new whole-bootloader hash capture.
+The existing E410-A OEM restoration/defaults path retains its independent
+bootloader proof; it does not qualify E410B restoration.
 
 ## Provider directory
 
