@@ -14,7 +14,7 @@ oem_thor_art_node() {
 oem_adapter_inspect() {
     local thor_root=${OEM_SYS_ROOT:-} thor_source_name thor_source_mtd thor_target_mtd
     local thor_zero thor_one thor_ubi thor_count thor_node thor_art thor_art_file thor_serial
-    local thor_config= thor_next thor_file thor_env thor_cmdline thor_env_config thor_release thor_slot
+    local thor_config= thor_next thor_file thor_env thor_cmdline thor_env_config thor_release thor_slot thor_env_dump
     OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT=
     OEM_SOURCE_MTD= OEM_TARGET_MTD= THOR_ACTIVE_UBI= THOR_ENV_CONFIG=
     [ "${OEM_SKU:-}:${OEM_MODEL:-}" = 00000013:XV3-8 ] || return 1
@@ -65,8 +65,15 @@ oem_adapter_inspect() {
     [ "$#" = 4 ] || [ "$#" = 5 ] || return 1
     [ "$1" = "/dev/mtd$thor_env" ] || return 1
     case "$2:$3:$4:${5:-1}" in 0x0:0x10000:0x10000:1|0x0:0x00010000:0x00010000:1) ;; *) return 1 ;; esac
-    [ "$(fw_printenv -c "$thor_env_config" -n image)" = "$thor_slot" ] &&
-        [ "$(fw_printenv -c "$thor_env_config" -n bootcmd)" = 'aq_load_fw&&bootipq' ] || return 1
+    # Capture warnings with the whole ENV response: a bad-CRC fallback may
+    # otherwise return apparently valid compiled image/bootcmd defaults.
+    thor_env_dump=$(fw_printenv -c "$thor_env_config" 2>&1) || return 1
+    printf '%s\n' "$thor_env_dump" | awk '
+      {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_]+$/ || seen[key]++)bad=1}
+      END{exit bad || !seen["image"] || !seen["bootcmd"]}' || return 1
+    [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$thor_slot" ] &&
+        [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^bootcmd=//p')" = 'aq_load_fw&&bootipq' ] || return 1
+    thor_env_dump=
     thor_art=$(oem_physical_index "$thor_root/sys/class/mtd" 0:ART) || return 1
     [ "$(cat "$thor_root/sys/class/mtd/mtd$thor_art/type")" = nor ] &&
         [ "$(cat "$thor_root/sys/class/mtd/mtd$thor_art/size")" = 262144 ] || return 1

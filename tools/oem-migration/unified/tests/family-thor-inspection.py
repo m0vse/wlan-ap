@@ -58,7 +58,18 @@ def main():
 . "$COMMON/protection.sh"
 . "$ADAPTER"
 oem_thor_art_node(){ printf '%s\n' "$OEM_SYS_ROOT/fixture-ART"; }
-fw_printenv(){ [ "$1" = -c ] && [ "$3" = -n ] || return 1; cat "$OEM_SYS_ROOT/environment/$4"; }
+fw_printenv(){
+ [ "$1" = -c ] && [ "$#" = 2 ] || return 1
+ case "$ENV_FAULT" in
+ crc) printf '%s\n' 'Warning: Bad CRC, using default environment' >&2;;
+ warning) printf '%s\n' 'unexpected warning' >&2;;
+ failed) return 1;;
+ esac
+ printf 'image=%s\nbootcmd=%s\n' "$(cat "$OEM_SYS_ROOT/environment/image")" "$(cat "$OEM_SYS_ROOT/environment/bootcmd")"
+ [ "$ENV_FAULT" != duplicate ] || echo image=1
+ [ "$ENV_FAULT" != malformed ] || echo 'not-an-env-assignment'
+ return 0
+}
 fw_setenv(){ exit 99; }; ubiupdatevol(){ exit 99; }; ubiformat(){ exit 99; }
 inspect=0
 oem_adapter_inspect || inspect=$?
@@ -70,14 +81,15 @@ oem_context_check || exit 1
 printf '%s\n' "$OEM_SERIAL" "$OEM_SOURCE_RELEASE" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_MTD" "$OEM_TARGET_MTD"
 '''
 
-        def run(root, ok, model='XV3-8'):
+        def run(root, ok, model='XV3-8', env_fault=''):
             nonlocal count
             before = {str(p.relative_to(root)): (p.stat().st_mode, hashlib.sha256(p.read_bytes()).hexdigest())
                       for p in root.rglob('*') if p.is_file()}
             env = dict(os.environ, COMMON=str(isolated_common), ADAPTER=str(adapter),
                        OEM_SYS_ROOT=str(root), OEM_SKU='00000013', OEM_MODEL=model,
                        OEM_SUPPORTED_RELEASE='fixture-supported', OEM_SERIAL='stale',
-                       OEM_SOURCE_RELEASE='stale', OEM_SOURCE_SLOT='stale', OEM_TARGET_SLOT='stale')
+                       OEM_SOURCE_RELEASE='stale', OEM_SOURCE_SLOT='stale', OEM_TARGET_SLOT='stale',
+                       ENV_FAULT=env_fault)
             result = subprocess.run(['sh', '-c', script], env=env, text=True, capture_output=True, timeout=5)
             assert (result.returncode == 0) == ok, (result.returncode, result.stdout, result.stderr)
             assert before == {str(p.relative_to(root)): (p.stat().st_mode, hashlib.sha256(p.read_bytes()).hexdigest())
@@ -117,6 +129,8 @@ printf '%s\n' "$OEM_SERIAL" "$OEM_SOURCE_RELEASE" "$OEM_SOURCE_SLOT" "$OEM_TARGE
             elif fault == 'serial-zero': put('fixture-ART', bytes(80))
             run(root, False)
         root, put, _ = fixture(); run(root, False, 'XE5-8')
+        for env_fault in ('crc', 'warning', 'failed', 'duplicate', 'malformed'):
+            root, put, _ = fixture(); run(root, False, env_fault=env_fault)
         print(f'PASS: {count} actual Thor inspections/context checks; fixture file bytes/modes unchanged')
         print('Scope: exact synthetic geometry/version/slot/serial readers; fw_printenv and char-device lookup simulated; no actual OEM version admitted or write/boot action')
 
