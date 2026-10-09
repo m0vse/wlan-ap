@@ -14,7 +14,7 @@ def sha(path):
         for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
     return h.hexdigest()
 
-def prepare(provider, expected, output, controller, download, backup):
+def prepare(provider, expected, output, controller, download, backup, metadata_first=False):
     if not re.fullmatch('[0-9a-f]{64}',expected):raise ValueError('independent provider ledger digest required')
     if provider.is_symlink():raise ValueError('symlink provider')
     provider=provider.resolve(strict=True);output=output.resolve()
@@ -50,9 +50,30 @@ def prepare(provider, expected, output, controller, download, backup):
         mappings[filename]=rows
     reserved={'installer.sh','oem-restore-test.sh','check-sysupgrade-ready.sh','recognition.tsv','deployment.tsv'}
     if any(n in reserved or n.startswith(('adapters/','lib/')) for n in entries):raise ValueError('provider cannot replace framework code')
+    staged=set()
+    if metadata_first:
+        if 'payload-map.tsv' not in entries:raise ValueError('metadata-first release needs payload-map.tsv')
+        seen=set()
+        for line in (provider/'payload-map.tsv').read_text().splitlines():
+            fields=line.split('\t')
+            if len(fields)!=6:raise ValueError('invalid payload map row')
+            model,operation,name,remote,size,pin=fields
+            key=(model,operation,name)
+            if model not in {r[2] for r in recognized} or operation not in ('install','restore','confirm') or key in seen:raise ValueError('invalid selected operation/model')
+            seen.add(key)
+            for value in (name,remote):
+                if not re.fullmatch('[A-Za-z0-9_./-]+',value) or any(p in ('','.','..') for p in value.split('/')):raise ValueError('unsafe payload path')
+            if name.startswith(('lib/','adapters/','readers/','profiles/')) or not re.search(r'\.(bin|itb|squashfs|ubifs|ubi|json|contents)$',name):raise ValueError('payload map cannot download code')
+            if not re.fullmatch('[1-9][0-9]*',size) or int(size)>268435456 or name not in entries or entries[name]!=pin or (provider/name).stat().st_size!=int(size):raise ValueError('payload binding differs from provider')
+            staged.add(name)
+        if not staged:raise ValueError('empty selected payload map')
+        for name in entries:
+            if name not in staged and (name.startswith('payloads/') or re.search(r'\.(bin|itb|squashfs|ubifs|ubi|cimg|tar)$',name)):
+                raise ValueError('metadata-first provider has undeclared firmware payload: '+name)
     output.mkdir(mode=0o700,parents=True,exist_ok=False)
     try:
         for name in entries:
+            if name in staged:continue
             target=output/name;target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
             shutil.copyfile(provider/name,target);target.chmod(0o600)
             if sha(target)!=entries[name]:raise ValueError('provider changed while copying')
@@ -93,4 +114,5 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('provider',type=Path);p.add_argument('provider_sha256');p.add_argument('new_output',type=Path)
     p.add_argument('--controller',required=True);p.add_argument('--download-url',required=True);p.add_argument('--backup-url',required=True)
-    a=p.parse_args();print(prepare(a.provider,a.provider_sha256,a.new_output,a.controller,a.download_url,a.backup_url))
+    p.add_argument('--metadata-first',action='store_true',help='Package authenticated code/metadata; fetch only detected model operation data before writes')
+    a=p.parse_args();print(prepare(a.provider,a.provider_sha256,a.new_output,a.controller,a.download_url,a.backup_url,a.metadata_first))

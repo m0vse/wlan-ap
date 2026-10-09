@@ -1,6 +1,52 @@
 #!/bin/sh
 # Bounded local staging only. No firmware/device writes, no enrollment secret.
 # Conservative aggregate budget: reserve an entire attempt before starting it.
+oem_payload_map_check() {
+ awk -F '\t' '
+  NF!=6 || $1!~/^[A-Za-z0-9_-]+$/ || $2!~/^(install|restore|confirm)$/ || seen[$1 FS $2 FS $3]++ {bad=1}
+  $3!~/^[A-Za-z0-9_.\/-]+\.(bin|itb|squashfs|ubifs|ubi|json|contents)$/ || $4!~/^[A-Za-z0-9_.\/-]+$/ {bad=1}
+  $3~/^\// || $4~/^\// || $3~/(^|\/)\.\.?(\/|$)/ || $4~/(^|\/)\.\.?(\/|$)/ || $3~/\/\// || $4~/\/\// {bad=1}
+  $3~/^(lib|adapters|readers|profiles)\// {bad=1}
+  $5!~/^[1-9][0-9]*$/ || $5>268435456 || length($6)!=64 || $6~/[^0-9a-f]/ {bad=1}
+  END{exit bad || NR<1}' "$1"
+}
+oem_payload_stage() {
+ [ -f "$OEM_BUNDLE/payload-map.tsv" ] || return 0
+ local map selected model operation name remote size digest missing total=0 remaining directory
+ map=$(oem_bundle_member payload-map.tsv) || return 1
+ oem_payload_map_check "$map" || return 1
+ OEM_SELECTED_PAYLOADS=$OEM_WORK/selected-payloads.tsv
+ awk -F '\t' -v model="$OEM_MODEL" -v operation="$1" '$1==model && $2==operation' "$map" > "$OEM_SELECTED_PAYLOADS" || return 1
+ [ -s "$OEM_SELECTED_PAYLOADS" ] || return 1
+ chmod 600 "$OEM_SELECTED_PAYLOADS" || return 1
+ OEM_OBJECT_ROOT=$OEM_WORK/cache
+ [ -d "$OEM_OBJECT_ROOT" ] || mkdir -m 700 "$OEM_OBJECT_ROOT" || return 1
+ while IFS="$(printf '\t')" read -r model operation name remote size digest; do
+  directory=$(dirname "$OEM_OBJECT_ROOT/$name")
+  mkdir -p "$directory" && chmod 700 "$directory" || return 1
+  missing=$(oem_stage_missing_bytes "$OEM_OBJECT_ROOT/$name" "$digest" "$size") || return 1
+  total=$((total+missing))
+ done < "$OEM_SELECTED_PAYLOADS"
+ oem_stage_space_check "$OEM_OBJECT_ROOT" "$total" || return 1
+ remaining=$total
+ while IFS="$(printf '\t')" read -r model operation name remote size digest; do
+  missing=$(oem_stage_missing_bytes "$OEM_OBJECT_ROOT/$name" "$digest" "$size") || return 1
+  remaining=$((remaining-missing));OEM_STAGE_EXTRA_BYTES=$remaining
+  oem_fetch_local "$remote" "$digest" "$size" "$OEM_OBJECT_ROOT/$name" || return 1
+ done < "$OEM_SELECTED_PAYLOADS"
+ OEM_STAGE_EXTRA_BYTES=0
+ oem_payload_closure_check
+}
+oem_payload_closure_check() (
+ [ -n "${OEM_SELECTED_PAYLOADS:-}" ] || exit 0
+ original=$(oem_bundle_member payload-map.tsv) || exit 1
+ filtered=$OEM_WORK/payload-recheck.tsv
+ awk -F '\t' -v model="$OEM_MODEL" -v operation="$OEM_OPERATION" '$1==model && $2==operation' "$original" > "$filtered" || exit 1
+ cmp -s "$filtered" "$OEM_SELECTED_PAYLOADS" || exit 1
+ while IFS="$(printf '\t')" read -r model operation name remote size digest; do
+  oem_bundle_member "$name" >/dev/null || exit 1
+ done < "$OEM_SELECTED_PAYLOADS"
+)
 oem_stage_space_check() (
  directory=$1 bytes=$2
  case "$bytes" in ''|*[!0-9]*) return 1;; esac
@@ -63,7 +109,8 @@ oem_bounded_run() {
 }
 oem_fetch_local() {
  name=$1 expected=$2 size=$3 output=$4
- oem_hex64 "$expected" && oem_token "$name" || return 1
+ oem_hex64 "$expected" || return 1
+ case "$name" in ''|/*|*'/../'*|../*|*'/./'*|*'//'*|*[!A-Za-z0-9_./-]*) return 1;; esac
  case "$size" in ''|*[!0-9]*) return 1;; esac
  [ "$size" -gt 0 ] && [ "$size" -le 268435456 ] || return 1
  directory=$(dirname "$output")

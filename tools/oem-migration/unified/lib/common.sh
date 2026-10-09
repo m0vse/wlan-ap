@@ -135,14 +135,24 @@ oem_cleanup() {
  [ -z "${OEM_LOCK:-}" ] || rmdir "$OEM_LOCK" 2>/dev/null
 }
 
-oem_bundle_member() {
+oem_bundle_member() (
  name=$1
  case "$name" in ''|/*|*'/../'*|../*|*'/./'*|*[!A-Za-z0-9_./-]*) return 1;; esac
- digest=$(awk -v name="$name" '$2==name{print $1;n++}END{if(n!=1)exit 1}' "$OEM_BUNDLE/SHA256SUMS") || return 1
+ digest=$(awk -v name="$name" '$2==name{print $1;n++}END{if(n!=1)exit 1}' "$OEM_BUNDLE/SHA256SUMS") || {
+  [ -n "${OEM_OBJECT_ROOT:-}" ] && [ -n "${OEM_SELECTED_PAYLOADS:-}" ] || return 1
+  row=$(awk -F '\t' -v name="$name" '$3==name{print $5, $6;n++}END{if(n!=1)exit 1}' "$OEM_SELECTED_PAYLOADS") || return 1
+  read -r size digest <<EOF_OBJECT
+$row
+EOF_OBJECT
+  file=$OEM_OBJECT_ROOT/$name
+  oem_private_file "$file" && [ "$(readlink -f "$file")" = "$file" ] &&
+   [ "$(wc -c < "$file")" -eq "$size" ] && [ "$(oem_sha "$file")" = "$digest" ] || return 1
+  printf '%s\n' "$file";return 0
+ }
  [ -f "$OEM_BUNDLE/$name" ] && [ ! -L "$OEM_BUNDLE/$name" ] && [ "$(readlink -f "$OEM_BUNDLE/$name")" = "$OEM_BUNDLE/$name" ] || return 1
  [ "$(oem_sha "$OEM_BUNDLE/$name")" = "$digest" ] || return 1
  printf '%s\n' "$OEM_BUNDLE/$name"
-}
+)
 oem_read_release() {
  file=$1
  [ -f "$file" ] && [ ! -L "$file" ] || return 1

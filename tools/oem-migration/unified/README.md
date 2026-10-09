@@ -11,6 +11,13 @@ its published launcher hash. The release already contains the correct image
 mapping and operator controller/download/critical-backup URLs. Public source
 contains no site defaults or enrollment key.
 
+A metadata-first release contains the authenticated common launcher, helpers
+and exact-model data map. The same command detects the model and stages only
+its selected operation's pinned objects before key input or backup. You do not
+choose a family bundle or copy every family's firmware onto the AP. Verified
+local objects are rechecked before writes; a self-contained offline release
+continues to work without the data map.
+
 From an OEM root console, inside that verified release directory:
 
 ```sh

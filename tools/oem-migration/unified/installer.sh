@@ -42,7 +42,7 @@ trap oem_cleanup EXIT
 trap 'exit 1' HUP INT TERM
 [ "$(id -u)" = 0 ] || { oem_fail 'run on the AP as root'; exit 1; }
 [ ! -e "$OEM_SYS_ROOT/etc/openwrt_release" ] || { oem_fail 'this entry point requires OEM firmware'; exit 1; }
-for tool in awk od tr cut cat sha256sum readlink stty mkdir rmdir mktemp sync; do command -v "$tool" >/dev/null || exit 1; done
+for tool in awk tr cut cat sha256sum readlink stty mkdir rmdir mktemp sync; do command -v "$tool" >/dev/null || exit 1; done
 oem_detect || exit 1
 printf 'Detected %s %s.\n' "$OEM_FAMILY" "$OEM_MODEL"
 oem_release_check || { oem_fail 'release/model validation failed before changes'; exit 1; }
@@ -54,7 +54,9 @@ done
 . "$OEM_BUNDLE/adapters/$OEM_ADAPTER.sh"
 for phase in oem_adapter_inspect oem_adapter_preflight oem_adapter_boot_preflight oem_adapter_recovery oem_adapter_migrate; do command -v "$phase" >/dev/null || exit 1; done
 OEM_WORK=$(mktemp -d /tmp/cambium-unified-oem.XXXXXX) || exit 1
-oem_adapter_inspect && oem_context_check && oem_adapter_preflight && oem_boot_inspect oem_adapter_boot_preflight || { oem_fail 'preflight failed; no firmware changed'; exit 1; }
+OEM_WORK=$(readlink -f "$OEM_WORK") || exit 1
+OEM_OPERATION=install
+oem_adapter_inspect && oem_context_check && oem_payload_stage "$OEM_OPERATION" && oem_adapter_preflight && oem_boot_inspect oem_adapter_boot_preflight || { oem_fail 'preflight failed; no firmware changed'; exit 1; }
 [ -n "${OEM_PROTECTED_RANGES:-}" ] && [ -n "${OEM_WRITE_PLAN:-}" ] &&
  oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || { oem_fail 'protected write boundaries could not be proven'; exit 1; }
 OEM_LOCK=/tmp/cambium-unified-oem.lock
@@ -69,12 +71,14 @@ fi
 printf 'Serial %s; OEM slot %s retained; target slot %s. Preflight passed.\n' "$OEM_SERIAL" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
 oem_prompt_key || { oem_fail 'private key input failed'; exit 1; }
 oem_confirm || { oem_fail 'installation cancelled before backup or writes'; exit 1; }
+oem_payload_closure_check || exit 1
 OEM_BACKUP_ID=$(oem_read_hex /dev/urandom 16) || exit 1
 [ "${#OEM_BACKUP_ID}" = 32 ] || exit 1
 oem_adapter_recovery && oem_backup_receipt_check "${OEM_RECOVERY_DIR:-}" || { oem_fail 'critical backup was not verified off-device; no firmware changed'; exit 1; }
 oem_adapter_inspect && oem_context_check && oem_adapter_preflight && oem_boot_inspect oem_adapter_boot_preflight && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1
 [ "$(oem_context_fingerprint)" = "$OEM_CONTEXT_PIN" ] || { oem_fail 'device/source context changed'; exit 1; }
 (cd "$OEM_BUNDLE" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || exit 1
+oem_payload_closure_check || exit 1
 # Function call: the key is never placed in a child process argv or environment.
 oem_adapter_migrate "$OEM_KEY" || { OEM_KEY=; oem_fail 'migration failed; preserve the adapter journal and OEM bank'; exit 1; }
 OEM_KEY=

@@ -60,20 +60,24 @@ member=$(oem_bundle_member "adapters/restore-$OEM_ADAPTER.sh") || exit 1
 if [ "$mode" = --confirm ]; then
  for phase in oem_restore_confirm_inspect oem_restore_confirm_preflight oem_restore_confirm;do command -v "$phase" >/dev/null || { oem_fail 'model has no reviewed OEM confirmation handler';exit 1; };done
  OEM_WORK=$(mktemp -d /tmp/cambium-oem-confirm.XXXXXX) || exit 1
+ OEM_WORK=$(readlink -f "$OEM_WORK") || exit 1
+ OEM_OPERATION=confirm
  OEM_LOCK=/tmp/cambium-unified-oem.lock
  mkdir "$OEM_LOCK" || { OEM_LOCK=;exit 1; }
- oem_restore_confirm_inspect && oem_context_check && oem_restore_confirm_preflight || exit 1
+ oem_restore_confirm_inspect && oem_context_check && oem_payload_stage "$OEM_OPERATION" && oem_restore_confirm_preflight || exit 1
  OEM_CONTEXT_PIN=$(oem_context_fingerprint)
  printf 'Confirm this verified OEM boot as the working default? Type CONFIRM OEM: ' > /dev/tty
  IFS= read -r answer < /dev/tty && [ "$answer" = 'CONFIRM OEM' ] || exit 1
  oem_release_check && oem_restore_confirm_inspect && oem_context_check && oem_restore_confirm_preflight &&
-  [ "$(oem_context_fingerprint)" = "$OEM_CONTEXT_PIN" ] && oem_restore_confirm || exit 1
+  [ "$(oem_context_fingerprint)" = "$OEM_CONTEXT_PIN" ] && oem_payload_closure_check && oem_restore_confirm || exit 1
  printf 'OEM boot confirmed. Follow only the reviewed model factory-reset procedure before a clean migration test.\n'
  exit 0
 fi
 for phase in oem_restore_inspect oem_restore_preflight oem_restore_boot_preflight oem_restore_recovery oem_restore_migrate; do command -v "$phase" >/dev/null || exit 1; done
 OEM_WORK=$(mktemp -d /tmp/cambium-oem-restore.XXXXXX) || exit 1
-oem_restore_inspect && oem_context_check && oem_restore_preflight && oem_boot_inspect oem_restore_boot_preflight &&
+OEM_WORK=$(readlink -f "$OEM_WORK") || exit 1
+OEM_OPERATION=restore
+oem_restore_inspect && oem_context_check && oem_payload_stage "$OEM_OPERATION" && oem_restore_preflight && oem_boot_inspect oem_restore_boot_preflight &&
  oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1
 printf 'OEM restoration test: %s %s; source OpenWiFi slot %s retained; target %s.\n' "$OEM_FAMILY" "$OEM_MODEL" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
 printf 'Plan: verified inactive OEM payloads; critical data protected; reviewed nonunique factory reset only; no CA reset.\n'
@@ -85,12 +89,13 @@ oem_restore_inspect && oem_context_check && oem_restore_preflight && oem_boot_in
 OEM_CONTEXT_PIN=$(oem_context_fingerprint)
 printf 'Restore OEM for migration testing? Type RESTORE OEM: ' > /dev/tty
 IFS= read -r answer < /dev/tty && [ "$answer" = 'RESTORE OEM' ] || exit 1
+oem_payload_closure_check || exit 1
 OEM_BACKUP_ID=$(oem_read_hex /dev/urandom 16) || exit 1
 [ "${#OEM_BACKUP_ID}" = 32 ] || exit 1
 oem_restore_recovery && oem_backup_receipt_check "${OEM_RECOVERY_DIR:-}" || exit 1
 oem_restore_inspect && oem_context_check && oem_restore_preflight && oem_boot_inspect oem_restore_boot_preflight &&
  [ "$(oem_context_fingerprint)" = "$OEM_CONTEXT_PIN" ] &&
  oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1
-oem_restore_migrate || { oem_fail 'restore failed; keep source and journal; do not reboot'; exit 1; }
+oem_payload_closure_check && oem_restore_migrate || { oem_fail 'restore failed; keep source and journal; do not reboot'; exit 1; }
 printf 'OEM test boot staged. Original OpenWiFi identity is retained according to the adapter plan.\n'
 oem_reboot_choice

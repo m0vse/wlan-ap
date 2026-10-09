@@ -59,6 +59,18 @@ all models' images fit in an AP's RAM.
 
 ## Package and verify
 
+For the common metadata-first release, include a pinned `payload-map.tsv` and
+use `--metadata-first`. Each six-column tab-separated row contains exact model,
+operation (`install`, `restore` or `confirm`), local relative data path, remote
+relative object name, byte count and SHA256. All declared files must match the
+provider ledger before packaging. Code cannot be a downloaded payload. The
+packager retains the authenticated map and framework but omits all declared
+payload bytes from the initial release; undeclared firmware files refuse.
+The generic launcher detects the model and stages only its operation rows,
+using bounded fetches and an aggregate byte check before key input, backup or
+writes. Cached objects remain usable when the provider disappears. Selected
+object hashes and the original map are checked again before the writer.
+
 Run `prepare-release.py --help` for the host command. It takes the provider
 directory, its independent ledger digest, a new output directory, and explicit
 controller, download and critical-backup URLs. The output directory must not

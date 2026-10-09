@@ -3,6 +3,23 @@ from pathlib import Path
 from test_unified import BASE,BUILDER,Fixture,MODELS,digest
 
 class ReleaseTests(unittest.TestCase):
+    def test_metadata_first_package_retains_map_and_omits_all_declared_payloads(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();provider=root/'provider';provider.mkdir()
+            (provider/'models.tsv').write_text('0000002c\tmiami\tX7-35X\t-\t7.2-r1\n')
+            rows=[]
+            for model in ('X7-35X','E410'):
+                name=f'payloads/{model}/kernel.itb';p=provider/name;p.parent.mkdir(parents=True);p.write_bytes(model.encode())
+                rows.append(f'{model}\tinstall\t{name}\tobjects/{model}.itb\t{p.stat().st_size}\t{digest(p)}\n')
+            (provider/'payload-map.tsv').write_text(''.join(rows))
+            (provider/'SHA256SUMS').write_text(''.join(digest(p)+'  '+str(p.relative_to(provider))+'\n' for p in sorted(provider.rglob('*')) if p.is_file()))
+            output=root/'output'
+            BUILDER.prepare(provider,digest(provider/'SHA256SUMS'),output,'controller.example.test','http://download.example.test','http://backup.example.test',metadata_first=True)
+            self.assertTrue((output/'payload-map.tsv').is_file());self.assertFalse((output/'payloads').exists())
+            self.assertIn('payload-map.tsv',(output/'SHA256SUMS').read_text())
+            self.assertNotIn('kernel.itb',(output/'SHA256SUMS').read_text())
+            self.assertTrue((output/'cambium-oem-install').is_file())
+
     def test_source_package_freezes_verified_members_and_canonical_aliases(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();provider=root/'provider';provider.mkdir()
