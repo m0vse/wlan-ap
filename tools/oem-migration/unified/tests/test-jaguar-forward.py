@@ -4,6 +4,7 @@ Nonflashable provider inputs, UID/device/ENV/mount/receipt mocks; no hardware.
 """
 from pathlib import Path
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -40,6 +41,7 @@ if cmd=='fw_setenv':
    else:e[v[0]]=v[1]
   if fault=='source-readback' and label=='SOURCE':e['jaguar_storage_pending']='wrong'
   if fault=='arm-readback' and label=='ARM':e['jaguar_ab_target']='wrong'
+  if fault.startswith('metadata-') and label=='ARM':e['jaguar_installer_'+fault.removeprefix('metadata-')]='wrong'
  else:
   if len(args)==1:e.pop(args[0],None)
   else:e[args[0]]=args[1]
@@ -103,7 +105,7 @@ class ForwardTests(unittest.TestCase):
   member(profile+'source-contract','7.2-r1\n'+'a'*64+'\n');member(profile+'source-sets/runtime-implementation.set','F '+sha(root/'etc/version')+' /etc/version\n')
   member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
   member(profile+'mtd.tsv',''.join(rows));member(profile+'operator-artifact-pins',sha(image)+'\n'+sha(kernel)+'\n'+sha(fs)+'\n');member(profile+'fit.tsv',f'{sha(kernel)}\t{model}\t{sku}\t{fit}\n')
-  member(profile+'vault-board','cambium,'+model.lower()+'\n')
+  member(profile+'vault-board','cambiumnetworks,'+model.lower()+'\n')
   assets=[('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock',65536)] if model!='XE3-4' else [('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma',65536),('lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma',131072)]
   lines=[]
   for name,size in assets:
@@ -139,11 +141,15 @@ class ForwardTests(unittest.TestCase):
      self.assertEqual(result.returncode,0,result.stderr+'\nevents='+events)
      self.assertEqual(protected,{p:p.read_bytes() for p in protected});self.assertLess(events.index('SOURCE '),events.index('ubirmvol '));self.assertLess(events.index('umount '),events.index('ARM '))
      values=json.loads((root/'env.json').read_text());self.assertIn(f'saveenv && run jaguar_boot{1-slot}; run jaguar_boot{slot}',values['bootcmd'])
+     binding=dict(row.split('\t',1) for row in (root/'staged-upper/root/.cambium-installer-settings/binding.tsv').read_text().splitlines())
+     self.assertEqual(values['jaguar_installer_target'],str(1-slot));self.assertEqual(values['jaguar_installer_job'],binding['job_id']);self.assertEqual(values['jaguar_installer_image'],binding['image_sha256'])
+     spec=importlib.util.spec_from_file_location('incoming_consumers',HERE/'tests/test-jaguar-consumers.py');consumer=importlib.util.module_from_spec(spec);spec.loader.exec_module(consumer)
+     consumer.check_incoming_context(root,model,case[-1],slot)
      self.assertEqual((root/'staged-upper').stat().st_mode&0o777,0o755)
      self.assertTrue((root/'staged-upper/root/.cambium-installer-settings/est-bootstrap.conf').exists())
      self.assertNotIn('z'*64,events+result.stdout+result.stderr)
  def test_faults_never_activate_or_touch_source(self):
-  for fault in ('SOURCE','source-readback','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback'):
+  for fault in ('SOURCE','source-readback','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback','metadata-target','metadata-job','metadata-image'):
    case=self.fixture();root=case[0];source=(root/'dev/ubi0_0').read_bytes()
    result=self.invoke(case,fault);self.assertNotEqual(result.returncode,0)
    self.assertEqual(source,(root/'dev/ubi0_0').read_bytes());self.assertIn(json.loads((root/'env.json').read_text())['bootcmd'],('bootipq','run jaguar_boot0'))
@@ -151,5 +157,10 @@ class ForwardTests(unittest.TestCase):
   case=self.fixture();root=case[0];p=root/'sys/class/ubi/ubi1_4';p.mkdir();(p/'name').write_text('certificates');(root/'dev/ubi1_4').write_bytes(b'own retained private identity')
   result=self.invoke(case);self.assertNotEqual(result.returncode,0);self.assertEqual((root/'dev/ubi1_4').read_bytes(),b'own retained private identity')
   self.assertNotIn('ubirmvol',(root/'events').read_text())
+ def test_partial_foreign_installer_fields_refuse_before_any_mutation(self):
+  for key,value in (('jaguar_installer_target','1'),('jaguar_installer_job','f'*64),('jaguar_installer_image','a'*64)):
+   case=self.fixture();root=case[0];state=json.loads((root/'env.json').read_text());state[key]=value;(root/'env.json').write_text(json.dumps(state))
+   result=self.invoke(case);self.assertNotEqual(result.returncode,0)
+   self.assertFalse((root/'events').exists());self.assertEqual(json.loads((root/'env.json').read_text()),state)
 
 if __name__=='__main__':unittest.main()

@@ -1,0 +1,23 @@
+{
+  "scope": "Actual selected published Jaguar SquashFS source consumers; inert host-shell compatibility tests only",
+  "revision": "TIP-jaguar-2026.10.05.8-112421ad",
+  "image_sha256": "b14232bb788f7385f96db1fc63110e6d58b14da6db42c493cac30075a040dbd3",
+  "image_bytes": 21873047,
+  "kernel": {"bytes": 5592188, "sha256": "1251d375bf3b931ab5d4499cfa36c1ef575558f6061b0c2120b655fce4672724"},
+  "root": {"bytes": 16272384, "sha256": "7a7fc81fe4b55200dffaa5c2a66e1ddfdfb66738631a8358e12d67d08de2ecfd"},
+  "archive_member": "sysupgrade-cambiumnetworks_jaguar/root",
+  "extraction": "Host unsquashfs4 -cat from hash-bound sysupgrade archive unpacked into cnbeacon:/tmp/jaguar-consumer-audit.sxJD7d; no target program execution",
+  "actual_consumer_files": {
+    "usr/sbin/cambium-board-data": "1f8f29ce91310cdcacdb6077df1061637211207ee245041604376ea055428c43",
+    "usr/libexec/ucentral-installer-identity": "54651cd16550464842b15915344f8f28fdc16741adfc27bbd5b829bc75832a82",
+    "usr/libexec/ucentral-installer-boot": "61d68123f627528771704c6a1482b98c5ec8064c707c7a1a47b47fa991e93619",
+    "lib/functions/cambium-installer-health.sh": "84c24614ee914427fa6543fe12ddacec4f7c53fae5650e77cf3ac5b356e31ec7",
+    "usr/bin/mount_certs": "9f171a5a28cc435a8b982079d43e043b219639cf35e3014a400ef056bb683696"
+  },
+  "actual_fit_board_names": {
+    "config@cp01-c1": "cambiumnetworks,xv2-2",
+    "config@cp01-c1-2": "cambiumnetworks,xv2-2t1",
+    "config@cp01-c3-xv3-4": "cambiumnetworks,xe3-4"
+  },
+  "limits": ["Nonflashable writer payloads and inert media/ENV/mount/acceptance boundaries", "No full Ucode crypto/enrollment/client acceptance or physical flash/power-cut test", "No broader model qualification from sibling FIT entries", "Raw-vault shrink fixture preserves meaningful archive bytes and parser acceptance; no physical ubirsvol performed"]
+}

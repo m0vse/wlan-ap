@@ -180,7 +180,10 @@ oem_jaguar_vault_prepare() (
  [ "$(wc -l < "$board")" -eq 1 ] || exit 1
  board=$(cat "$board")
  case "$OEM_MODEL:$board" in
-  XV2-2:cambium,xv2-2|XV2-2:cambiumnetworks,xv2-2|XV2-2T1:cambium,xv2-2t1|XV2-2T1:cambiumnetworks,xv2-2t1|XE3-4:cambium,xe3-4|XE3-4:cambiumnetworks,xe3-4) ;;
+  # This is the incoming kernel board_name, NOT controller compatible/model.
+  # The packaged format-1 consumer compares it literally and has board_files
+  # only for these labels; cambium,MODEL/generic jaguar are not aliases there.
+  XV2-2:cambiumnetworks,xv2-2|XV2-2T1:cambiumnetworks,xv2-2t1|XE3-4:cambiumnetworks,xe3-4) ;;
   *) exit 1;;
  esac
  umask 077
@@ -306,7 +309,7 @@ oem_adapter_migrate() (
  oem_jaguar_vault_prepare || exit 1
  OEM_JAGUAR_VAULT_PIN=$(oem_sha "$OEM_WORK/jaguar-vault.tar") && oem_hex64 "$OEM_JAGUAR_VAULT_PIN" || exit 1
  oem_jaguar_env_read > "$OEM_WORK/env-before" && oem_jaguar_protected_snapshot > "$OEM_WORK/protected-before" || exit 1
- printf '%s\n' bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state > "$OEM_WORK/env-allowed" || exit 1
+ printf '%s\n' bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state jaguar_installer_target jaguar_installer_job jaguar_installer_image > "$OEM_WORK/env-allowed" || exit 1
  while IFS="$(printf '\t')" read -r kind label size reason;do index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$label") || exit 1;[ "$(oem_sha "$OEM_RECOVERY_DIR/$kind.bin")" = "$(oem_sha "$OEM_SYS_ROOT/dev/mtd${index}ro")" ] || exit 1;done < "$OEM_RECOVERY_DIR/manifest.tsv"
  OEM_JAGUAR_JOURNAL="install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$OEM_JAGUAR_IMAGE_PIN:$job"
  oem_jaguar_payload_hash_check || exit 1
@@ -387,6 +390,10 @@ oem_jaguar_arm() (
  local target trial key value
  oem_adapter_boot_preflight || exit 1
  [ "$(oem_jaguar_env_value jaguar_storage_pending)" = "$OEM_JAGUAR_JOURNAL" ] || exit 1
+ oem_hex64 "$OW_EXPECT_JOB" && oem_hex64 "$OEM_JAGUAR_IMAGE_PIN" || exit 1
+ [ "$OEM_JAGUAR_JOURNAL" = "install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$OEM_JAGUAR_IMAGE_PIN:$OW_EXPECT_JOB" ] || exit 1
+ # An interrupted/foreign/partial incoming enrollment must not be overwritten.
+ oem_jaguar_env_read | awk -F= '$1~/^jaguar_installer_(target|job|image)$/ {if(NF!=2 || length($2) || seen[$1]++)bad=1} END{exit bad}' || exit 1
  target=$(oem_jaguar_target_command) || exit 1
  trial="setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_ab_state trial-started && saveenv && run jaguar_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT"
  umask 077
@@ -397,11 +404,15 @@ oem_jaguar_arm() (
   printf 'jaguar_stable%s run jaguar_boot%s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT"
   printf 'jaguar_stable%s run jaguar_boot%s; run jaguar_boot%s\n' "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_SLOT"
   printf 'jaguar_ab_version 1\njaguar_ab_confirmed %s\njaguar_ab_target %s\njaguar_ab_state armed\n' "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
+  printf 'jaguar_installer_target %s\njaguar_installer_job %s\njaguar_installer_image %s\n' "$OEM_TARGET_SLOT" "$OW_EXPECT_JOB" "$OEM_JAGUAR_IMAGE_PIN"
  } > "$work/environment" || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$work/environment" && sync || exit 1
  while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$work/environment"
  oem_adapter_boot_preflight || exit 1
  command -v oem_jaguar_before_select >/dev/null && oem_jaguar_before_select || exit 1
+ [ "$(oem_jaguar_env_value jaguar_installer_target)" = "$OEM_TARGET_SLOT" ] &&
+  [ "$(oem_jaguar_env_value jaguar_installer_job)" = "$OW_EXPECT_JOB" ] &&
+  [ "$(oem_jaguar_env_value jaguar_installer_image)" = "$OEM_JAGUAR_IMAGE_PIN" ] || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" bootcmd "$trial" && sync || exit 1
  [ "$(oem_jaguar_env_value bootcmd)" = "$trial" ]
 )

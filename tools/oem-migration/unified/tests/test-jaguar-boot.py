@@ -31,6 +31,7 @@ if args[0]=='-s':
   key,value=row.split(' ',1);s[key]=value
  if fault=='source-readback' and label=='SOURCE':s['jaguar_storage_pending']='bad'
  if fault=='arm-readback' and label=='ARM':s['jaguar_ab_target']='bad'
+ if fault.startswith('metadata-') and label=='ARM':s['jaguar_installer_'+fault.removeprefix('metadata-')]='bad'
 else:
  with open(os.environ['LOG'],'a') as out:out.write('SELECTOR\n')
  if fault=='SELECTOR':sys.exit(1)
@@ -39,8 +40,14 @@ p.write_text(json.dumps(s))
 PY
 }
 sync() { [ "$FAULT" != sync ]; }
-oem_jaguar_before_select() { [ "$FAULT" != protected ]; }
+oem_jaguar_before_select() {
+ [ "$FAULT" != protected ] || return 1
+ case "$FAULT" in
+  late-*) python3 -c 'import json,os;p=os.environ["STATE"];s=json.load(open(p));s["jaguar_installer_"+os.environ["FAULT"].removeprefix("late-")]="bad";open(p,"w").write(json.dumps(s))';;
+ esac
+}
 OEM_JAGUAR_JOURNAL="install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$(printf '%064d' 1):$(printf '%064d' 2)"
+OEM_JAGUAR_IMAGE_PIN=$(printf '%064d' 1);OW_EXPECT_JOB=$(printf '%064d' 2)
 oem_jaguar_persist_source "$OEM_JAGUAR_JOURNAL" || exit 1
 printf 'WRITER\n' >> "$LOG"
 oem_jaguar_arm
@@ -60,7 +67,7 @@ oem_jaguar_arm
     self.assertIn(f'saveenv && run jaguar_boot{1-slot}; run jaguar_boot{slot}',state['bootcmd'])
  def test_failed_persistence_or_metadata_never_activates_candidate(self):
   for slot in (0,1):
-   for fault in ('SOURCE','source-readback','sync','ARM','arm-readback','protected','SELECTOR'):
+   for fault in ('SOURCE','source-readback','sync','ARM','arm-readback','metadata-target','metadata-job','metadata-image','late-target','late-job','late-image','protected','SELECTOR'):
     result,state,events=self.invoke('XV2-2T1','0000001f',slot,fault)
     self.assertNotEqual(result.returncode,0)
     self.assertIn(state['bootcmd'],('bootipq',f'run jaguar_boot{slot}'))
