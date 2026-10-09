@@ -64,9 +64,8 @@ default-reset recipe. These are implementation/profile interfaces, not new
 manufacturing or watchdog admission gates. No AP write, build or reboot was
 performed, and no firmware or private capture is committed.
 
-The current common backup helper limits BOOTCONFIG records to 65536 bytes,
-but the actual two Thor partitions are 131072 bytes each. The unchanged source
-profile intentionally remains refused by that helper; do not truncate them or
-set a fake limit. The common owner must align the bounded allowance with the
-real protected geometry before the full capture can pass. Physical-profile
-fixtures pass independently and explicitly report this interface gap.
+The common backup helper accepts the actual 131072-byte BOOTCONFIG records,
+binding BOOTCONFIG0 only to BOOTCONFIG and BOOTCONFIG1 only to BOOTCONFIG1
+(with or without the OEM `0:` prefix). Larger records, swapped names and other
+partitions refuse. This closes the backup-plan interface gap; it does not
+establish the remaining migration or restoration integration above.
