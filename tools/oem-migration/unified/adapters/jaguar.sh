@@ -105,3 +105,74 @@ oem_adapter_preflight() {
 }
 oem_adapter_recovery() { oem_fail 'Jaguar recovery is unavailable until its exact OEM bank writer is closed'; }
 oem_adapter_migrate() { oem_fail 'Jaguar OEM writer is not enabled; retained OEM and unique factory data are untouched'; }
+
+# Native one-shot components reused by the full caller; no new bootloader gate
+# and no claim that a Linux watchdog proves pre-kernel hang recovery.
+oem_jaguar_target_command() {
+ local bank offset part
+ oem_jaguar_table && oem_context_check || return 1
+ case "$OEM_TARGET_SLOT" in
+  0) offset=0x0;part=rootfs;;
+  1) offset=$(printf '0x%x' "$OEM_JAGUAR_BANK");part=rootfs_1;;
+  *) return 1;;
+ esac
+ bank=$(printf '0x%x' "$OEM_JAGUAR_BANK")
+ printf '%s\n' "nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$bank@$offset(fs)\" && ubi part fs && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$part root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$OEM_JAGUAR_FIT"
+}
+oem_jaguar_source_command() {
+ oem_jaguar_table && oem_context_check || return 1
+ printf '%s\n' "setenv image $OEM_SOURCE_SLOT; bootipq"
+}
+oem_adapter_boot_preflight() {
+ local current expected tool
+ oem_jaguar_table && oem_context_check || return 1
+ [ "$(oem_jaguar_env_value image)" = "$OEM_SOURCE_SLOT" ] || return 1
+ current=$(oem_jaguar_env_value bootcmd) || return 1
+ case "$current" in
+  bootipq) ;;
+  "run jaguar_boot$OEM_SOURCE_SLOT")
+   expected=$(oem_jaguar_source_command) || return 1
+   [ "$(oem_jaguar_env_value "jaguar_boot$OEM_SOURCE_SLOT")" = "$expected" ] || return 1;;
+  *) return 1;;
+ esac
+ for tool in fw_printenv fw_setenv sync mktemp rm rmdir; do command -v "$tool" >/dev/null 2>&1 || return 1; done
+ oem_jaguar_target_command >/dev/null || return 1
+ OEM_BOOT_PRIOR_SLOT=$OEM_SOURCE_SLOT OEM_BOOT_TARGET_SLOT=$OEM_TARGET_SLOT
+ OEM_BOOT_MODE=persist-prior-before-load OEM_BOOT_WATCHDOG=manual-reset
+}
+oem_jaguar_persist_source() (
+ local journal=$1 command key value
+ oem_adapter_boot_preflight || exit 1
+ printf '%s\n' "$journal" | awk -F: -v source="$OEM_SOURCE_SLOT" -v target="$OEM_TARGET_SLOT" \
+  'NF!=5 || $1!="install" || $2!=source || $3!=target || length($4)!=64 || $4~/[^0-9a-f]/ || length($5)!=64 || $5~/[^0-9a-f]/ {bad=1} END{exit bad || NR!=1}' || exit 1
+ command=$(oem_jaguar_source_command) || exit 1
+ umask 077
+ work=$(mktemp -d /tmp/cambium-jaguar-source.XXXXXX) || exit 1
+ trap 'rm -f "$work/environment";rmdir "$work"' EXIT
+ printf 'jaguar_boot%s %s\nbootcmd run jaguar_boot%s\nimage %s\njaguar_storage_pending %s\n' \
+  "$OEM_SOURCE_SLOT" "$command" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$journal" > "$work/environment" || exit 1
+ fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$work/environment" && sync || exit 1
+ while read -r key value; do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$work/environment"
+ oem_adapter_boot_preflight
+)
+oem_jaguar_arm() (
+ local target trial key value
+ oem_adapter_boot_preflight || exit 1
+ [ "$(oem_jaguar_env_value jaguar_storage_pending)" = "$OEM_JAGUAR_JOURNAL" ] || exit 1
+ target=$(oem_jaguar_target_command) || exit 1
+ trial="setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_ab_state trial-started && saveenv && run jaguar_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT"
+ umask 077
+ work=$(mktemp -d /tmp/cambium-jaguar-arm.XXXXXX) || exit 1
+ trap 'rm -f "$work/environment";rmdir "$work"' EXIT
+ {
+  printf 'jaguar_boot%s %s\n' "$OEM_TARGET_SLOT" "$target"
+  printf 'jaguar_stable%s run jaguar_boot%s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT"
+  printf 'jaguar_stable%s run jaguar_boot%s; run jaguar_boot%s\n' "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_SLOT"
+  printf 'jaguar_ab_version 1\njaguar_ab_confirmed %s\njaguar_ab_target %s\njaguar_ab_state armed\n' "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
+ } > "$work/environment" || exit 1
+ fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$work/environment" && sync || exit 1
+ while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$work/environment"
+ oem_adapter_boot_preflight || exit 1
+ fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" bootcmd "$trial" && sync || exit 1
+ [ "$(oem_jaguar_env_value bootcmd)" = "$trial" ]
+)
