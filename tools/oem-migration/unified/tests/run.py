@@ -16,6 +16,8 @@ for script in sorted(HERE.glob('family-*.py')):
         with tempfile.TemporaryDirectory(prefix='unified-thor-source-') as directory:
             prepared = prepare_thor(ROOT, Path(directory))
             run('Family source fixture: '+script.name,[sys.executable,str(script),str(prepared)])
+    elif script.name in ('family-thor-inspection.py', 'family-thor-existing-child.py'):
+        run('Family source fixture: '+script.name,[sys.executable,str(script),str(HERE.parent/'lib')])
     else:
         run('Family source fixture: '+script.name,[sys.executable,str(script)])
 for script in sorted(HERE.glob('test-*.py')):
