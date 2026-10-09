@@ -79,6 +79,39 @@ write. The one-shot prefix restores and saves the source-only default before
 loading `setenv image TARGET; bootipq`; a failed save cannot load the candidate.
 No confirmation/default reset/server identity cleanup is executed by this writer.
 
+## Separate healthy-OEM confirmation
+
+The `--confirm` entry has its own `restore-confirm-models.tsv` source row
+(`7.2-r1`) and explicit `CONFIRM OEM` consent. Additional provider files are
+`restore/confirm/source-contract`, `confirm/source-sets/runtime-implementation.set`
+and `confirm/mtd-slot0.tsv`/`mtd-slot1.tsv`. These map suffixes mean the **running
+OEM** slot (the candidate/context `OEM_TARGET_SLOT`); context `OEM_SOURCE_SLOT`
+remains the preserved prior OpenWiFi fallback. Thus physical `active-oem` is
+the actually running native bank, not the saved prior slot. Firmware pins and
+old qualified OpenWiFi source-boot pins remain the shared restore inputs.
+
+Confirmation reads exact native release/build, recognized model/SKU and factory
+identity, actual cmdline/parent/root mapping and the saved pending one-shot
+state. Immutable native kernel/SquashFS readbacks and required source hooks are
+checked; legitimate mutable OEM configuration is not compared with a raw golden
+filesystem. It does not attach the old bank or run a vendor reset script.
+
+After the routine unique-data receipt, a single native ENV batch selects
+`image=OEM_TARGET`, `bootcmd=bootipq`, records confirmed journal/state and clears
+the generic pending target. It does not replace all compiled defaults, delete
+unlisted ENV fields, regenerate source boot functions or touch bank/radio/cert
+contents. Command/readback failure attempts a narrowly scoped restoration of
+the old selectors/pending fields and reads it back. If native ENV I/O also
+prevents rollback, the handler explicitly reports uncertain selector state and
+does not claim success or physical atomicity. Source firmware remains intact.
+
+`test-jaguar-confirmation.py` composes six known-model/both-slot successes,
+prewrite wrong-release/root/trial/source-boot/payload refusals, backup/upload/
+batch/readback failures, mutable-config activity and explicit uncertain-rollback
+reporting. Media, ENV and receipt transport boundaries are inert; actual healthy
+OEM hardware boot is the operator's acceptance, not established by fixtures.
+There is no automatic reboot, factory reset or native identity retirement.
+
 ## Fixture limits
 
 `test-jaguar-restore.py` composes the actual adapter/callbacks with inert media,
@@ -91,7 +124,7 @@ and do not qualify a real device or signed OEM image. Do not copy fixture
 physical inventories into a production provider.
 
 Real flash/ENV durability, power cuts, U-Boot execution and healthy OEM boot
-remain hardware acceptance. Executable OEM confirmation and the separately
-consented identity-retirement lifecycle are not claimed complete by writer
-fixture success. No AP, build, certificate cleanup or stock-source mutation was
-performed to implement these tests.
+remain hardware acceptance. Healthy OEM hardware confirmation and the separately
+consented identity-retirement lifecycle are not established by writer fixture
+success. No AP, build, certificate cleanup or stock-source mutation was performed
+to implement these tests.

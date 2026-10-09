@@ -415,3 +415,115 @@ oem_restore_migrate() (
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" bootcmd "$trial" && sync && [ "$(oem_jaguar_env_value bootcmd)" = "$trial" ] || exit 1
  printf 'handoff=one-shot-oem-armed\noem_boot=not-yet-verified\nidentity_retired=no\ndefaults_committed=no\n'
 )
+
+# Separate CONFIRM OEM handler, executed on the healthy native OEM candidate.
+# It selects native bootipq, not a compiled full-default reset or identity wipe.
+oem_restore_confirm_inspect() {
+ local file release contract arg attachment= rootarg= label index value factory
+ OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT=
+ oem_restore_jaguar_load && oem_jaguar_table && oem_jaguar_config || return 1
+ [ ! -e "$OEM_SYS_ROOT/etc/openwrt_release" ] || return 1
+ file=$(oem_restore_jaguar_member confirm/source-sets/runtime-implementation.set) || return 1
+ oem_required_source_check "$file" "$OEM_SYS_ROOT" /etc/version sh awk sed grep cmp dd head sha256sum tar fw_printenv fw_setenv || return 1
+ file=$(oem_restore_jaguar_member confirm/source-contract) || return 1
+ [ "$(wc -l < "$file")" -eq 2 ] || return 1
+ release=$(sed -n '1p' "$file");contract=$(sed -n '2p' "$file");oem_hex64 "$contract" || return 1
+ [ "$release" = 7.2-r1 ] && [ "$release" = "$OEM_SUPPORTED_RELEASE" ] &&
+  [ "$(oem_read_release "$OEM_SYS_ROOT/etc/version")" = "$release" ] || return 1
+ [ "$(awk -F= '$1=="PRODUCT" {v=$2;n++}END{if(n!=1)exit 1;print v}' "$OEM_SYS_ROOT/etc/version")" = jaguar ] || return 1
+ for arg in $(cat "$OEM_SYS_ROOT/proc/cmdline");do
+  case "$arg" in ubi.mtd=*) [ -z "$attachment" ] || return 1;attachment=${arg#ubi.mtd=};;root=*) [ -z "$rootarg" ] || return 1;rootarg=${arg#root=};;esac
+ done
+ case "$attachment" in rootfs) OEM_TARGET_SLOT=0;;rootfs_1) OEM_TARGET_SLOT=1;;*) return 1;;esac
+ OEM_SOURCE_SLOT=$((1-OEM_TARGET_SLOT));OEM_SOURCE_RELEASE=$release
+ RJ_NATIVE_MTD=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$attachment") || return 1
+ RJ_NATIVE_UBI=$(oem_restore_jaguar_ubi "$RJ_NATIVE_MTD") || return 1
+ [ -n "$RJ_NATIVE_UBI" ] || return 1
+ case "$rootarg" in mtd:ubi_rootfs|"$RJ_NATIVE_UBI:ubi_rootfs"|"/dev/ubiblock${RJ_NATIVE_UBI#ubi}_1") ;;*) return 1;;esac
+ index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" mfginfo) || return 1
+ [ "$(oem_read_hex "$OEM_SYS_ROOT/dev/mtd${index}ro" 6)" = 05ca01000c00 ] || return 1
+ OEM_SERIAL=$(dd if="$OEM_SYS_ROOT/dev/mtd${index}ro" bs=1 skip=6 count=12 2>/dev/null | tr 'A-F' 'a-f') || return 1
+ oem_context_check && oem_restore_jaguar_boot_check || return 1
+ [ "$(oem_jaguar_env_value "jaguar_stable$OEM_SOURCE_SLOT")" = "run jaguar_boot$OEM_SOURCE_SLOT" ] &&
+  [ "$(oem_jaguar_env_value "jaguar_oem_boot$OEM_TARGET_SLOT")" = "setenv image $OEM_TARGET_SLOT; bootipq" ] &&
+  [ "$(oem_jaguar_env_value jaguar_oem_restore_target)" = "$OEM_TARGET_SLOT" ] &&
+  [ "$(oem_jaguar_env_value jaguar_oem_restore_state)" = trial-started ] &&
+  [ "$(oem_jaguar_env_value jaguar_ab_state)" = armed ] &&
+  [ "$(oem_jaguar_env_value jaguar_ab_target)" = "$OEM_TARGET_SLOT" ]
+}
+oem_restore_confirm_preflight() {
+ local file pin index
+ oem_context_check && oem_restore_jaguar_boot_check || return 1
+ file=$(oem_restore_jaguar_member operator-artifact-pins) || return 1
+ [ "$(wc -l < "$file")" -eq 3 ] || return 1
+ RJ_KERNEL_PIN=$(sed -n '1p' "$file");RJ_ROOT_PIN=$(sed -n '2p' "$file");RJ_SHARED_PIN=$(sed -n '3p' "$file")
+ for pin in "$RJ_KERNEL_PIN" "$RJ_ROOT_PIN" "$RJ_SHARED_PIN";do oem_hex64 "$pin" || return 1;done
+ RJ_KERNEL=$(oem_bundle_member "payloads/$OEM_MODEL/oem/kernel.itb") && RJ_ROOT=$(oem_bundle_member "payloads/$OEM_MODEL/oem/rootfs.squashfs") && RJ_SHARED=$(oem_bundle_member "payloads/$OEM_MODEL/oem/shared.json") || return 1
+ oem_restore_jaguar_public_payload_check || return 1
+ # Confirm profile suffix is the RUNNING OEM slot. Prior OpenWiFi is the
+ # protected inactive peer; no attach, mount, bank/vault/cert write is allowed.
+ file=$(oem_restore_jaguar_member "confirm/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
+ OEM_PROTECTED_RANGES=$OEM_WORK/jaguar-confirm-ranges.tsv;OEM_WRITE_PLAN=$OEM_WORK/jaguar-confirm-plan.tsv
+ oem_physical_inventory "$file" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_PROTECTED_RANGES" || return 1
+ awk -F '\t' -v native="$RJ_NATIVE_MTD" -v env="$OEM_JAGUAR_ENV_MTD" '$1==native {if($4!="active-oem")bad=1;n++}$1==env {if($4!="environment")bad=1;e++}END{exit bad || n!=1 || e!=1}' "$OEM_PROTECTED_RANGES" || return 1
+ printf 'environment-fields\t%s\tfields\tpreserve-unlisted\n' "$OEM_JAGUAR_ENV_MTD" > "$OEM_WRITE_PLAN" || return 1
+ oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
+ [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/$RJ_NATIVE_UBI/eraseblock_size")" = 126976 ] &&
+  [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/$RJ_NATIVE_UBI/min_io_size")" = 2048 ] || return 1
+ # Do not confirm an initramfs/temporary root merely carrying OEM files.
+ awk -v block="/dev/ubiblock${RJ_NATIVE_UBI#ubi}_1" -v named="$RJ_NATIVE_UBI:ubi_rootfs" '
+  ($1=="/dev/root" || $1==block || $1==named || $1=="mtd:ubi_rootfs") && $3=="squashfs" && ("," $4 ",")~/,ro,/ {
+   if($2=="/")direct++;if($2=="/rom")rom++
+  }
+  $2=="/" && $3=="overlay" && ("," $4 ",")~/,rw,/ {merged++}
+  END{exit !(direct==1 || (rom==1 && merged==1))}' "$OEM_SYS_ROOT/proc/mounts" || return 1
+ oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$RJ_NATIVE_MTD" "$RJ_NATIVE_UBI" 0 kernel &&
+  oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$RJ_NATIVE_MTD" "$RJ_NATIVE_UBI" 1 ubi_rootfs || return 1
+ [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/${RJ_NATIVE_UBI}_0/reserved_ebs")" = 32 ] &&
+  [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/${RJ_NATIVE_UBI}_1/reserved_ebs")" = 337 ] || return 1
+ for index in 0 1;do
+  [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/${RJ_NATIVE_UBI}_$index/type")" = dynamic ] &&
+   [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/${RJ_NATIVE_UBI}_$index/usable_eb_size")" = 126976 ] || return 1
+ done
+ oem_jaguar_readback "$RJ_KERNEL" "$OEM_SYS_ROOT/dev/${RJ_NATIVE_UBI}_0" && oem_jaguar_readback "$RJ_ROOT" "$OEM_SYS_ROOT/dev/${RJ_NATIVE_UBI}_1"
+}
+oem_restore_jaguar_confirm_readback() {
+ local key value
+ while read -r key value;do
+  if [ -n "$value" ];then [ "$(oem_jaguar_env_value "$key")" = "$value" ] || return 1
+  else oem_jaguar_env_read | awk -F= -v key="$key" '$1==key {bad=1}END{exit bad}' || return 1;fi
+ done < "$1"
+}
+oem_restore_confirm() (
+ local field value context
+ context=$(oem_context_fingerprint) || exit 1
+ oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$context" ] && oem_restore_confirm_preflight || exit 1
+ # Existing routine unique-data recovery only, never replaceable key backup.
+ oem_restore_recovery && oem_restore_jaguar_receipt_live || exit 1
+ # Upload may take time; never commit a candidate using stale running-root,
+ # pending selector, source-hook or immutable payload proof.
+ oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$context" ] && oem_restore_confirm_preflight || exit 1
+ umask 077
+ oem_jaguar_env_read > "$OEM_WORK/confirm-env-before" || exit 1
+ printf '%s\n' bootcmd image jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target > "$OEM_WORK/confirm-allowed" || exit 1
+ : > "$OEM_WORK/confirm-rollback.env" || exit 1
+ for field in bootcmd image jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target;do
+  value=$(oem_jaguar_env_value "$field") || exit 1
+  printf '%s %s\n' "$field" "$value" >> "$OEM_WORK/confirm-rollback.env" || exit 1
+ done
+ printf 'image %s\nbootcmd bootipq\njaguar_oem_restore_state confirmed\njaguar_ab_state confirmed\njaguar_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/confirm.env" || exit 1
+ # One native ENV batch, not full compiled-default replacement. On command or
+ # readback failure, best-effort restore only our old selectors/pending fields.
+ if ! fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$OEM_WORK/confirm.env" || ! sync ||
+    ! oem_restore_jaguar_confirm_readback "$OEM_WORK/confirm.env" ||
+    ! oem_jaguar_env_read > "$OEM_WORK/confirm-env-after" ||
+    ! oem_env_preserved "$OEM_WORK/confirm-env-before" "$OEM_WORK/confirm-env-after" "$OEM_WORK/confirm-allowed";then
+  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$OEM_WORK/confirm-rollback.env" && sync &&
+   oem_restore_jaguar_confirm_readback "$OEM_WORK/confirm-rollback.env" ||
+   oem_fail 'confirmation selector rollback is uncertain; source firmware was not erased'
+  exit 1
+ fi
+ printf '%s\n' 'OEM boot confirmed; native bootipq/image selection was durably read back.' \
+  'Working OpenWiFi source firmware/configuration and all native certificate/radio stores remain preserved.' \
+  'No reboot, vendor factory reset or identity retirement was performed. Clean re-enrollment still requires separate explicit unused-store retirement; AP old-key backup is optional encrypted/private only, never the HTTP critical relay.'
+)
