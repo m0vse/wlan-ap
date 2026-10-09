@@ -5,7 +5,7 @@
 oem_ranges_check() {
  awk -F '\t' '
   NF!=5 || $1!~/^[0-9]+$/ || $2!~/^[0-9]+$/ || $3!~/^[0-9]+$/ || $3==0 || seen[$1]++ {bad=1}
-  $4!~/^(identity|bootcode|active-oem|target|environment|shared-parent|container)$/ {bad=1}
+  $4!~/^(identity|bootcode|active-oem|target|environment|shared-parent|container|nonunique-config)$/ {bad=1}
   $5!~/^(nand|nor)[0-9]+$/ {bad=1}
   {idx[NR]=$1;off[NR]=$2;size[NR]=$3;role[NR]=$4;domain[NR]=$5}
   END {
@@ -77,7 +77,7 @@ oem_physical_index() {
 # Profiles come from reviewed model/source geometry, not operator guesses.
 oem_physical_inventory() (
  profile=$1 sys=$2 output=$3
- awk -F '\t' 'NF!=8 || seen[$1]++ || $2!~/^(nand|nor)[0-9]+$/ || $3!~/^[0-9]+$/ || $4!~/^[0-9]+$/ || $5!~/^(nand|nor)$/ || $2!~("^" $5 "[0-9]+$") || $6!~/^[0-9]+$/ || $7!~/^[0-9]+$/ || $8!~/^(identity|bootcode|active-oem|target|environment|shared-parent|container)$/ {bad=1} END{exit bad || NR<3}' "$profile" || exit 1
+ awk -F '\t' 'NF!=8 || seen[$1]++ || $2!~/^(nand|nor)[0-9]+$/ || $3!~/^[0-9]+$/ || $4!~/^[0-9]+$/ || $5!~/^(nand|nor)$/ || $2!~("^" $5 "[0-9]+$") || $6!~/^[0-9]+$/ || $7!~/^[0-9]+$/ || $8!~/^(identity|bootcode|active-oem|target|environment|shared-parent|container|nonunique-config)$/ {bad=1} END{exit bad || NR<3}' "$profile" || exit 1
  : > "$output"
  domains=$output.domains
  : > "$domains"
@@ -196,4 +196,20 @@ oem_bank_remove_idle_root_map() {
   [ ! -e "$node" ] || return 1
  fi
  oem_bank_idle_check "$sys" "$dev" "$proc" "$parent" "$ubi" no
+}
+
+# OEM-side factory config reset is permitted only after explicit healthy OEM
+# confirmation. This helper never changes data itself or authorizes identity,
+# boot-code, source-bank or whole-chip erasure.
+oem_confirmed_config_boundary() {
+ inventory=$1 plan=$2
+ [ "${OEM_RESTORE_CONFIRMED:-}" = 1 ] && [ "${OEM_RUNNING_OS:-}" = oem ] || return 1
+ oem_ranges_check "$inventory" || return 1
+ awk -F '\t' '
+  FNR==NR{role[$1]=$4;size[$1]=$3;next}
+  NF!=4{bad=1}
+  $1=="nor-config-reset"{if(role[$2]!="nonunique-config" || size[$2]!=65536 || $3!="single-partition" || $4!="config")bad=1;next}
+  $1=="ubi-config-reset"{if(role[$2]!="shared-parent" || $3!~/^[0-9]+$/ || $4!="nvram")bad=1;next}
+  {bad=1}
+  END{exit bad || FNR<1}' "$inventory" "$plan"
 }

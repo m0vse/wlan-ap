@@ -12,6 +12,8 @@ def run(label,args):
 run('Common exact-model, transaction and helper tests',[sys.executable,'-m','unittest','discover','-s',str(HERE),'-p','test_*.py','-v'])
 for script in sorted(HERE.glob('family-*.py')):
     run('Family source fixture: '+script.name,[sys.executable,str(script)])
+for script in sorted(HERE.glob('test-*.py')):
+    run('Family inspection fixture: '+script.name,[sys.executable,str(script)])
 run('Actual existing Sage recovery/writer/settings regressions',[sys.executable,'-m','unittest','discover','-s','tools/oem-migration/recovery/scripts/tests','-v'])
 run('Actual one-shot rendered command regressions',[sys.executable,'tests/ab-one-shot/test-trial.py'])
 linux=ROOT/'tests/installer/overlay-root-permissions/test-unprivileged-traversal.py'

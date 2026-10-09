@@ -115,6 +115,41 @@ oem_restore_migrate() { oem_adapter_migrate ''; }
         finally:os.close(fd)
 
 class UnifiedTests(unittest.TestCase):
+    def test_oem_confirmation_serializes_and_rechecks_before_commit(self):
+        for fault in ('', 'lock', 'context', 'release'):
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as td:
+                f=Fixture(Path(td),MODELS[1],True)
+                shutil.copyfile(f.release/'restore-models.tsv',f.release/'restore-confirm-models.tsv')
+                adapter=f.release/'adapters'/f'restore-{f.model["family"]}.sh'
+                with adapter.open('a') as out:
+                    out.write('\noem_restore_confirm_inspect() { oem_adapter_inspect; [ ! -f "$TEST_ROOT/changed" ] || OEM_SERIAL=112233445566; }\noem_restore_confirm_preflight() { oem_adapter_preflight; }\noem_restore_confirm() { printf confirmed > "$TEST_ROOT/confirmed"; }\n')
+                seal(f.release)
+                if fault=='lock':(f.device/'installer.lock').mkdir()
+                pid,fd=pty.fork()
+                if pid==0:os.execve('/bin/sh',['sh',str(f.release/'oem-restore-test.sh'),'--confirm'],f.env)
+                output=b'';sent=False;done=0;status=0;deadline=time.monotonic()+10
+                try:
+                    while time.monotonic()<deadline:
+                        if select.select([fd],[],[],.1)[0]:
+                            try:chunk=os.read(fd,65536)
+                            except OSError:break
+                            if not chunk:break
+                            output+=chunk
+                            if b'Type CONFIRM OEM: ' in output and not sent:
+                                if fault=='context':(f.device/'changed').touch()
+                                if fault=='release':(f.release/'deployment.tsv').write_text('changed\n')
+                                os.write(fd,b'CONFIRM OEM\n');sent=True
+                        done,status=os.waitpid(pid,os.WNOHANG)
+                        if done:break
+                    else:
+                        os.kill(pid,9);os.waitpid(pid,0);self.fail('confirmation fixture timed out')
+                    if not done:_,status=os.waitpid(pid,0)
+                finally:os.close(fd)
+                self.assertEqual(os.waitstatus_to_exitcode(status)==0,not fault,output)
+                self.assertEqual((f.device/'confirmed').exists(),not fault)
+                self.assertTrue(f.unchanged())
+                if fault=='lock':self.assertFalse(sent);self.assertTrue((f.device/'installer.lock').is_dir())
+
     def test_registry_requires_exact_fixture_for_every_model(self):
         actual={tuple(r.split('\t')) for r in (BASE/'models.tsv').read_text().splitlines() if r and not r.startswith('#')}
         fixtures={(m['sku'],m['family'],m['model']) for m in MODELS}

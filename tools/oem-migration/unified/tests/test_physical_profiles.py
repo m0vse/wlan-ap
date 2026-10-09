@@ -34,6 +34,15 @@ class PhysicalProfileTests(unittest.TestCase):
                 if fault=='missing-parent':(sys/'mtd3/device').unlink()
                 if fault=='offset':(sys/'mtd3/offset').write_text('0')
                 self.assertNotEqual(self.run_inventory(root,sys,profile).returncode,0)
+    def test_factory_reset_cannot_run_before_confirm_or_target_identity(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);inventory=root/'inventory';plan=root/'plan'
+            inventory.write_text('1\t0\t65536\tidentity\tnor0\n2\t65536\t65536\tnonunique-config\tnor0\n3\t0\t134217728\tshared-parent\tnand0\n')
+            plan.write_text('nor-config-reset\t2\tsingle-partition\tconfig\nubi-config-reset\t3\t4\tnvram\n')
+            run=lambda confirmed,kind:subprocess.run(['sh','-c',f'. "{BASE}/lib/protection.sh";OEM_RESTORE_CONFIRMED={confirmed};OEM_RUNNING_OS={kind};oem_confirmed_config_boundary "{inventory}" "{plan}"'],capture_output=True)
+            self.assertNotEqual(run(0,'oem').returncode,0);self.assertNotEqual(run(1,'openwifi').returncode,0);self.assertEqual(run(1,'oem').returncode,0)
+            plan.write_text('nor-config-reset\t1\tsingle-partition\tconfig\n');self.assertNotEqual(run(1,'oem').returncode,0)
+
     def test_new_build_with_same_version_and_duplicate_version_refused(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);actual=root/'version';expected=BASE/'profiles/X7-35X/source.tsv'

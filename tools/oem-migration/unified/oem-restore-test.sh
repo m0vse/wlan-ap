@@ -60,10 +60,14 @@ member=$(oem_bundle_member "adapters/restore-$OEM_ADAPTER.sh") || exit 1
 if [ "$mode" = --confirm ]; then
  for phase in oem_restore_confirm_inspect oem_restore_confirm_preflight oem_restore_confirm;do command -v "$phase" >/dev/null || { oem_fail 'model has no reviewed OEM confirmation handler';exit 1; };done
  OEM_WORK=$(mktemp -d /tmp/cambium-oem-confirm.XXXXXX) || exit 1
+ OEM_LOCK=/tmp/cambium-unified-oem.lock
+ mkdir "$OEM_LOCK" || { OEM_LOCK=;exit 1; }
  oem_restore_confirm_inspect && oem_context_check && oem_restore_confirm_preflight || exit 1
+ OEM_CONTEXT_PIN=$(oem_context_fingerprint)
  printf 'Confirm this verified OEM boot as the working default? Type CONFIRM OEM: ' > /dev/tty
  IFS= read -r answer < /dev/tty && [ "$answer" = 'CONFIRM OEM' ] || exit 1
- oem_restore_confirm_inspect && oem_context_check && oem_restore_confirm_preflight && oem_restore_confirm || exit 1
+ oem_release_check && oem_restore_confirm_inspect && oem_context_check && oem_restore_confirm_preflight &&
+  [ "$(oem_context_fingerprint)" = "$OEM_CONTEXT_PIN" ] && oem_restore_confirm || exit 1
  printf 'OEM boot confirmed. Follow only the reviewed model factory-reset procedure before a clean migration test.\n'
  exit 0
 fi
