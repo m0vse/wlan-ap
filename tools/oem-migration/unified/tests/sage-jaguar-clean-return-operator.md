@@ -4,7 +4,7 @@
 It does **not** retire native OpenWiFi enrollment. The working OpenWiFi bank,
 configuration, certificates and recovery information remain intact throughout
 the unconfirmed trial. Native factory reset is not identity retirement either:
-on Sage it does not clear the shared `certificates` UBI volume (ID 7).
+on Sage it does not clear the shared `certificates` UBI volume.
 
 The forward fresh-install adapter must continue to refuse an existing native
 identity store. Do not bypass that refusal, reuse an old onboarding key, or
@@ -26,7 +26,12 @@ The retirement operation must:
 2. Resolve the exact old OpenWiFi identity stores from the actual parent MTD,
    UBI parent, volume ID **and** `certificates` name, with mount/mountinfo and
    block-device alias checks. Do not use a guessed `/dev/ubiN` or volume name
-   alone. Sage uses the shared `fs` parent / certificate ID 7. Jaguar uses
+   alone. Sage uses the shared `fs` parent and a unique healthy volume named
+   `certificates`; discover its actual ID rather than assuming 7. A fresh OEM
+   migration with only one target overlay may allocate certificates at ID 5 or
+   6 and later allocate the other overlay at ID 7. Existing stock-converted
+   layouts often have certificates at 7, but that is not a universal binding.
+   Verify the live name again before any retirement operation. Jaguar uses
    bank-local certificate ID 4; examine both banks for retained copies of the
    same old identity. Never erase the bank, source kernel/root, ART, MFG, vault,
    OEM identity, shared nvram or unrelated configuration to clear a certificate.

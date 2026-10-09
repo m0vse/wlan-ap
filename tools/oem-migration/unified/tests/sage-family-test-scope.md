@@ -58,3 +58,15 @@ the existing fresh-only transaction refuses rather than silently erasing it.
 The separate post-confirmation retirement action and existing server reset flow
 are documented in `sage-jaguar-clean-return-operator.md`. Confirmation and native
 factory reset are not proof that the old private identity has been cleared.
+
+`test-sage-incoming-volume-ids.py` replays actual qualified `.10.07.1`
+certificate preinit and `ab_sage_write_target`/overlay preparation functions.
+Fresh OEM cases start with only the active OpenWiFi overlay, not two inherited
+stock overlays. Certificate ID 5/6 is valid; first normal upgrade allocates the
+missing opposite overlay at ID 7 **by name**, preserving the certificate store.
+Two-overlay legacy controls instead allocate certificates at 7 and reuse the
+existing opposite overlay. Media/ENV/mount boundaries are inert; this is
+volume-routing compatibility evidence, not full hardware sysupgrade acceptance.
+No certificate-ID reservation fix or new firmware build is needed for this
+specific concern. Retirement must discover unique `certificates` name, live
+parent/ID/health/mount/alias, not assume 7, which may now be an overlay.
