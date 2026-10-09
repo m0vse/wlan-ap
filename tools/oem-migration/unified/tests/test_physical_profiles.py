@@ -3,6 +3,18 @@ from pathlib import Path
 BASE=Path(__file__).resolve().parents[1]
 
 class PhysicalProfileTests(unittest.TestCase):
+    def test_bank_transition_vault_and_identity_create_boundaries(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);inventory=root/'inventory';plan=root/'plan'
+            inventory.write_text('1\t0\t65536\tidentity\tnor0\n2\t65536\t65536\tenvironment\tnor0\n3\t0\t100\tactive-oem\tnand0\n4\t100\t100\ttarget\tnand0\n5\t0\t100\tshared-parent\tnand1\n')
+            run=lambda:subprocess.run(['sh','-c',f'. "{BASE}/lib/protection.sh";OEM_TARGET_SLOT=1;oem_write_boundary "{inventory}" "{plan}"'],capture_output=True).returncode
+            for operation,id,name in [('ubi-remove',1,'ubi_rootfs'),('ubi-create',0,'kernel'),('ubi-create',1,'rootfs'),('ubi-create',1,'ubi_rootfs'),('ubi-create',2,'rootfs_data'),('ubi-create',3,'cambium_device_data'),('ubi-update',3,'cambium_device_data'),('ubi-create',4,'certificates')]:
+                plan.write_text(f'{operation}\t4\t{id}\t{name}\n');self.assertEqual(run(),0)
+                for parent in (1,3,5):
+                    plan.write_text(f'{operation}\t{parent}\t{id}\t{name}\n');self.assertNotEqual(run(),0)
+            for operation,id,name in [('ubi-update',4,'certificates'),('ubi-remove',4,'certificates'),('ubi-resize',4,'certificates'),('ubi-create',3,'certificates'),('ubi-remove',3,'cambium_device_data'),('ubi-create',4,'cambium_device_data'),('ubi-create',2,'ubi_rootfs')]:
+                plan.write_text(f'{operation}\t4\t{id}\t{name}\n');self.assertNotEqual(run(),0)
+
     def test_helpers_preserve_caller_variables_on_success_and_refusal(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);sys=root/'ubi';(sys/'ubi0').mkdir(parents=True);(sys/'ubi0_1').mkdir()
