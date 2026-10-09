@@ -12,13 +12,21 @@ oem_payload_map_check() {
 }
 oem_payload_stage() {
  [ -f "$OEM_BUNDLE/payload-map.tsv" ] || return 0
- local map selected model operation name remote size digest missing total=0 remaining directory
+ local map selected model operation name remote size digest missing total=0 remaining directory offline=1
  map=$(oem_bundle_member payload-map.tsv) || return 1
  oem_payload_map_check "$map" || return 1
  OEM_SELECTED_PAYLOADS=$OEM_WORK/selected-payloads.tsv
  awk -F '\t' -v model="$OEM_MODEL" -v operation="$1" '$1==model && $2==operation' "$map" > "$OEM_SELECTED_PAYLOADS" || return 1
  [ -s "$OEM_SELECTED_PAYLOADS" ] || return 1
  chmod 600 "$OEM_SELECTED_PAYLOADS" || return 1
+ while IFS="$(printf '\t')" read -r model operation name remote size digest; do
+  awk -v name="$name" '$2==name{n++}END{exit n!=1}' "$OEM_BUNDLE/SHA256SUMS" || offline=0
+ done < "$OEM_SELECTED_PAYLOADS"
+ if [ "$offline" = 1 ]; then
+  OEM_OBJECT_ROOT=$OEM_BUNDLE
+  oem_payload_closure_check
+  return $?
+ fi
  OEM_OBJECT_ROOT=$OEM_WORK/cache
  [ -d "$OEM_OBJECT_ROOT" ] || mkdir -m 700 "$OEM_OBJECT_ROOT" || return 1
  while IFS="$(printf '\t')" read -r model operation name remote size digest; do
@@ -44,7 +52,8 @@ oem_payload_closure_check() (
  awk -F '\t' -v model="$OEM_MODEL" -v operation="$OEM_OPERATION" '$1==model && $2==operation' "$original" > "$filtered" || exit 1
  cmp -s "$filtered" "$OEM_SELECTED_PAYLOADS" || exit 1
  while IFS="$(printf '\t')" read -r model operation name remote size digest; do
-  oem_bundle_member "$name" >/dev/null || exit 1
+  file=$(oem_bundle_member "$name") || exit 1
+  [ "$(wc -c < "$file")" -eq "$size" ] && [ "$(oem_sha "$file")" = "$digest" ] || exit 1
  done < "$OEM_SELECTED_PAYLOADS"
 )
 oem_stage_space_check() (
@@ -122,6 +131,16 @@ oem_fetch_local() {
  extra=${OEM_STAGE_EXTRA_BYTES:-0}
  case "$extra" in ''|*[!0-9]*) return 1;; esac
  oem_stage_space_check "$directory" "$((size+extra))" || return 1
+ # Self-contained releases can supply the exact authenticated object locally.
+ # Keep the legacy cache ABI without contacting HTTP for that copy.
+ oem_source_file=$(oem_bundle_member "$name" 2>/dev/null || true)
+ if [ -n "$oem_source_file" ]; then
+  oem_private_file "$oem_source_file" && [ "$(wc -c < "$oem_source_file")" -eq "$size" ] &&
+   [ "$(oem_sha "$oem_source_file")" = "$expected" ] || return 1
+  cp "$oem_source_file" "$output" && chmod 600 "$output" &&
+   oem_private_file "$output" && [ "$(oem_sha "$output")" = "$expected" ] && sync
+  return $?
+ fi
  attempt=0
  while [ "$attempt" -lt 2 ]; do
   [ "${OEM_NETWORK_BUDGET_LEFT:-0}" -ge 15 ] || return 1

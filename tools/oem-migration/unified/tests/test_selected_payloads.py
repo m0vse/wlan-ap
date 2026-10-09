@@ -82,6 +82,17 @@ class SelectedPayloadTests(unittest.TestCase):
                 result,calls=self.run_stage(Path(td).resolve(),'E410','install',repeat=True,tamper=tamper)
                 self.assertEqual(result.returncode==0,not tamper,result.stderr);self.assertEqual(len(calls),1)
 
+    def test_self_contained_map_uses_pinned_local_objects_without_http(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();bundle,server,common,binary=self.fixture(root)
+            row=(bundle/'payload-map.tsv').read_text().splitlines()[3].split('\t')
+            model,op,name,remote,size,pin=row;file=bundle/name;file.parent.mkdir(parents=True);file.write_bytes((server/remote).read_bytes());file.chmod(0o600)
+            with (bundle/'SHA256SUMS').open('a') as out:out.write(pin+'  '+name+'\n')
+            work=root/'work';work.mkdir(mode=0o700)
+            script=f'. "{common}";. "{BASE}/lib/network.sh";OEM_BUNDLE="{bundle}";OEM_WORK="{work}";OEM_MODEL={model};OEM_OPERATION={op};OEM_NETWORK_BUDGET_LEFT=0;oem_payload_stage {op}'
+            result=subprocess.run(['sh','-c',script],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr);self.assertFalse((work/'cache').exists())
+
     def test_dns_hash_space_and_unsupported_selection_refuse(self):
         for fault,model in [('dns','E410'),('wrong','E410'),('space','E410'),('','UNKNOWN')]:
             with self.subTest(fault=fault),tempfile.TemporaryDirectory() as td:
