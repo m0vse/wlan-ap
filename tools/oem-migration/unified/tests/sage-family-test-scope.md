@@ -5,6 +5,16 @@ E410B have separate factory/SKU/FIT mappings; enclosure and capacity are not
 revision identifiers. OEM-return/defaults are currently mapped only for the
 retained E410-A/EU U-Boot binary. No E410B return is inferred.
 
+`test-sage-forward.py` now exercises the actual forward adapter, pair writer,
+FORMAT2 producer and overlay stager together. It covers both models/both slots,
+ten persistence/write/readback/mount/arming failure cases and legitimate
+external source activity. Only device/ENV/mount/sync/UID metadata boundaries,
+the off-device receipt and nonflashable provider inputs are simulated. It
+checks source-first persistence, unmount-before-arm, original protected bytes,
+upper 0755/private 0700/credential 0600 and no key in mocked child args/env or
+event logs. This is not real flash durability, hardware power loss, or proof
+that a production provider has its complete actual runtime/ELF/FIT closure.
+
 `test-sage-inspection.py` exercises actual readers and physical range admission,
 not a full forward transaction. Its runtime ledger and payloads are synthetic,
 nonflashable fixtures. A published provider still needs the complete actual
