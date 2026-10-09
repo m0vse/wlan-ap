@@ -7,7 +7,7 @@ import unittest
 LIB = pathlib.Path(__file__).resolve().parents[1] / 'lib/cambium-oem-sage-boot.sh'
 
 class SageBootTests(unittest.TestCase):
-    def run_arm(self, source=0, model='E410', fault=''):
+    def run_arm(self, source=0, model='E410', fault='', persist=False):
         with tempfile.TemporaryDirectory() as tmp:
             p = pathlib.Path(tmp)
             state = p/'state'; state.mkdir()
@@ -25,6 +25,7 @@ ow_settings_context() { return 0; }
 fw_printenv() {
  shift 2; [ "$1" = -n ] || return 1; shift
  [ "$FAULT:$1" != readback:sage_installer_job ] || { echo wrong; return; }
+ [ "$FAULT:$1" != source_readback:sage_storage_pending ] || { echo wrong; return; }
  cat "$STATE/$1"
 }
 fw_setenv() {
@@ -37,13 +38,14 @@ fw_setenv() {
   printf '%s' "$2" > "$STATE/$1"
  fi
 }
-sync() { :; }
+sync() { [ "$FAULT" != source_sync ]; }
+[ "$PERSIST" != 1 ] || { cos_persist_source "install:$SOURCE:$((1-SOURCE)):$OW_IMAGE:$OW_EXPECT_JOB" && echo writer >> "$LOG"; } || exit 1
 cos_arm image
 '''
             result = subprocess.run(['sh', '-c', script], env={
                 'PATH':'/usr/bin:/bin', 'LIB':str(LIB), 'CONFIG':str(config),
                 'STATE':str(state), 'LOG':str(p/'log'), 'SOURCE':str(source),
-                'MODEL':model, 'FAULT':fault}, capture_output=True, text=True)
+                'MODEL':model, 'FAULT':fault, 'PERSIST':str(int(persist))}, capture_output=True, text=True)
             return result, {f.name:f.read_text() for f in state.iterdir()}, (p/'log').read_text().splitlines() if (p/'log').exists() else []
 
     def test_both_banks_and_models_use_native_state_and_correct_fit(self):
@@ -59,6 +61,8 @@ cos_arm image
                     self.assertEqual(state[f'sage_boot{source}'], f'setenv image {source}; bootipq')
                     self.assertIn(f'root=/dev/ubiblock0_{2*target+1}', state[f'sage_boot{target}'])
                     self.assertIn(f'bootm 0x84000000#{fit}', state[f'sage_boot{target}'])
+                    self.assertIn('setenv bootargs "mtdparts=', state[f'sage_boot{target}'])
+                    self.assertIn('setenv mtdparts "mtdparts=', state[f'sage_boot{target}'])
                     self.assertEqual(state[f'sage_stable{target}'], f'run sage_boot{target}; run sage_boot{source}')
                     self.assertEqual(state[f'sage_stable{source}'], f'run sage_boot{source}')
                     self.assertIn(f'setenv bootcmd run sage_boot{source}', state['bootcmd'])
@@ -84,5 +88,21 @@ cos_arm image
         result, state, writes = self.run_arm(model='E600')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(writes, [])
+
+    def test_source_only_default_and_journal_precede_writer_for_both_models_slots(self):
+        for source in (0, 1):
+            for model in ('E410', 'E410B'):
+                result, state, writes = self.run_arm(source, model, persist=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(writes, ['batch', 'writer', 'batch', 'bootcmd'])
+                self.assertEqual(state[f'sage_boot{source}'], f'setenv image {source}; bootipq')
+                self.assertTrue(state['sage_storage_pending'].startswith(f'install:{source}:{1-source}:'))
+
+    def test_source_batch_sync_and_readback_faults_never_reach_writer(self):
+        for fault in ('batch', 'source_sync', 'source_readback'):
+            result, state, writes = self.run_arm(fault=fault, persist=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn('writer', writes)
+            self.assertNotIn('sage_boot1', state)
 
 if __name__ == '__main__': unittest.main()

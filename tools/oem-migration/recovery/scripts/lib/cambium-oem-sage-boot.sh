@@ -20,11 +20,33 @@ cos_boot_preflight() {
         command -v "$COS_CHECK_TOOL" >/dev/null 2>&1 || return 1
     done
     [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n image 2>/dev/null)" = "$OW_EXPECT_SOURCE" ] || return 1
-    [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n bootcmd 2>/dev/null)" = bootipq ] || return 1
+    case "$(fw_printenv -c "$COS_ENV_CONFIG" -n bootcmd 2>/dev/null)" in
+        bootipq) ;;
+        "run sage_boot$OW_EXPECT_SOURCE")
+            [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "sage_boot$OW_EXPECT_SOURCE" 2>/dev/null)" = "$COS_OEM_BOOT_COMMAND" ] || return 1 ;;
+        *) return 1 ;;
+    esac
 }
+cos_persist_source() (
+    # Exact old OEM source command only; no target function is created here.
+    local journal=$1 key value
+    cos_boot_preflight || exit 1
+    printf '%s\n' "$journal" | awk -F: -v source="$OW_EXPECT_SOURCE" -v target="$OW_EXPECT_TARGET" \
+        'NF!=5 || $1!="install" || $2!=source || $3!=target || length($4)!=64 || $4~/[^0-9a-f]/ || length($5)!=64 || $5~/[^0-9a-f]/ {bad=1} END{exit bad || NR!=1}' || exit 1
+    umask 077
+    work=$(mktemp -d /tmp/cambium-oem-source.XXXXXX) || exit 1
+    trap 'rm -f "$work/environment"; rmdir "$work"' EXIT
+    printf 'sage_boot%s %s\nbootcmd run sage_boot%s\nimage %s\nsage_storage_pending %s\n' \
+        "$OW_EXPECT_SOURCE" "$COS_OEM_BOOT_COMMAND" "$OW_EXPECT_SOURCE" "$OW_EXPECT_SOURCE" "$journal" > "$work/environment" || exit 1
+    fw_setenv -c "$COS_ENV_CONFIG" -s "$work/environment" && sync || exit 1
+    while read -r key value; do
+        [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "$key" 2>/dev/null)" = "$value" ] || exit 1
+    done < "$work/environment"
+    cos_boot_preflight
+)
 cos_native_target_command() {
     local slot=$OW_EXPECT_TARGET id=$((2 * OW_EXPECT_TARGET + 1))
-    printf '%s\n' "setenv image $slot; setenv bootargs mtdparts=spi0.1:128M(fs) ubi.mtd=fs ubi.block=0,rootfs$slot root=/dev/ubiblock0_$id rootfstype=squashfs ro rootwait fstools_overlay_name=rootfs_data$slot cambium_sage_slot=$slot clk_ignore_unused; nand device 1 && setenv mtdids nand1=nand1 && setenv mtdparts mtdparts=nand1:0x8000000@0x0(fs) && ubi part fs && ubi read 0x84000000 linux$slot && bootm 0x84000000#$COS_TARGET_FIT"
+    printf '%s\n' "setenv image $slot; setenv bootargs \"mtdparts=spi0.1:128M(fs) ubi.mtd=fs ubi.block=0,rootfs$slot root=/dev/ubiblock0_$id rootfstype=squashfs ro rootwait fstools_overlay_name=rootfs_data$slot cambium_sage_slot=$slot clk_ignore_unused\"; nand device 1 && setenv mtdids nand1=nand1 && setenv mtdparts \"mtdparts=nand1:0x8000000@0x0(fs)\" && ubi part fs && ubi read 0x84000000 linux$slot && bootm 0x84000000#$COS_TARGET_FIT"
 }
 cos_arm() (
     local image=$1 work target trial key value
