@@ -37,7 +37,7 @@ oem_write_boundary() (
    if($4!~/^(kernel|rootfs|ubi_rootfs|rootfs_data|cambium_device_data|certificates)$/)bad=1
    if($4=="kernel" && $3!=0 || $4=="rootfs" && $3!=1 || $4=="rootfs_data" && $3!=2)bad=1
    if($4=="ubi_rootfs" && $3!=1)bad=1
-   if($4=="cambium_device_data" && ($3!=3 || $1!~/^(ubi-create|ubi-update)$/))bad=1
+   if($4=="cambium_device_data" && ($3!=3 || $1!~/^(ubi-create|ubi-update|ubi-resize)$/))bad=1
    if($4=="certificates" && ($3!=4 || $1!="ubi-create"))bad=1
   }
   $3!~/^[0-9]+$/ || $4!~/^(kernel|rootfs|ubi_rootfs|rootfs_data|cambium_device_data|certificates|linux[01]|rootfs[01]|rootfs_data[01])$/ {bad=1}
