@@ -8,7 +8,7 @@
 _cheetah_oem_unavailable() {
     case "${OEM_MODEL:-}" in
         XV2-21X)
-            printf '%s\n' 'XV2-21X OEM migration is unavailable: exact OEM write/readback, protected-range and boot-preservation handler is not qualified.' >&2
+            printf '%s\n' 'XV2-21X full OEM migration is unavailable: complete bundle staging, OEM volume namespace transition and boot arming are not integrated. Local write/readback components are tested separately.' >&2
             ;;
         XV2-22H|XV2-23T)
             printf '%s\n' 'This Cheetah model has no qualified exact OEM layout, asset and boot adapter.' >&2
@@ -167,3 +167,53 @@ oem_cheetah_trial_command() {
  case "${OEM_CHEETAH_PRIOR_MARKER:-}" in ''|0|1) ;; *) return 1;; esac
  printf 'setenv bootcmd bootipq && setenv image %s && setenv changing_bootcmd %s && saveenv && run cheetah_boot%s; bootipq\n' "$OEM_SOURCE_SLOT" "${OEM_CHEETAH_PRIOR_MARKER:-}" "$OEM_TARGET_SLOT"
 }
+
+# Grow the existing inactive kernel only. OEM captures reserve 32/36 LEBs,
+# smaller than the native kernel. Never remove/recreate a child implicitly.
+# The caller stages all bundle objects before entering any write component.
+oem_cheetah_grow_local_kernel() (
+ oem_cheetah_tuple && oem_context_check && oem_boot_check || exit 1
+ payload=$1 size=$2 digest=$3
+ case "$size" in ''|*[!0-9]*) exit 1;; esac
+ [ "$size" -gt 0 ] && [ "$size" -le 100663296 ] && oem_hex64 "$digest" || exit 1
+ [ -n "${OEM_WORK:-}" ] && [ "$(readlink -f "$OEM_WORK/cache")" = "$OEM_WORK/cache" ] || exit 1
+ case "$payload" in "$OEM_WORK/cache/"*) ;; *) exit 1;; esac
+ [ -f "$payload" ] && [ ! -L "$payload" ] && [ "$(readlink -f "$payload")" = "$payload" ] || exit 1
+ actual=$(wc -c < "$payload") || exit 1
+ case "$actual" in ''|*[!0-9[:space:]]*) exit 1;; esac
+ [ "$actual" -eq "$size" ] && [ "$(oem_sha "$payload")" = "$digest" ] || exit 1
+ oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1
+ parent=${OEM_CHEETAH_TARGET_MTD:-};device=${OEM_CHEETAH_TARGET_UBI:-}
+ case "$parent" in ''|*[!0-9]*) exit 1;; esac
+ case "$device" in ubi*) suffix=${device#ubi};; *) exit 1;; esac
+ case "$suffix" in ''|*[!0-9]*) exit 1;; esac
+ case "$OEM_TARGET_SLOT" in 0) target_name=rootfs;; 1) target_name=rootfs_1;; *) exit 1;; esac
+ [ "$(oem_physical_index "${OEM_SYS_ROOT:-}/sys/class/mtd" "$target_name")" = "$parent" ] || exit 1
+ [ "$(awk -F '\t' -v p="$parent" '$1=="ubi-resize" && $2==p && $3==0 && $4=="kernel"{n++}END{print n+0}' "$OEM_WRITE_PLAN")" = 1 ] || exit 1
+ sys=${OEM_SYS_ROOT:-}/sys/class/ubi
+ oem_ubi_child_check "$sys" "$parent" "$device" 0 kernel || exit 1
+ # Shared helpers use shell globals: assign operation fields after them.
+ node=$sys/${device}_0;path=${OEM_SYS_ROOT:-}/dev/$device
+ [ ! -L "$path" ] && { [ -n "${OEM_SYS_ROOT:-}" ] || [ -c "$path" ]; } || exit 1
+ if [ -z "${OEM_SYS_ROOT:-}" ]; then
+  actual=$(LC_ALL=C ls -ln "$path" | awk '$1~/^c/ && $3==0 {gsub(/,/,"",$5);print $5 ":" $6}') || exit 1
+  [ "$actual" = "$(cat "$sys/$device/dev")" ] || exit 1
+ fi
+ [ "$(cat "$node/type")" = dynamic ] || exit 1
+ blocks=$(cat "$node/reserved_ebs") && leb=$(cat "$node/usable_eb_size") && free=$(cat "$sys/$device/avail_eraseblocks") || exit 1
+ case "$blocks:$leb:$free" in *[!0-9:]*|:*|*::*|*:) exit 1;; esac
+ [ "$blocks" -ge 1 ] && [ "$blocks" -le 768 ] && [ "$leb" -eq 126976 ] && [ "$free" -le 768 ] || exit 1
+ needed=$(((size+leb-1)/leb))
+ [ "$needed" -le 768 ] || exit 1
+ # An already large enough volume is retained; this component never shrinks.
+ [ "$needed" -gt "$blocks" ] || exit 0
+ [ "$((needed-blocks))" -le "$free" ] || exit 1
+ (umask 077;printf 'kernel-grow-start\t%s\t%s\n' "$blocks" "$needed" >> "$OEM_WORK/cheetah-update.journal") || exit 1
+ ubirsvol "$path" -n 0 -s "$((needed*leb))" || exit 1
+ oem_ubi_child_check "$sys" "$parent" "$device" 0 kernel || exit 1
+ node=$sys/${device}_0
+ [ "$(cat "$node/reserved_ebs")" -eq "$needed" ] && [ "$(cat "$node/type")" = dynamic ] &&
+ [ "$(cat "$node/usable_eb_size")" -eq "$leb" ] || exit 1
+ sync || exit 1
+ printf 'kernel-grow-verified\t%s\n' "$needed" >> "$OEM_WORK/cheetah-update.journal"
+)
