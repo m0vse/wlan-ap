@@ -10,16 +10,28 @@ Recognition is broader than implementation. This table describes source and
 available baseline evidence, not an installable release. The release maps are
 the authority for an operator's exact model and source version.
 
-| Family | Recognized models | Current release integration requirement |
-|---|---|---|
-| Gambit | E400 | No migration/restoration adapter; keep disabled |
-| Sage | E410, E410B | Existing writers and captured OEM 4.2.3.3-r10 evidence; exact factory variant, runtime, geometry, native source boot contract and payload profiles required |
-| Sage | E600, E430W, E700, E430H, E510 | No inference from E410; keep disabled without their own implemented path |
-| Jaguar | XV2-2, XV2-2T0, XV2-2T1, XE3-4, XE3-4TN | Adapter checks OEM 7.2-r1; each SKU needs its own actual profile and payloads |
-| Thor | XV3-8 | Actual boot generator tests exist; they do not establish a complete OEM installer or restore path |
-| Cheetah | XV2-21X | Selector/update/boot component fixtures exist; complete pinned migration provider remains required |
-| Cheetah | XV2-22H, XV2-23T | Keep disabled; sibling geometry and payloads are not substitutes |
-| Miami | X7-35X | OEM 7.2-r1 exact-build profile and generated storage backend; package the current local-only/numeric-cache fixes with existing payloads |
+The following snapshot describes the reviewed source and retained provider
+inputs as of 2026-10-09. An image version here identifies existing input bytes;
+it is not a declaration that the image contains every newer migration or
+readiness fix. Private provider receipts stay outside source Git. The source
+status is based on reviewed unified entry points through the published Jaguar
+source-slot change `90acf32c`; a pending owner candidate does not enable a row.
+
+| Exact models | Reviewed OEM source | Existing incoming input | Forward integration | Full OEM restore / confirmation |
+|---|---|---|---|---|
+| E410, E410B | 4.2.3.3-r10, exact factory variant | Sage 2026.10.07.1 | Private actual-data writer and enabled launcher validation complete | E410 bounded private return/confirmation data; clean reset and old-store retirement are separate. E410B reverse remains disabled |
+| XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Keep reverse disabled until its composed adapter and provider are frozen and validated; forward success is not reverse admission |
+| XV3-8 | 7.2-r1, exact product/build | Thor 2026.10.05.8 | Actual incoming payloads retained; published component helpers need the owner's final composed writer and exact provider schema | No enabled reverse or confirmation claim from component tests |
+| XV2-21X | 7.2-r1, exact product/build | Cheetah 2026.10.05.7 | Actual incoming payloads retained; final composed family source/provider integration remains separate from legacy components | Keep reverse disabled until the final owner adapter and provider are validated |
+| X7-35X | 7.2-r1, exact product/build | Existing reviewed Miami payload/PAIR objects | Private current backend assembly; required Linux replay remains pending | No inference of restore/confirmation or installed readiness from generated source |
+| E400; E600, E430W, E700, E430H, E510; XV2-2T0, XE3-4TN; XV2-22H, XV2-23T | No enabled exact-source row | None admitted by sibling evidence | Recognized unsupported; reject before changes | Unsupported |
+
+Use the operation-specific release maps, not this snapshot, to decide whether
+an operator command is enabled. Keep unavailable rows disabled even when an
+image includes that model's FIT configuration. Source, target layout, forward,
+reverse, confirmation and installed normal-upgrade readiness are independent
+claims. OpenWrt conversion retains its reviewed outgoing model-specific route;
+the OEM entry point refuses an OpenWrt source.
 
 The X7-35X b6 firmware's missing readiness hook must remain unsupported for
 normal-upgrade readiness. Source tests for a new hook do not change installed
@@ -57,14 +69,58 @@ alongside the provider ledger and output launcher hashes. Validate space using
 the actual files simultaneously staged for the selected model; do not assume
 all models' images fit in an AP's RAM.
 
+## Jaguar source-slot profiles
+
+The authenticated physical profile is `profiles/MODEL/mtd-slot0.tsv` or
+`mtd-slot1.tsv`. The suffix names the inspected **running source slot**, not the
+target. Supply both profiles in one provider. With source slot 0, `rootfs` is
+`active-oem` and `rootfs_1` is `target`; with source slot 1 those roles reverse.
+All other model-specific physical rows remain unchanged. The adapter selects
+and authenticates the matching file, then checks live parent, offset, geometry
+and role bindings. There is no fallback to a fixed `mtd.tsv`.
+
+Reverse profiles, when that operation is implemented and enabled, use the same
+source-slot convention below `profiles/MODEL/restore/`. A running DTB or retained
+capture from the exact model establishes that model's physical map; a sibling
+FIT tree does not. Preserve the capture hash and source-version provenance in
+the private receipt. XV2-2's 52 MiB banks and the T1/XE3-4 96 MiB banks must not
+be interchanged.
+
+## Minimal backup and shared OEM assets
+
+Use one reviewed OEM recovery asset set per exact model/release with each
+unit's own critical data. Routine unique backups contain ART/calibration,
+manufacturing identity, boot environment and only indispensable boot-selection
+records. Jaguar's bounded plan is ART 512 KiB, MFG 64 KiB and ENV 64 KiB; Thor's
+named BOOTCONFIG pair is capped at 128 KiB per record. An explicit unique-data
+exception must appear in the model plan. No routine per-unit root filesystem,
+whole firmware bank, whole flash dump, customer configuration or issued AP
+private key belongs in this provider or ordinary backup relay.
+
+OEM return must restore the reviewed OEM boot-environment defaults as well as
+the firmware. Preserve unrelated and device-specific environment fields unless
+the exact reviewed restoration plan says otherwise. Confirmation precedes the
+separate factory reset; do not clear the prior identity or configuration during
+an unconfirmed one-shot attempt. Factory reset does not itself prove that a
+shared native certificate store or stale vendor configuration backup was retired.
+
 ## Package and verify
 
 For the common metadata-first release, include a pinned `payload-map.tsv` and
 use `--metadata-first`. Each six-column tab-separated row contains exact model,
 operation (`install`, `restore` or `confirm`), local relative data path, remote
 relative object name, byte count and SHA256. All declared files must match the
-provider ledger before packaging. Code cannot be a downloaded payload. The
-packager retains the authenticated map and framework but omits all declared
+provider ledger before packaging. Code cannot be a downloaded payload. Known
+radio leaves such as `bdwlan.*`,
+`regdb.bin*`, and reviewed split `q6_fw`/`iu_fw` members may be selected only in
+the detected model's firmware asset paths. The existing Thor role
+`payloads/shared-radio/thor-bdwlan.*` is restricted to XV3-8. Executable helpers,
+PEM/key files and another model's assets remain forbidden. The generic map does
+not replace family-specific `radio-assets.tsv`, `vault-assets.tsv`, `stage.tsv`
+or payload descriptors: those must still bind the exact logical firmware paths,
+byte counts and hashes consumed by the family adapter.
+
+The packager retains the authenticated map and framework but omits all declared
 payload bytes from the initial release; undeclared firmware files refuse.
 The generic launcher detects the model and stages only its operation rows,
 using bounded fetches and an aggregate byte check before key input, backup or

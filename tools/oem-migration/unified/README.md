@@ -1,8 +1,25 @@
 # One Cambium OEM migration interface
 
 These sources belong to OpenWiFi. **Use a release only when its exact model,
-OEM version and adapter are supported.** Source simulations are not hardware
-qualification. There is no force or trial bypass.
+OEM version and adapter are supported.** A recognized unsupported model is
+rejected before key input, backup, boot-environment changes or firmware writes.
+Source simulations are not hardware qualification. There is no force or trial bypass.
+
+## Choose the operation
+
+| Starting state | Operation | Command or route |
+|---|---|---|
+| Supported OEM source | Inspect, then migrate to OpenWiFi | `cambium-oem-install check`, then `cambium-oem-install` |
+| Existing OpenWrt | Convert using its reviewed model-specific path | [Stock migration guide](../../stock-migration/README.md); the OEM command refuses OpenWrt |
+| OpenWiFi with a retained OEM bank | Inspect a one-shot OEM return | `cambium-return-oem --check`; `--arm` requires installed safe support |
+| OpenWiFi with both banks converted | Reconstruct OEM in the inactive bank | `cambium-oem-restore-test --check`; `--restore` requires its own enabled release row |
+| Healthy restored OEM candidate | Confirm the OEM return | `cambium-oem-restore-test --confirm` requires a separate exact-model confirmation row |
+| Enrolled OpenWiFi | Inspect normal upgrade readiness | Installed `cambium-ab-ready`, or the separately authenticated release readiness command |
+
+OpenWrt-to-OpenWiFi remains a separate supported scope. An `upgrade-models.tsv`
+readiness row does not implement that conversion, and `sysupgrade` alone does
+not authorize a change from a stock layout. Keep the reviewed outgoing platform
+checks and migration route for each remaining OpenWrt device.
 
 ## Quick start: OEM to OpenWiFi
 
@@ -17,6 +34,12 @@ its selected operation's pinned objects before key input or backup. You do not
 choose a family bundle or copy every family's firmware onto the AP. Verified
 local objects are rechecked before writes; a self-contained offline release
 continues to work without the data map.
+
+The published launcher hash and release ledger are separate checks. Verify the
+canonical launcher against its independently obtained `LAUNCHER-HASHES.txt`
+entry before running it; the launcher checks the pinned release ledger before
+sourcing helpers. A checksum file obtained only from the same untrusted download
+does not supply that independent pin.
 
 From an OEM root console, inside that verified release directory:
 
@@ -60,7 +83,9 @@ release; this source change does not install them on existing APs.
 This is a separate operation for APs already running OpenWiFi on both slots.
 `cambium-return-oem` checks a retained OEM bank. Arming requires a reviewed
 one-shot return handler; releases with unsafe permanent-switch semantics must
-refuse before changing the device. It is not a full restoration alias.
+refuse before changing the device. It is not a full restoration alias. A missing
+command, handler or enabled release row means that operation is unsupported; do not substitute a manual
+selector change or a family sibling's restoration assets.
 
 Inside an independently verified restoration release:
 
@@ -151,6 +176,15 @@ reviewed recovery procedure. Wrong model/version, ambiguous aliases, overlapping
 protected ranges, busy targets, low space, corrupt volumes, failed checksums,
 unsafe seed modes and failed environment readbacks all refuse.
 
+If a transfer times out before writes, restore access to the existing provider
+or use the reviewed offline package, then repeat `check`. A verified complete
+local object can be reused; a partial or wrong-hash object cannot. If target
+writing has started, a timeout or lost provider is not permission to restart
+installation. Retain the journal and inspect the prior-slot recovery state.
+After an unconfirmed candidate fails to boot, reset or powercycle returns to the
+previous saved slot where the model's reviewed one-shot contract applies. Do
+not treat a failed enrollment or early hang as successful boot confirmation.
+
 ## Commands and exit status
 
 | Operation | Common command | Existing compatibility |
@@ -173,7 +207,7 @@ markers, certificate paths or image formats.
 `models.tsv`, `restore-models.tsv` and `upgrade-models.tsv` separately bind exact
 model, adapter and supported source version. Models absent from the relevant
 release, or explicitly disabled, refuse before key input and device backup.
-Gambit and unknown sibling models remain recognized but unsupported until an
+Gambit and unimplemented sibling models remain recognized but unsupported until an
 actual safe adapter exists. Do not infer a family's support from one sibling.
 
 Sage E410/E410B has existing bounded writer/boot/reset source; Jaguar, Cheetah
