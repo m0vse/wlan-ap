@@ -165,6 +165,8 @@ reviewed generated storage/FORMAT2 backend. Release readiness additionally
 requires the actual model/source profile, payload pins and safe one-shot
 contract; these are not fabricated by `prepare-release.py`. Current adapters
 and limitations are recorded in [the test coverage guide](tests/COVERAGE.md).
+The [release assembly guide](RELEASE-ASSEMBLY.md) records exact-model gaps and
+how to package existing assets without a firmware build.
 
 Run the source harness with:
 
