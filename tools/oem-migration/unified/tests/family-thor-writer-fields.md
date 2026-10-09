@@ -1,8 +1,9 @@
 # Thor local writer-piece integration
 
 These are source helpers for the single shared installer, not a second launcher
-or a released migration adapter. `adapters/thor.sh` deliberately does not define
-the four complete dispatcher phases until their exact OEM mapping is wired.
+or a released migration adapter. `adapters/thor.sh` implements actual read-only `oem_adapter_inspect` and the
+local existing-child pieces. It does not define all four complete dispatcher
+phases until their exact OEM transition mapping is wired.
 An incomplete adapter therefore cannot satisfy the dispatcher's phase checks.
 The main-reviewed boot increment is separate at
 `/private/tmp/thor-one-shot-current-main`, frozen HEAD
@@ -56,7 +57,7 @@ release payloads. Reuse existing protected FORMAT2 producer/stager with actual
 serial/source slot/target slot/source contract/image hash/job/controller/EST
 context. No private input/key/CSR/cert material is included in this commit.
 
-The remaining full adapter phases are exact source inspection/preflight,
+The remaining full adapter phases are exact released source preflight,
 critical backup/upload receipt, the explicit OEM volume-layout transition,
 vault/FORMAT2 staging and readback, sync/unmount and existing one-shot arm.
 Restore must preserve the previous working OpenWiFi slot and identity, and
@@ -80,3 +81,38 @@ logic executes. Synthetic active-bank/ART/MFG/ENV/BOOTCONFIG/certificate/vault
 sentinels stay unchanged. No device, network, mounts, firmware build, real key
 prompt or ENV/boot action occurs. This is not physical power-loss or complete
 forward/restore qualification.
+
+## Retained source fields now implemented
+
+`oem_adapter_inspect` clears stale context and only publishes it after complete
+read-only validation. It uses the shared `/etc/version` reader (VERSION token),
+unique physical `rootfs`/`rootfs_1` names, sizes/erase/write geometry and exact
+physical offsets, cmdline `ubi.mtd`/root, uniquely bound dynamic UBI index and
+healthy `kernel`/`ubi_rootfs` children. The explicit named NOR ENV configuration
+must agree across /etc and /tmp; `fw_printenv -c ... -n image/bootcmd` must agree
+with the actual source slot and original `aq_load_fw&&bootipq` default. Exact
+XV3-8 factory base identity is read from own 256 KiB ART at byte offset 0x40,
+length six, matching the retained reference; no radio-MAC arithmetic or donor
+identity is used. No manufacturing registry or new watchdog gate is introduced.
+
+25 actual inspection/context fixtures pass: both source banks, relocated MTD
+indices, synthetic exact-version acceptance and old/new/missing/conflicting
+version refusal, physical/root/volume/ENV disagreement, wrong model and invalid
+ART identity. Shared context enforces the released exact version; the synthetic
+`fixture-supported` token does not admit a real OEM version. Source file bytes
+and modes stay unchanged. fw_printenv and character-device lookup are actors,
+while actual inspection, shared readers and own-ART byte extraction execute.
+
+The concrete unavailable release inputs are: the exact real OEM version row and
+its applicable capabilities; authenticated complete model/source physical and
+minimal-critical profiles (including the genuine unique manufacturing record
+if it is a separate backup requirement); local destination image/contents/FIT
+metadata plus model/revision reusable radio assets; original OEM restoration
+payload/container mapping; and the approved kernel/ubi_rootfs-to-rootfs layout
+transition and allocation/inventory needed before the child writer can run.
+Keep all unknown/outside-target unique regions untouched. Absence of a factory
+record format does not justify a new registry or copying full customer config.
+Original stock `thor_write` uses ubiformat/factory UBI, which this shared child
+plan intentionally does not pretend to authorize. The FORMAT2 seed/native
+worker already exists; the owner wires it after the actual transition and
+readback, using existing private 0700/0600/public-upper0755 rules.
