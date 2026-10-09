@@ -129,16 +129,19 @@ workflow. See [the operator retirement steps](RELEASE-ASSEMBLY.md#retire-an-old-
 
 After a both-native Jaguar or Thor returns to OEM, the other bank still has
 its old OpenWiFi software, overlay and radio vault. Retiring its old certificate
-store does not restore the original two-volume OEM target layout. A fresh
-install needs a reviewed known-native target reuse path that preserves the
-own-ART-bound vault, refuses remaining identity or unknown children, and reclaims
-only inactive software and nonunique configuration after consent and a saved
-source-only default. Jaguar also needs reviewed handling of the old conversion
-flag left by native confirmation; factory configuration reset alone does not
-clear it. Do not clear flags or format a parent bank manually to bypass these
-refusals. Until the complete model-specific sequence is implemented and checked,
-confirmation, reset and certificate retirement are insufficient to claim a
-working fresh-install roundtrip.
+store does not restore the original two-volume OEM target layout. Jaguar's
+source now provides exact confirmed-return reuse: it preserves the own-ART-bound
+vault, checks its radio files against the incoming authenticated image assets,
+refuses remaining identity or unknown children, and reclaims only inactive
+software and nonunique configuration after consent and a saved source-only
+default. The old conversion flag is admitted only with the confirmed-return
+selector and slot tuple; it is not manually cleared. An unattached target is
+attached automatically after saving the source, before any target erase.
+This source implementation still needs its exact release assembly and operator
+hardware acceptance; it is not an automatically performed identity retirement.
+Thor's equivalent completed-release qualification remains separate. Do not
+clear flags or format a parent bank manually to bypass refusals, or claim a
+working hardware roundtrip from simulated confirmation/reset/retirement.
 
 Sage keeps the same named firmware pairs across conversion, so its reader can
 accept the existing inactive SquashFS pair and reviewed 67-LEB overlay. Its
