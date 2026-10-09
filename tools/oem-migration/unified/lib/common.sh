@@ -4,12 +4,28 @@ oem_fail() { printf '%s\n' "OEM migration stopped: $*" >&2; return 1; }
 oem_sha() { sha256sum < "$1" | awk '{print $1}'; }
 oem_hex64() { [ "${#1}" = 64 ] && case "$1" in *[!0-9a-f]*) return 1;; *) return 0;; esac; }
 oem_token() { case "$1" in ''|*[!A-Za-z0-9._-]*) return 1;; *) return 0;; esac; }
+oem_read_hex() (
+ file=$1 bytes=$2
+ case "$bytes" in ''|*[!0-9]*) return 1;; esac
+ [ "$bytes" -ge 1 ] && [ "$bytes" -le 64 ] || return 1
+ if command -v od >/dev/null 2>&1; then
+  raw=$(od -An -tx1 -N"$bytes" "$file") || return 1
+ elif command -v hexdump >/dev/null 2>&1; then
+  raw=$(hexdump -v -n "$bytes" -e '1/1 "%02x"' "$file") || return 1
+ else
+  return 1
+ fi
+ value=$(printf '%s' "$raw" | tr -d ' \n') || return 1
+ [ "${#value}" -eq "$((2*bytes))" ] || return 1
+ case "$value" in *[!0-9a-f]*) return 1;; esac
+ printf '%s\n' "$value"
+)
 oem_detect() {
  OEM_SKU= OEM_FAMILY= OEM_MODEL=
  for path in "$OEM_SYS_ROOT/proc/device-tree/cambium-platform/board-sku" "$OEM_SYS_ROOT/sys/firmware/devicetree/base/cambium-platform/board-sku"; do
   [ -r "$path" ] || continue
   [ "$(wc -c < "$path")" -eq 4 ] || return 1
-  value=$(od -An -tx1 -N4 "$path" | tr -d ' \n') || return 1
+  value=$(oem_read_hex "$path" 4) || return 1
   [ "${#value}" = 8 ] || return 1
   [ -z "$OEM_SKU" ] || [ "$OEM_SKU" = "$value" ] || return 1
   OEM_SKU=$value

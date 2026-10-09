@@ -69,7 +69,7 @@ fi
 printf 'Serial %s; OEM slot %s retained; target slot %s. Preflight passed.\n' "$OEM_SERIAL" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
 oem_prompt_key || { oem_fail 'private key input failed'; exit 1; }
 oem_confirm || { oem_fail 'installation cancelled before backup or writes'; exit 1; }
-OEM_BACKUP_ID=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n') || exit 1
+OEM_BACKUP_ID=$(oem_read_hex /dev/urandom 16) || exit 1
 [ "${#OEM_BACKUP_ID}" = 32 ] || exit 1
 oem_adapter_recovery && oem_backup_receipt_check "${OEM_RECOVERY_DIR:-}" || { oem_fail 'critical backup was not verified off-device; no firmware changed'; exit 1; }
 oem_adapter_inspect && oem_context_check && oem_adapter_preflight && oem_boot_inspect oem_adapter_boot_preflight && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1

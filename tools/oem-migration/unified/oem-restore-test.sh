@@ -85,7 +85,7 @@ oem_restore_inspect && oem_context_check && oem_restore_preflight && oem_boot_in
 OEM_CONTEXT_PIN=$(oem_context_fingerprint)
 printf 'Restore OEM for migration testing? Type RESTORE OEM: ' > /dev/tty
 IFS= read -r answer < /dev/tty && [ "$answer" = 'RESTORE OEM' ] || exit 1
-OEM_BACKUP_ID=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n') || exit 1
+OEM_BACKUP_ID=$(oem_read_hex /dev/urandom 16) || exit 1
 [ "${#OEM_BACKUP_ID}" = 32 ] || exit 1
 oem_restore_recovery && oem_backup_receipt_check "${OEM_RECOVERY_DIR:-}" || exit 1
 oem_restore_inspect && oem_context_check && oem_restore_preflight && oem_boot_inspect oem_restore_boot_preflight &&
