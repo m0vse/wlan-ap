@@ -39,6 +39,7 @@ p.write_text(json.dumps(s))
 PY
 }
 sync() { [ "$FAULT" != sync ]; }
+oem_jaguar_before_select() { [ "$FAULT" != protected ]; }
 OEM_JAGUAR_JOURNAL="install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$(printf '%064d' 1):$(printf '%064d' 2)"
 oem_jaguar_persist_source "$OEM_JAGUAR_JOURNAL" || exit 1
 printf 'WRITER\n' >> "$LOG"
@@ -59,7 +60,7 @@ oem_jaguar_arm
     self.assertIn(f'saveenv && run jaguar_boot{1-slot}; run jaguar_boot{slot}',state['bootcmd'])
  def test_failed_persistence_or_metadata_never_activates_candidate(self):
   for slot in (0,1):
-   for fault in ('SOURCE','source-readback','sync','ARM','arm-readback','SELECTOR'):
+   for fault in ('SOURCE','source-readback','sync','ARM','arm-readback','protected','SELECTOR'):
     result,state,events=self.invoke('XV2-2T1','0000001f',slot,fault)
     self.assertNotEqual(result.returncode,0)
     self.assertIn(state['bootcmd'],('bootipq',f'run jaguar_boot{slot}'))
