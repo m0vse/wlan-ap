@@ -15,12 +15,12 @@ inputs as of 2026-10-09. An image version here identifies existing input bytes;
 it is not a declaration that the image contains every newer migration or
 readiness fix. Private provider receipts stay outside source Git. The source
 status is based on reviewed unified entry points through the published Jaguar
-source-slot change `90acf32c`; a pending owner candidate does not enable a row.
+return writer `e5ffc487`; a pending owner candidate does not enable a row.
 
 | Exact models | Reviewed OEM source | Existing incoming input | Forward integration | Full OEM restore / confirmation |
 |---|---|---|---|---|
 | E410, E410B | 4.2.3.3-r10, exact factory variant | Sage 2026.10.07.1 | Private actual-data writer and enabled launcher validation complete | E410 bounded private return/confirmation data; clean reset and old-store retirement are separate. E410B reverse remains disabled |
-| XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Keep reverse disabled until its composed adapter and provider are frozen and validated; forward success is not reverse admission |
+| XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Private actual-data OEM return writer and generic checks pass for both source slots with explicitly scoped host identity/media actors; healthy OEM confirmation, defaults/reset and deployment remain separate |
 | XV3-8 | 7.2-r1, exact product/build | Thor 2026.10.05.8 | Actual incoming payloads retained; published component helpers need the owner's final composed writer and exact provider schema | No enabled reverse or confirmation claim from component tests |
 | XV2-21X | 7.2-r1, exact product/build | Cheetah 2026.10.05.7 | Actual incoming payloads retained; final composed family source/provider integration remains separate from legacy components | Keep reverse disabled until the final owner adapter and provider are validated |
 | X7-35X | 7.2-r1, exact product/build | Existing reviewed Miami payload/PAIR objects | Private current backend assembly; required Linux replay remains pending | No inference of restore/confirmation or installed readiness from generated source |
