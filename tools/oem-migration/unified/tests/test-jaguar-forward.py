@@ -47,7 +47,7 @@ if cmd=='fw_setenv':
   else:e[args[0]]=args[1]
  ef.write_text(json.dumps(e))
 elif cmd=='ubirmvol':
- assert a[0]==str(dev/'ubi1') and a[1]=='-n' and int(a[2]) in (0,1)
+ assert a[0]==str(dev/'ubi1') and a[1]=='-n' and int(a[2]) in (0,1,2)
  i=int(a[2]);free(int((node(i)/'reserved_ebs').read_text()));shutil.rmtree(node(i));(dev/f'ubi1_{i}').unlink()
 elif cmd=='ubimkvol':
  assert a[0]==str(dev/'ubi1') and a[1]=='-n' and a[3]=='-N' and a[5]=='-s'
@@ -104,6 +104,7 @@ class ForwardTests(unittest.TestCase):
   image=member(f'payloads/{model}/image.bin',b'nonflashableimage');kernel=member(f'payloads/{model}/kernel.itb',bytes.fromhex('d00dfeed')+b'nonflashablekernel');fs=member(f'payloads/{model}/rootfs.squashfs',b'hsqsnonflashableroot')
   member(profile+'source-contract','7.2-r1\n'+'a'*64+'\n');member(profile+'source-sets/runtime-implementation.set','F '+sha(root/'etc/version')+' /etc/version\n')
   member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
+  member('adapters/restore-jaguar.sh',(HERE/'adapters/restore-jaguar.sh').read_bytes())
   # One provider contains BOTH source-slot maps, not a regenerated single map.
   for source in (0,1):
    mapped=[]
@@ -164,7 +165,7 @@ class ForwardTests(unittest.TestCase):
  def test_existing_inactive_identity_is_never_erased(self):
   case=self.fixture();root=case[0];p=root/'sys/class/ubi/ubi1_4';p.mkdir();(p/'name').write_text('certificates');(root/'dev/ubi1_4').write_bytes(b'own retained private identity')
   result=self.invoke(case);self.assertNotEqual(result.returncode,0);self.assertEqual((root/'dev/ubi1_4').read_bytes(),b'own retained private identity')
-  self.assertNotIn('ubirmvol',(root/'events').read_text())
+  self.assertFalse((root/'events').exists())
  def test_partial_foreign_installer_fields_refuse_before_any_mutation(self):
   for key,value in (('jaguar_installer_target','1'),('jaguar_installer_job','f'*64),('jaguar_installer_image','a'*64)):
    case=self.fixture();root=case[0];state=json.loads((root/'env.json').read_text());state[key]=value;(root/'env.json').write_text(json.dumps(state))

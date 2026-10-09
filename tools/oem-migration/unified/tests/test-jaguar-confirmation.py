@@ -31,20 +31,27 @@ if fault in ('readback','rollback-failure') and label=='CONFIRM':s['bootcmd']='w
 p.write_text(json.dumps(s))
 '''
 class ConfirmationTests(unittest.TestCase):
- def fixture(self,model='XV2-2T1',source=0):
+ def fixture(self,model='XV2-2T1',source=0,carried=None):
   compile(BACKEND,'inert-confirm-backend','exec')
   spec=importlib.util.spec_from_file_location('return_fixture',HERE/'tests/test-jaguar-restore.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-  holder=module.RestoreTests();fixture=holder.fixture(model,source);self.addCleanup(holder.doCleanups)
+  holder=module.RestoreTests()
+  if carried is None:fixture=holder.fixture(model,source);self.addCleanup(holder.doCleanups)
+  else:fixture=carried
   case,_=fixture;root,bundle,work,bin,model,sku=case;target=1-source
   (root/'etc/openwrt_release').unlink();(root/'etc/version').write_text('PRODUCT=jaguar\nVERSION=7.2-r1\nCHANGESET=nonflashable-fixture\n')
   (root/'proc/cmdline').write_text(f'ubi.mtd={"rootfs" if target==0 else "rootfs_1"} root=ubi1:ubi_rootfs rootfstype=squashfs\n')
   (root/'proc/mounts').write_text('/dev/ubiblock1_1 / squashfs ro 0 0\n')
-  state=json.loads((root/'env.json').read_text());state.update(bootcmd=f'run jaguar_boot{source}',jaguar_oem_restore_state='trial-started',jaguar_oem_restore_target=str(target),jaguar_ab_target=str(target),jaguar_ab_state='armed')
+  state=json.loads((root/'env.json').read_text())
+  if carried is None:state.update(bootcmd=f'run jaguar_boot{source}',jaguar_oem_restore_state='trial-started',jaguar_oem_restore_target=str(target),jaguar_ab_target=str(target),jaguar_ab_state='armed')
+  else:
+   assert state['jaguar_oem_restore_state']=='armed'
+   # Execute only the trial's persistent prefix: the candidate is now running.
+   state.update(bootcmd=f'run jaguar_boot{source}',jaguar_oem_restore_state='trial-started')
   state[f'jaguar_stable{source}']=f'run jaguar_boot{source}';state[f'jaguar_oem_boot{target}']=f'setenv image {target}; bootipq'
   (root/'env.json').write_text(json.dumps(state))
-  for i,name,blocks,file in ((0,'kernel',32,'kernel.itb'),(1,'ubi_rootfs',337,'rootfs.squashfs')):
+  for i,name,blocks,file in (() if carried is not None else ((0,'kernel',32,'kernel.itb'),(1,'ubi_rootfs',337,'rootfs.squashfs'))):
    node=root/f'sys/class/ubi/ubi1_{i}';(node/'name').write_text(name);(node/'reserved_ebs').write_text(str(blocks));shutil.copyfile(bundle/f'payloads/{model}/oem/{file}',root/f'dev/ubi1_{i}')
-  shutil.rmtree(root/'sys/class/ubi/ubi1_2');(root/'dev/ubi1_2').unlink()
+  if carried is None:shutil.rmtree(root/'sys/class/ubi/ubi1_2');(root/'dev/ubi1_2').unlink()
   profile=bundle/f'profiles/{model}/restore';confirm=profile/'confirm';(confirm/'source-sets').mkdir(parents=True)
   (confirm/'source-contract').write_text('7.2-r1\n'+'a'*64+'\n')
   (confirm/'source-sets/runtime-implementation.set').write_text('F '+sha(root/'etc/version')+' /etc/version\n')

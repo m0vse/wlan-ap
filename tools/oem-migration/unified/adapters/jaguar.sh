@@ -47,7 +47,7 @@ oem_jaguar_config() {
 }
 oem_adapter_inspect() {
  local product label rootarg= attachment= argument index header serial state
- OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT=
+ OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT= OEM_JAGUAR_RETURNED=0
  oem_jaguar_table && oem_jaguar_config || return 1
  [ ! -e "$OEM_SYS_ROOT/etc/openwrt_release" ] || return 1
  OEM_SOURCE_RELEASE=$(oem_read_release "$OEM_SYS_ROOT/etc/version") || return 1
@@ -89,7 +89,27 @@ oem_adapter_inspect() {
  case "$(printf '%s' "$serial" | cut -c2)" in 1|3|5|7|9|b|d|f) return 1;; esac
  OEM_SERIAL=$serial
  # A complete read prevents missing-key errors from hiding unreadable ENV.
- oem_jaguar_env_read | awk -F= '$1=="changing_bootcmd" || $1~/^jaguar_(installer_(target|job|image)|storage_pending|ab_version)$/ {if(NF!=2 || length($2) || seen[$1]++)bad=1} END{exit bad}' || return 1
+ oem_jaguar_env_read | awk -F= '$1~/^jaguar_(installer_(target|job|image)|storage_pending)$/ {if(NF!=2 || length($2) || seen[$1]++)bad=1} END{exit bad}' || return 1
+ if [ "$(oem_jaguar_env_value jaguar_ab_version 2>/dev/null)" = 1 ];then
+  # Completed native return is a known source state, not an in-progress
+  # conversion bypass. Certificate retirement remains a separate prerequisite.
+  [ "$(oem_jaguar_env_value jaguar_oem_restore_state)" = confirmed ] &&
+   [ "$(oem_jaguar_env_value jaguar_oem_restore_target)" = "$OEM_SOURCE_SLOT" ] &&
+   [ "$(oem_jaguar_env_value jaguar_ab_state)" = confirmed ] &&
+   [ "$(oem_jaguar_env_value jaguar_ab_confirmed)" = "$OEM_TARGET_SLOT" ] || return 1
+  oem_jaguar_env_read | awk -F= '$1=="jaguar_ab_target" {if(NF!=2 || length($2))bad=1}$1=="changing_bootcmd" {if(NF!=2 || ($2!="" && $2!="1"))bad=1}END{exit bad}' || return 1
+  OEM_JAGUAR_RETURNED=1
+ else
+  oem_jaguar_env_read | awk -F= '$1=="changing_bootcmd" || $1~/^jaguar_(ab_version|oem_restore_(target|state))$/ {if(NF!=2 || length($2))bad=1}END{exit bad}' || return 1
+ fi
+ # A present store is never silently wiped, even if empty-looking.
+ for state in "$OEM_SYS_ROOT"/sys/class/ubi/ubi0_*/name;do
+  [ -r "$state" ] || continue
+  case "${state%/name}:$(cat "$state")" in
+   */ubi0_0:kernel|*/ubi0_1:ubi_rootfs|*/ubi0_3:cambium_device_data) ;;
+   *) oem_fail 'source retains an identity store or unknown namespace';return 1;;
+  esac
+ done
  oem_context_check
 }
 oem_adapter_preflight() {
@@ -122,18 +142,65 @@ oem_adapter_preflight() {
   index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$label") || return 1
   case "$label" in 0:ART) OEM_JAGUAR_ART_MTD=$index;;mfginfo) OEM_JAGUAR_MFG_MTD=$index;;esac
  done
- : > "$OEM_WRITE_PLAN" || return 1
- printf 'ubi-remove\t%s\t0\tkernel\nubi-remove\t%s\t1\tubi_rootfs\n' "$OEM_JAGUAR_TARGET_MTD" "$OEM_JAGUAR_TARGET_MTD" >> "$OEM_WRITE_PLAN"
- for label in '0 kernel' '1 rootfs' '2 rootfs_data' '3 cambium_device_data' '4 certificates';do
-  set -- $label
-  printf 'ubi-create\t%s\t%s\t%s\n' "$OEM_JAGUAR_TARGET_MTD" "$1" "$2" >> "$OEM_WRITE_PLAN" || return 1
-  case "$1" in 0|1|3) printf 'ubi-update\t%s\t%s\t%s\n' "$OEM_JAGUAR_TARGET_MTD" "$1" "$2" >> "$OEM_WRITE_PLAN";;esac
- done
- printf 'environment-fields\t%s\tfields\tpreserve-unlisted\n' "$OEM_JAGUAR_ENV_MTD" >> "$OEM_WRITE_PLAN" || return 1
+ oem_jaguar_target_locate || return 1
+ OEM_JAGUAR_REUSE=0 OEM_JAGUAR_REUSE_LEBS= OEM_JAGUAR_REUSE_PIN=
+ if [ -n "$OEM_JAGUAR_TARGET_UBI" ];then oem_jaguar_target_namespace || return 1;fi
+ oem_jaguar_plan || return 1
  oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" && oem_jaguar_payload_capacity && oem_jaguar_assets_check || return 1
  profile=$(oem_bundle_member lib/cambium-installer-settings.sh) || return 1
  . "$profile" || return 1
+ if [ "$OEM_JAGUAR_REUSE" = 1 ];then oem_jaguar_reuse_vault_prepare && oem_jaguar_payload_capacity || return 1;fi
+ if [ -e "$OEM_SYS_ROOT/sys/class/ubi/ubi0_3" ];then
+  profile=$(oem_bundle_member adapters/restore-jaguar.sh) && . "$profile" || return 1
+  RJ_ART_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/mtd${OEM_JAGUAR_ART_MTD}ro") || return 1
+  profile=$(mktemp -d "$OEM_WORK/source-vault.XXXXXX") || return 1
+  oem_restore_jaguar_vault_capture "$OEM_SYS_ROOT/dev/ubi0_3" "$profile/vault.tar" "$(cat "$OEM_SYS_ROOT/sys/class/ubi/ubi0_3/reserved_ebs")" >/dev/null || return 1
+ fi
  oem_adapter_boot_preflight
+}
+oem_jaguar_target_namespace() {
+ local node id name count=0 sys=$OEM_SYS_ROOT/sys/class/ubi device=$OEM_JAGUAR_TARGET_UBI
+ [ -n "$device" ] || return 1
+ OEM_JAGUAR_REUSE=0
+ for node in "$sys/$device"_*/name;do
+  [ -r "$node" ] || continue;id=${node%/name};id=${id##*_};name=$(cat "$node") || return 1
+  case "$id:$name" in 0:kernel|1:ubi_rootfs|1:rootfs|2:rootfs_data|3:cambium_device_data) ;;
+   *) oem_fail 'retained native identity or unknown target namespace; no reuse authorized';return 1;;esac
+  oem_ubi_child_check "$sys" "$OEM_JAGUAR_TARGET_MTD" "$device" "$id" "$name" || return 1
+  [ "$(cat "$sys/${device}_$id/type")" = dynamic ] && [ "$(cat "$sys/${device}_$id/usable_eb_size")" = 126976 ] || return 1
+  count=$((count+1))
+ done
+ if [ "$count" = 2 ] && [ "$(cat "$sys/${device}_1/name")" = ubi_rootfs ];then return 0;fi
+ [ "$count" = 4 ] && [ "$(cat "$sys/${device}_1/name")" = rootfs ] &&
+  [ "$(cat "$sys/${device}_2/name")" = rootfs_data ] && [ "$(cat "$sys/${device}_3/name")" = cambium_device_data ] || return 1
+ [ "${OEM_JAGUAR_RETURNED:-0}" = 1 ] || return 1
+ OEM_JAGUAR_REUSE=1
+}
+oem_jaguar_plan() {
+ local row root=ubi_rootfs
+ [ "$OEM_JAGUAR_REUSE" = 0 ] || root=rootfs
+ : > "$OEM_WRITE_PLAN" || return 1
+ printf 'ubi-remove\t%s\t0\tkernel\nubi-remove\t%s\t1\t%s\n' "$OEM_JAGUAR_TARGET_MTD" "$OEM_JAGUAR_TARGET_MTD" "$root" >> "$OEM_WRITE_PLAN" || return 1
+ [ "$OEM_JAGUAR_REUSE" = 0 ] || printf 'ubi-remove\t%s\t2\trootfs_data\n' "$OEM_JAGUAR_TARGET_MTD" >> "$OEM_WRITE_PLAN" || return 1
+ for row in '0 kernel' '1 rootfs' '2 rootfs_data' '3 cambium_device_data' '4 certificates';do
+  set -- $row
+  [ "$OEM_JAGUAR_REUSE:$1" != 1:3 ] || continue
+  printf 'ubi-create\t%s\t%s\t%s\n' "$OEM_JAGUAR_TARGET_MTD" "$1" "$2" >> "$OEM_WRITE_PLAN" || return 1
+  case "$1" in 0|1|3) printf 'ubi-update\t%s\t%s\t%s\n' "$OEM_JAGUAR_TARGET_MTD" "$1" "$2" >> "$OEM_WRITE_PLAN";;esac
+ done
+ printf 'environment-fields\t%s\tfields\tpreserve-unlisted\n' "$OEM_JAGUAR_ENV_MTD" >> "$OEM_WRITE_PLAN" && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN"
+}
+# Reuse the already reviewed pure raw-vault parser, not another consumer format.
+oem_jaguar_reuse_vault_prepare() {
+ local member directory record
+ member=$(oem_bundle_member adapters/restore-jaguar.sh) && . "$member" || return 1
+ RJ_ART_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/mtd${OEM_JAGUAR_ART_MTD}ro") || return 1
+ OEM_JAGUAR_REUSE_LEBS=$(cat "$OEM_SYS_ROOT/sys/class/ubi/${OEM_JAGUAR_TARGET_UBI}_3/reserved_ebs") || return 1
+ directory=$(mktemp -d "$OEM_WORK/reuse-vault.XXXXXX") || return 1
+ record=$(oem_restore_jaguar_vault_capture "$OEM_SYS_ROOT/dev/${OEM_JAGUAR_TARGET_UBI}_3" "$directory/vault.tar" "$OEM_JAGUAR_REUSE_LEBS") || return 1
+ OEM_JAGUAR_REUSE_BYTES=$(printf '%s\n' "$record" | cut -f1)
+ OEM_JAGUAR_REUSE_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/${OEM_JAGUAR_TARGET_UBI}_3") || return 1
+ cp "$directory/vault.tar" "$OEM_WORK/jaguar-vault.tar" || return 1
 }
 oem_adapter_recovery() {
  local plan
@@ -151,14 +218,19 @@ oem_jaguar_payload_capacity() {
  [ "$magic" = d00dfeed ] && [ "$(head -c 4 "$OEM_JAGUAR_ROOT")" = hsqs ] || return 1
  OEM_JAGUAR_KERNEL_LEBS=$(((kernel+126975)/126976))
  OEM_JAGUAR_ROOT_LEBS=$(((root+126975)/126976))
- OEM_JAGUAR_DATA_LEBS=$((OEM_JAGUAR_LEBS-OEM_JAGUAR_KERNEL_LEBS-OEM_JAGUAR_ROOT_LEBS-8-20))
+ OEM_JAGUAR_DATA_LEBS=$((OEM_JAGUAR_LEBS-OEM_JAGUAR_KERNEL_LEBS-OEM_JAGUAR_ROOT_LEBS-${OEM_JAGUAR_REUSE_LEBS:-8}-20))
  [ "$OEM_JAGUAR_KERNEL_LEBS" -gt 0 ] && [ "$OEM_JAGUAR_ROOT_LEBS" -gt 0 ] && [ "$OEM_JAGUAR_DATA_LEBS" -ge 67 ]
 }
 oem_jaguar_payload_hash_check() {
  [ "$(oem_sha "$OEM_JAGUAR_IMAGE")" = "$OEM_JAGUAR_IMAGE_PIN" ] &&
   [ "$(oem_sha "$OEM_JAGUAR_KERNEL")" = "$OEM_JAGUAR_KERNEL_PIN" ] &&
   [ "$(oem_sha "$OEM_JAGUAR_ROOT")" = "$OEM_JAGUAR_ROOT_PIN" ] &&
-  [ "$(oem_sha "$OEM_WORK/jaguar-vault.tar")" = "$OEM_JAGUAR_VAULT_PIN" ]
+  [ "$(oem_sha "$OEM_WORK/jaguar-vault.tar")" = "$OEM_JAGUAR_VAULT_PIN" ] || return 1
+ [ "${OEM_JAGUAR_REUSE:-0}" != 1 ] || {
+  [ "$(oem_sha "$OEM_SYS_ROOT/dev/${OEM_JAGUAR_TARGET_UBI}_3")" = "$OEM_JAGUAR_REUSE_PIN" ] &&
+   [ "$(cat "$OEM_SYS_ROOT/sys/class/ubi/${OEM_JAGUAR_TARGET_UBI}_3/reserved_ebs")" = "$OEM_JAGUAR_REUSE_LEBS" ] &&
+   oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$OEM_JAGUAR_TARGET_MTD" "$OEM_JAGUAR_TARGET_UBI" 3 cambium_device_data
+ }
 }
 oem_jaguar_assets_check() {
  local table src size digest file count=0 expected
@@ -252,29 +324,27 @@ oem_jaguar_readback() {
 oem_jaguar_stage_bank() (
  local sys=$OEM_SYS_ROOT/sys/class/ubi dev=$OEM_SYS_ROOT/dev device=$OEM_JAGUAR_TARGET_UBI node name id count=0 free blocks
  oem_jaguar_payload_hash_check && oem_jaguar_payload_capacity && oem_jaguar_live_target || exit 1
- # Fresh OEM bank contains only the two known software volumes. Existing
- # native identity is never guessed, removed or replaced by this fresh path.
- for node in "$sys/$device"_*/name;do
-  [ -r "$node" ] || continue
-  id=${node%/name};id=${id##*_};name=$(cat "$node") || exit 1
-  case "$id:$name" in 0:kernel|1:ubi_rootfs) ;; *) oem_fail 'inactive bank has retained identity or an unknown namespace; no erase authorized';exit 1;;esac
-  oem_ubi_child_check "$sys" "$OEM_JAGUAR_TARGET_MTD" "$device" "$id" "$name" || exit 1
-  count=$((count+1))
- done
- [ "$count" = 2 ] || exit 1
+ oem_jaguar_target_namespace || exit 1
  free=$(cat "$sys/$device/avail_eraseblocks") || exit 1
  case "$free" in ''|*[!0-9]*) exit 1;;esac
- for id in 0 1;do blocks=$(cat "$sys/${device}_$id/reserved_ebs") || exit 1;case "$blocks" in ''|*[!0-9]*) exit 1;;esac;free=$((free+blocks));done
+ for id in 0 1 2;do
+  [ "$id:$OEM_JAGUAR_REUSE" != 2:0 ] || continue
+  blocks=$(cat "$sys/${device}_$id/reserved_ebs") || exit 1;case "$blocks" in ''|*[!0-9]*) exit 1;;esac;free=$((free+blocks))
+ done
+ if [ "$OEM_JAGUAR_REUSE" = 1 ];then free=$((free+OEM_JAGUAR_REUSE_LEBS));fi
  [ "$free" -ge "$OEM_JAGUAR_LEBS" ] || exit 1
- for id in 0 1;do
-  name=kernel;[ "$id" = 0 ] || name=ubi_rootfs
+ for id in 2 1 0;do
+  [ "$id:$OEM_JAGUAR_REUSE" != 2:0 ] || continue
+  case "$id" in 0) name=kernel;;1) name=ubi_rootfs;[ "$OEM_JAGUAR_REUSE" = 0 ] || name=rootfs;;2) name=rootfs_data;;esac
   oem_jaguar_write_check ubi-remove "$id" "$name" && ubirmvol "$dev/$device" -n "$id" || exit 1
  done
  for name in kernel rootfs rootfs_data cambium_device_data certificates;do
   case "$name" in kernel) id=0;blocks=$OEM_JAGUAR_KERNEL_LEBS;;rootfs) id=1;blocks=$OEM_JAGUAR_ROOT_LEBS;;rootfs_data) id=2;blocks=$OEM_JAGUAR_DATA_LEBS;;cambium_device_data) id=3;blocks=8;;certificates) id=4;blocks=20;;esac
+  [ "$id:$OEM_JAGUAR_REUSE" != 3:1 ] || continue
   oem_jaguar_write_check ubi-create "$id" "$name" 1 && ubimkvol "$dev/$device" -n "$id" -N "$name" -s "$((blocks*126976))" || exit 1
  done
  for id in 0 1 3;do
+  [ "$id:$OEM_JAGUAR_REUSE" != 3:1 ] || continue
   case "$id" in 0) name=kernel;file=$OEM_JAGUAR_KERNEL;;1) name=rootfs;file=$OEM_JAGUAR_ROOT;;3) name=cambium_device_data;file=$OEM_WORK/jaguar-vault.tar;;esac
   oem_jaguar_payload_hash_check && oem_jaguar_write_check ubi-update "$id" "$name" && ubiupdatevol "$dev/${device}_$id" "$file" && sync && oem_jaguar_readback "$file" "$dev/${device}_$id" && oem_jaguar_payload_hash_check || exit 1
  done
@@ -285,7 +355,8 @@ oem_jaguar_protected_snapshot() (
   case "$role" in identity|bootcode) hash=$(oem_sha "$OEM_SYS_ROOT/dev/mtd${index}ro") && oem_hex64 "$hash" || exit 1;printf 'mtd%s %s\n' "$index" "$hash";;esac
  done < "$OEM_PROTECTED_RANGES"
  # Source software is immutable SquashFS/FIT; no customer-config export.
- for id in 0 1;do
+ for id in 0 1 3;do
+  [ "$id" != 3 ] || [ -e "$OEM_SYS_ROOT/sys/class/ubi/ubi0_3" ] || continue
   node=$OEM_SYS_ROOT/sys/class/ubi/ubi0_$id
   name=$(cat "$node/name") && bytes=$(cat "$node/reserved_ebs") || exit 1
   oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$OEM_JAGUAR_SOURCE_MTD" ubi0 "$id" "$name" || exit 1
@@ -310,16 +381,21 @@ oem_adapter_migrate() (
  chmod 600 "$OEM_WORK/binding.tsv" "$OEM_WORK/est.json" "$OEM_WORK/gateway.json" || exit 1
  ow_settings_prepare "$OEM_WORK/binding.tsv" "$OEM_WORK/est.json" "$OEM_WORK/gateway.json" "$credential" "$OEM_WORK/seed" || exit 1
  credential=
- oem_jaguar_vault_prepare || exit 1
+ [ "$OEM_JAGUAR_REUSE" = 1 ] || oem_jaguar_vault_prepare || exit 1
  OEM_JAGUAR_VAULT_PIN=$(oem_sha "$OEM_WORK/jaguar-vault.tar") && oem_hex64 "$OEM_JAGUAR_VAULT_PIN" || exit 1
  oem_jaguar_env_read > "$OEM_WORK/env-before" && oem_jaguar_protected_snapshot > "$OEM_WORK/protected-before" || exit 1
- printf '%s\n' bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state jaguar_installer_target jaguar_installer_job jaguar_installer_image > "$OEM_WORK/env-allowed" || exit 1
+ printf '%s\n' bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state jaguar_installer_target jaguar_installer_job jaguar_installer_image jaguar_oem_restore_target jaguar_oem_restore_state > "$OEM_WORK/env-allowed" || exit 1
  while IFS="$(printf '\t')" read -r kind label size reason;do index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$label") || exit 1;[ "$(oem_sha "$OEM_RECOVERY_DIR/$kind.bin")" = "$(oem_sha "$OEM_SYS_ROOT/dev/mtd${index}ro")" ] || exit 1;done < "$OEM_RECOVERY_DIR/manifest.tsv"
  OEM_JAGUAR_JOURNAL="install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$OEM_JAGUAR_IMAGE_PIN:$job"
  oem_jaguar_payload_hash_check || exit 1
  oem_jaguar_persist_source "$OEM_JAGUAR_JOURNAL" || exit 1
  oem_jaguar_target_locate || exit 1
  if [ -z "$OEM_JAGUAR_TARGET_UBI" ];then ubiattach -m "$OEM_JAGUAR_TARGET_MTD" && oem_jaguar_target_locate || exit 1;fi
+ oem_jaguar_target_namespace && oem_jaguar_plan || exit 1
+ if [ "$OEM_JAGUAR_REUSE" = 1 ] && [ -z "${OEM_JAGUAR_REUSE_PIN:-}" ];then
+  oem_jaguar_reuse_vault_prepare && oem_jaguar_payload_capacity || exit 1
+  OEM_JAGUAR_VAULT_PIN=$(oem_sha "$OEM_WORK/jaguar-vault.tar") || exit 1
+ fi
  [ -n "$OEM_JAGUAR_TARGET_UBI" ] && oem_jaguar_stage_bank || exit 1
  OW_STAGE_ADMISSION=qualified OW_EXPECT_TARGET_MTD=$OEM_JAGUAR_TARGET_MTD OW_EXPECT_TARGET_VOLUME=${OEM_JAGUAR_TARGET_UBI}_2
  umask 077
@@ -409,9 +485,13 @@ oem_jaguar_arm() (
   printf 'jaguar_stable%s run jaguar_boot%s; run jaguar_boot%s\n' "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_SLOT"
   printf 'jaguar_ab_version 1\njaguar_ab_confirmed %s\njaguar_ab_target %s\njaguar_ab_state armed\n' "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
   printf 'jaguar_installer_target %s\njaguar_installer_job %s\njaguar_installer_image %s\n' "$OEM_TARGET_SLOT" "$OW_EXPECT_JOB" "$OEM_JAGUAR_IMAGE_PIN"
+  printf 'jaguar_oem_restore_target\njaguar_oem_restore_state\n'
  } > "$work/environment" || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$work/environment" && sync || exit 1
- while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$work/environment"
+ while read -r key value;do
+  if [ -n "$value" ];then [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1
+  else oem_jaguar_env_read | awk -v key="$key" 'index($0,key"=")==1{found=1}END{exit found}' || exit 1;fi
+ done < "$work/environment"
  oem_adapter_boot_preflight || exit 1
  command -v oem_jaguar_before_select >/dev/null && oem_jaguar_before_select || exit 1
  [ "$(oem_jaguar_env_value jaguar_installer_target)" = "$OEM_TARGET_SLOT" ] &&

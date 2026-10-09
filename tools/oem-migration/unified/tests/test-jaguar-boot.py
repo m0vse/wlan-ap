@@ -28,7 +28,9 @@ if args[0]=='-s':
  with open(os.environ['LOG'],'a') as out:out.write(label+'\n')
  if fault==label:sys.exit(1)
  for row in Path(args[1]).read_text().splitlines():
-  key,value=row.split(' ',1);s[key]=value
+  fields=row.split(' ',1)
+  if len(fields)==1:s.pop(fields[0],None)
+  else:s[fields[0]]=fields[1]
  if fault=='source-readback' and label=='SOURCE':s['jaguar_storage_pending']='bad'
  if fault=='arm-readback' and label=='ARM':s['jaguar_ab_target']='bad'
  if fault.startswith('metadata-') and label=='ARM':s['jaguar_installer_'+fault.removeprefix('metadata-')]='bad'

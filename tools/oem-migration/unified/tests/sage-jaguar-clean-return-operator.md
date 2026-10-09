@@ -10,6 +10,15 @@ The forward fresh-install adapter must continue to refuse an existing native
 identity store. Do not bypass that refusal, reuse an old onboarding key, or
 describe confirmed OEM return alone as a clean re-enrollment-ready device.
 
+For Jaguar, completed native return retains `jaguar_ab_version=1`. Do not
+manually clear it to impersonate a fresh OEM device. The forward adapter admits
+only the exact confirmed-return selector/slot tuple and native `bootipq` source.
+After separate identity retirement, it may reclaim only the inactive bank's
+known kernel/rootfs/nonunique overlay volumes, preserving its own-ART-bound
+raw `cambium_device_data` bytes. Certificate volume 4 is created from absence;
+unknown namespaces and remaining stores are refused. This is not an automatic
+identity cleanup or a forced-install flag.
+
 ## One separate operator action, after healthy OEM confirmation
 
 The human must explicitly authorize **retirement of this AP's previous
