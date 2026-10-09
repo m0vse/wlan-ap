@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+import tarfile
 import unittest
 
 HERE=Path(__file__).resolve().parent
@@ -98,5 +99,34 @@ class RoundtripTests(unittest.TestCase):
    before={p:p.read_bytes() for p in (root/'dev').iterdir()}
    result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0,fault)
    self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertFalse((root/'events').exists())
+ def test_self_consistent_changed_bdf_refuses_before_any_write(self):
+  case=self.carried('XV2-2',0);root=case[0];vault=root/'dev/ubi1_3'
+  unpacked=root/'changed-vault';unpacked.mkdir()
+  with tarfile.open(vault,'r:') as archive:archive.extractall(unpacked)
+  asset=unpacked/'files/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock'
+  old=sha(asset);asset.write_bytes(b'C'*len(asset.read_bytes()))
+  manifest=unpacked/'MANIFEST';manifest.write_text(manifest.read_text().replace(old,sha(asset)))
+  changed=root/'changed-vault.tar'
+  with tarfile.open(changed,'w',format=tarfile.USTAR_FORMAT) as archive:
+   archive.add(manifest,arcname='MANIFEST');archive.add(unpacked/'files',arcname='files')
+  data=changed.read_bytes();vault.write_bytes(data+b'\xff'*(vault.stat().st_size-len(data)))
+  # The old own-ART/model/SKU/manifest parser really accepts this archive.
+  import os,subprocess
+  _,bundle,work,bin,model,sku=case
+  env=dict(os.environ,PATH=str(bin)+':'+os.environ['PATH'],FIXTURE=str(root),HERE=str(HERE.parent),OEM_SYS_ROOT=str(root),OEM_BUNDLE=str(bundle),OEM_WORK=str(work),OEM_MODEL=model,OEM_SKU=sku)
+  result=subprocess.run(['sh','-c','. "$HERE/lib/common.sh"; . "$HERE/adapters/restore-jaguar.sh"; RJ_ART_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/mtd3ro"); oem_restore_jaguar_vault_capture "$OEM_SYS_ROOT/dev/ubi1_3" "$OEM_WORK/old-parser.tar" 8'],env=env,capture_output=True,text=True)
+  self.assertEqual(result.returncode,0,result.stderr)
+  before={p:p.read_bytes() for p in (root/'dev').iterdir()};state=(root/'env.json').read_bytes()
+  result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0)
+  self.assertIn('radio assets differ',result.stderr+result.stdout)
+  self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertEqual(state,(root/'env.json').read_bytes());self.assertFalse((root/'events').exists())
+ def test_unattached_native_reuse_refuses_before_source_save(self):
+  case=self.carried('XV2-2',0);root=case[0];detached=root/'detached';detached.mkdir()
+  for p in list((root/'sys/class/ubi').glob('ubi1*')):p.rename(detached/('sys-'+p.name))
+  for p in list((root/'dev').glob('ubi1*')):p.rename(detached/('dev-'+p.name))
+  state=(root/'env.json').read_bytes();before={p:p.read_bytes() for p in [*(root/'dev').iterdir(),*detached.glob('dev-*')]}
+  result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0)
+  self.assertIn('pre-write asset validation',result.stderr+result.stdout)
+  self.assertEqual(state,(root/'env.json').read_bytes());self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertFalse((root/'events').exists())
 
 if __name__=='__main__':unittest.main()

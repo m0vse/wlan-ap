@@ -18,6 +18,10 @@ known kernel/rootfs/nonunique overlay volumes, preserving its own-ART-bound
 raw `cambium_device_data` bytes. Certificate volume 4 is created from absence;
 unknown namespaces and remaining stores are refused. This is not an automatic
 identity cleanup or a forced-install flag.
+Retained radio files must also match the incoming image's authenticated asset
+table. Native reuse requires the inactive bank already attached during the
+separate reviewed read/retirement preparation: the installer refuses otherwise
+before saving SOURCE, rather than moving attachment ahead of that boundary.
 
 ## One separate operator action, after healthy OEM confirmation
 

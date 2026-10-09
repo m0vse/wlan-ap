@@ -143,6 +143,11 @@ oem_adapter_preflight() {
   case "$label" in 0:ART) OEM_JAGUAR_ART_MTD=$index;;mfginfo) OEM_JAGUAR_MFG_MTD=$index;;esac
  done
  oem_jaguar_target_locate || return 1
+ # Native reuse must bind the retained assets before even saving SOURCE ENV.
+ # Do not move UBI attachment ahead of the existing SOURCE-first boundary.
+ if [ "$OEM_JAGUAR_RETURNED" = 1 ] && [ -z "$OEM_JAGUAR_TARGET_UBI" ];then
+  oem_fail 'native reuse requires the inactive bank already attached for pre-write asset validation';return 1
+ fi
  OEM_JAGUAR_REUSE=0 OEM_JAGUAR_REUSE_LEBS= OEM_JAGUAR_REUSE_PIN=
  if [ -n "$OEM_JAGUAR_TARGET_UBI" ];then oem_jaguar_target_namespace || return 1;fi
  oem_jaguar_plan || return 1
@@ -192,12 +197,22 @@ oem_jaguar_plan() {
 }
 # Reuse the already reviewed pure raw-vault parser, not another consumer format.
 oem_jaguar_reuse_vault_prepare() {
- local member directory record
+ local member directory record table src size digest file
  member=$(oem_bundle_member adapters/restore-jaguar.sh) && . "$member" || return 1
  RJ_ART_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/mtd${OEM_JAGUAR_ART_MTD}ro") || return 1
  OEM_JAGUAR_REUSE_LEBS=$(cat "$OEM_SYS_ROOT/sys/class/ubi/${OEM_JAGUAR_TARGET_UBI}_3/reserved_ebs") || return 1
  directory=$(mktemp -d "$OEM_WORK/reuse-vault.XXXXXX") || return 1
  record=$(oem_restore_jaguar_vault_capture "$OEM_SYS_ROOT/dev/${OEM_JAGUAR_TARGET_UBI}_3" "$directory/vault.tar" "$OEM_JAGUAR_REUSE_LEBS") || return 1
+ # A valid old manifest alone does not bind its BDFs to this incoming image.
+ # Refuse incompatible retained assets; never repair or overwrite the vault.
+ oem_jaguar_assets_check || return 1
+ table=$(oem_jaguar_member radio-assets.tsv) || return 1
+ while IFS="$(printf '\t')" read -r src size digest;do
+  file=$directory/vault.tar.dir/files/$src
+  [ "$(wc -c < "$file")" -eq "$size" ] && [ "$(oem_sha "$file")" = "$digest" ] || {
+   oem_fail 'retained vault radio assets differ from the authenticated incoming image';return 1;
+  }
+ done < "$table"
  OEM_JAGUAR_REUSE_BYTES=$(printf '%s\n' "$record" | cut -f1)
  OEM_JAGUAR_REUSE_PIN=$(oem_sha "$OEM_SYS_ROOT/dev/${OEM_JAGUAR_TARGET_UBI}_3") || return 1
  cp "$directory/vault.tar" "$OEM_WORK/jaguar-vault.tar" || return 1
