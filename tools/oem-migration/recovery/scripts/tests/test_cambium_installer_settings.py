@@ -76,6 +76,22 @@ class SettingsTests(unittest.TestCase):
         result2,_=self.prepare()
         self.assertNotEqual(result2.returncode,0)
 
+    def test_preparation_does_not_export_credential_or_inherited_key_aliases(self):
+        spy=self.tools/'cp'
+        trace=self.root/'export-trace'
+        spy.write_text('#!/usr/bin/env python3\nimport os,sys,shutil\nfrom pathlib import Path\nkeys=[k for k in ("credential","OEM_KEY","key","ENROLMENT_KEY") if k in os.environ]\nPath(os.environ["EXPORT_TRACE"]).open("a").write("none\\n" if not keys else "present\\n")\nif keys:sys.exit(99)\nshutil.copyfile(sys.argv[1],sys.argv[2])\n')
+        spy.chmod(0o700)
+        dest=self.root/'export-prepared'
+        env={'PATH':str(self.tools)+':'+os.environ['PATH'],'OW_SETTINGS_OWNER':str(os.getuid()),
+             'EXPORT_TRACE':str(trace),**{k:'ambient-canary' for k in ('credential','OEM_KEY','key','ENROLMENT_KEY')}}
+        result=subprocess.run(['sh','-c',
+            'set -a; . "$1"; ow_settings_prepare "$2/binding.tsv" "$2/est.json" "$2/gateway.json" "$3" "$4"',
+            'fixture',str(LIB),str(self.input),'X'*64,str(dest)],capture_output=True,text=True,env=env)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue(trace.exists())
+        self.assertNotIn('present',trace.read_text())
+        self.assertNotIn('X'*64,result.stdout+result.stderr+trace.read_text())
+
     def test_invalid_key_refused_before_preparation(self):
         for credential in ('short','X'*63+';','X'*64+'\n'):
             result,dest=self.prepare(credential)

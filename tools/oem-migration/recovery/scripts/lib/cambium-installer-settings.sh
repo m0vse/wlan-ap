@@ -124,6 +124,8 @@ ow_settings_context() {
 # Key is a function argument for the authorized CLI use, never printed/eval'd.
 ow_settings_prepare() (
     set +x
+    set +a
+    unset credential OEM_KEY key ENROLMENT_KEY
     local binding=$1 est=$2 gateway=$3 credential=$4 dest=$5 pending path name
     umask 077
     case "$credential" in ''|*[!A-Za-z0-9_-]*) return 1 ;; esac
