@@ -101,6 +101,7 @@ class ForwardTests(unittest.TestCase):
   profile=f'profiles/{model}/'
   image=member(f'payloads/{model}/image.bin',b'nonflashableimage');kernel=member(f'payloads/{model}/kernel.itb',bytes.fromhex('d00dfeed')+b'nonflashablekernel');fs=member(f'payloads/{model}/rootfs.squashfs',b'hsqsnonflashableroot')
   member(profile+'source-contract','7.2-r1\n'+'a'*64+'\n');member(profile+'source-sets/runtime-implementation.set','F '+sha(root/'etc/version')+' /etc/version\n')
+  member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
   member(profile+'mtd.tsv',''.join(rows));member(profile+'operator-artifact-pins',sha(image)+'\n'+sha(kernel)+'\n'+sha(fs)+'\n');member(profile+'fit.tsv',f'{sha(kernel)}\t{model}\t{sku}\t{fit}\n')
   member(profile+'vault-board','cambium,'+model.lower()+'\n')
   assets=[('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock',65536)] if model!='XE3-4' else [('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma',65536),('lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma',131072)]

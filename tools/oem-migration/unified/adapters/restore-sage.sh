@@ -4,7 +4,9 @@
 oem_restore_sage_member() { oem_bundle_member "profiles/$OEM_MODEL/restore/$1"; }
 oem_restore_sage_load() {
  local name member
- for name in cambium-sage-pair-write.sh cambium-installer-settings.sh cambium-sage-oem-reset.sh cambium-sage-oem-recovery.sh cambium-sage-oem-defaults.sh runtime-implementation-contract.sh; do
+ member=$(oem_bundle_member adapters/required-source.sh) || return 1
+ . "$member" || return 1
+ for name in cambium-sage-pair-write.sh cambium-installer-settings.sh cambium-sage-oem-reset.sh cambium-sage-oem-recovery.sh cambium-sage-oem-defaults.sh; do
   member=$(oem_bundle_member "lib/$name") || return 1
   . "$member" || return 1
  done
@@ -17,7 +19,7 @@ oem_restore_inspect() {
  }
  oem_restore_sage_load || return 1
  member=$(oem_restore_sage_member source-sets/runtime-implementation.set) || return 1
- ow_runtime_contract_check "$member" "$OEM_SYS_ROOT" || return 1
+ oem_required_source_check "$member" "$OEM_SYS_ROOT" /etc/openwrt_release sh awk sed grep cmp dd head sha256sum fw_printenv fw_setenv cambium-ab-status ubiupdatevol ubimkvol ubirmvol || return 1
  member=$(oem_restore_sage_member source-contract) || return 1
  [ "$(wc -l < "$member")" -eq 2 ] || return 1
  release=$(sed -n '1p' "$member") contract=$(sed -n '2p' "$member")
@@ -145,7 +147,7 @@ oem_restore_confirm_inspect() {
  [ "$OEM_FAMILY:$OEM_MODEL:$OEM_SKU" = sage:E410:0000000a ] || return 1
  oem_restore_sage_load || return 1
  member=$(oem_restore_sage_member confirm/source-sets/runtime-implementation.set) || return 1
- ow_runtime_contract_check "$member" "$OEM_SYS_ROOT" || return 1
+ oem_required_source_check "$member" "$OEM_SYS_ROOT" /etc/version sh awk sed grep cmp dd head sha256sum fw_printenv fw_setenv || return 1
  member=$(oem_restore_sage_member confirm/source-contract) || return 1
  [ "$(wc -l < "$member")" -eq 2 ] || return 1
  version=$(sed -n '1p' "$member"); contract=$(sed -n '2p' "$member")
@@ -215,7 +217,7 @@ oem_restore_confirm_preflight() {
  index=$(oem_physical_index "$CSR_MTD_SYS" fs) || return 1
  oem_ubi_child_check "$CSR_UBI_SYS" "$index" ubi0 "$((2*OEM_TARGET_SLOT))" "linux$OEM_TARGET_SLOT" &&
   oem_ubi_child_check "$CSR_UBI_SYS" "$index" ubi0 "$((2*OEM_TARGET_SLOT+1))" "rootfs$OEM_TARGET_SLOT" || return 1
- # The authenticated runtime ledger and actual root command line establish
+ # The exact source release/native hooks and actual root command line establish
  # deployed OEM files. Its mounted UBIFS root can legitimately change after
  # boot; raw golden-root equality belongs to preboot staging, not confirmation.
  csp_readback "$CSR_KERNEL" "$CSR_DEV/ubi0_$((2*OEM_TARGET_SLOT))" &&

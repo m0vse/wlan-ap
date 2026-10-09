@@ -92,9 +92,9 @@ oem_adapter_preflight() {
  local profile member pin label index
  oem_jaguar_table && oem_context_check || return 1
  member=$(oem_jaguar_member source-sets/runtime-implementation.set) || return 1
- profile=$(oem_bundle_member lib/runtime-implementation-contract.sh) || return 1
+ profile=$(oem_bundle_member adapters/required-source.sh) || return 1
  . "$profile" || return 1
- ow_runtime_contract_check "$member" "$OEM_SYS_ROOT" || return 1
+ oem_required_source_check "$member" "$OEM_SYS_ROOT" /etc/version sh awk sed grep cmp dd head sha256sum fw_printenv fw_setenv ubiattach ubiupdatevol ubimkvol ubirmvol mount umount tar || return 1
  member=$(oem_jaguar_member source-contract) || return 1
  [ "$(wc -l < "$member")" -eq 2 ] && [ "$(sed -n '1p' "$member")" = "$OEM_SOURCE_RELEASE" ] || return 1
  OEM_JAGUAR_CONTRACT=$(sed -n '2p' "$member");oem_hex64 "$OEM_JAGUAR_CONTRACT" || return 1

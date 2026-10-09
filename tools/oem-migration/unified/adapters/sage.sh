@@ -44,7 +44,9 @@ oem_sage_load() {
   oem_bundle_member "readers/sage/$name" >/dev/null || return 1
  done
  OEM_SAGE_READERS=$OEM_BUNDLE/readers/sage
- for name in cambium-sage-pair-write.sh cambium-installer-settings.sh cambium-oem-sage-transaction.sh cambium-oem-sage-boot.sh runtime-implementation-contract.sh; do
+ member=$(oem_bundle_member adapters/required-source.sh) || return 1
+ . "$member" || return 1
+ for name in cambium-sage-pair-write.sh cambium-installer-settings.sh cambium-oem-sage-transaction.sh cambium-oem-sage-boot.sh; do
   member=$(oem_bundle_member "lib/$name") || return 1
   . "$member" || return 1
  done
@@ -102,7 +104,7 @@ oem_sage_profile() {
  awk -F '\t' -v hash="$COS_KERNEL_PIN" -v model="$OEM_MODEL" -v sku="$OEM_SKU" -v fit="$COS_TARGET_FIT" \
   'NF!=4 || $1!=hash || $2!=model || $3!=sku || $4!=fit {bad=1} END{exit bad || NR!=1}' "$file" || return 1
  file=$(oem_sage_member source-sets/runtime-implementation.set) || return 1
- ow_runtime_contract_check "$file" "$OEM_SYS_ROOT" || return 1
+ oem_required_source_check "$file" "$OEM_SYS_ROOT" /etc/version sh awk sed grep cmp dd head sha256sum fw_printenv fw_setenv ubiupdatevol ubimkvol ubirmvol mount umount tar || return 1
 }
 oem_sage_environment() (
  set +x; set +a; unset oem_private_environment_blob

@@ -49,6 +49,7 @@ class SageAdapterTests(unittest.TestCase):
   for name in ('cambium-sage-pair-write.sh','cambium-installer-settings.sh','cambium-oem-sage-transaction.sh','cambium-oem-sage-boot.sh'):
    member('lib/'+name,(READERS/'lib'/name).read_bytes())
   member('lib/runtime-implementation-contract.sh',(REPO/'tests/installer/common-minimum-v1/runtime-implementation-contract.sh').read_bytes())
+  member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
   image=member(f'payloads/{model}/image.bin',b'nonflashable image fixture')
   kernel=member(f'payloads/{model}/kernel.itb',bytes.fromhex('d00dfeed')+b'nonflashable kernel fixture')
   fs=member(f'payloads/{model}/rootfs.squashfs',b'hsqsnonflashable root fixture')
@@ -87,6 +88,20 @@ class SageAdapterTests(unittest.TestCase):
   case=self.setup_case();root=case[0]
   for text in ('PRODUCT=sage\nVERSION=4.2.3.1-r17\n','PRODUCT=sage\nVERSION=4.2.3.4-r1\n','PRODUCT=sage\nVERSION=4.2.3.3-r10\nVERSION=4.2.3.3-r10\n','PRODUCT=sage\n'):
    (root/'etc/version').write_text(text);self.assertNotEqual(self.invoke(case).returncode,0)
+ def test_narrow_admission_keeps_source_hook_build_checks_not_libc_gate(self):
+  for failure in ('none','missing-hook','wrong-build'):
+   case=self.setup_case();root,bundle,_,_,model,_=case
+   hook=root/'lib/upgrade/platform.sh';hook.parent.mkdir(parents=True,exist_ok=True)
+   hook.write_text('platform_pre_upgrade() { :; }\n')
+   ledger=bundle/f'profiles/{model}/source-sets/runtime-implementation.set'
+   ledger.write_text(ledger.read_text()+f'F {sha(hook)} /lib/upgrade/platform.sh\nF '+ '0'*64+' /lib/libunrelated.so\n')
+   (bundle/'SHA256SUMS').write_text(''.join(f'{sha(p)}  {p.relative_to(bundle)}\n' for p in sorted(bundle.rglob('*')) if p.is_file() and p.name!='SHA256SUMS'))
+   if failure=='missing-hook':hook.unlink()
+   if failure=='wrong-build':
+    version=root/'etc/version';version.write_text(version.read_text()+'CHANGESET=wrong-build\n')
+   result=self.invoke(case,'preflight')
+   if failure=='none':self.assertEqual(result.returncode,0,result.stderr)
+   else:self.assertNotEqual(result.returncode,0,failure)
  def test_bad_crc_alias_wrong_parent_readonly_and_hidden_partition_refuse(self):
   for failure in ('crc','alias','parent','readonly','hidden','overlap'):
    case=self.setup_case();root=case[0];extra={}

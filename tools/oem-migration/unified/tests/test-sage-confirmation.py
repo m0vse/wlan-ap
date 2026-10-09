@@ -41,6 +41,7 @@ class ConfirmationTests(unittest.TestCase):
    path=bundle/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data.encode() if isinstance(data,str) else data);path.chmod(0o600)
   for name in ('cambium-sage-pair-write.sh','cambium-installer-settings.sh','cambium-sage-oem-reset.sh','cambium-sage-oem-recovery.sh','cambium-sage-oem-defaults.sh'):member('lib/'+name,(READERS/'lib'/name).read_bytes())
   member('lib/runtime-implementation-contract.sh',(REPO/'tests/installer/common-minimum-v1/runtime-implementation-contract.sh').read_bytes())
+  member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
   member('adapters/sage.sh',(HERE/'adapters/sage.sh').read_bytes())
   profile='profiles/E410/restore/'
   member(profile+'confirm/source-contract','4.2.3.3-r10\n'+'a'*64+'\n')
