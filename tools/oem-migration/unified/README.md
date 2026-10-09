@@ -51,8 +51,9 @@ release; this source change does not install them on existing APs.
 ## Quick start: restore OEM for a clean test
 
 This is a separate operation for APs already running OpenWiFi on both slots.
-`cambium-return-oem` remains the existing boot-only command for a retained OEM
-bank; it is not a destructive restoration alias.
+`cambium-return-oem` checks a retained OEM bank. Arming requires a reviewed
+one-shot return handler; releases with unsafe permanent-switch semantics must
+refuse before changing the device. It is not a full restoration alias.
 
 Inside an independently verified restoration release:
 
@@ -84,10 +85,12 @@ cleared while the OEM attempt is still unconfirmed. A one-shot OEM boot whose
 saved selector still names the prior OpenWiFi slot is not a normal OEM source
 for the forward installer; do not change that selector manually.
 
-The E410 pilot's nonempty, read-only NOR factory-config partition remains a
-specific complete-reset blocker. A separate reviewed recovery RAM image may be
-needed; changing permissions or erasing calibration is not a workaround. No
-recovery firmware build is part of these scripts.
+The E410 pilot's nonempty NOR factory-config partition is read-only from
+OpenWiFi. Complete reset therefore needs a reviewed OEM-side procedure after
+healthy OEM confirmation, including refreshing the NOR config backup so stale
+settings cannot return. The existing OEM reset script alone does not prove
+that backup was refreshed. Until the exact-model handler and procedure are
+available, the clean-test reset remains unsupported.
 
 ## Backups and shared radio data
 
@@ -139,7 +142,7 @@ unsafe seed modes and failed environment readbacks all refuse.
 | Full OEM restoration test | `cambium-oem-restore-test --check` / `--restore` | `oem-restore-test.sh` |
 | Normal A/B state | `cambium-ab-status`; new releases also accept `--format tsv` | Legacy no-argument output unchanged |
 | Normal-upgrade readiness | `cambium-ab-ready` | Release `check-sysupgrade-ready.sh`; installed backend hook required |
-| Retained OEM boot only | `cambium-return-oem --check` / `--arm` | Existing semantics unchanged; not full restoration |
+| Retained OEM boot only | `cambium-return-oem --check` / `--arm` | Arming requires safe one-shot support; otherwise refuses |
 | Normal firmware upgrade | `sysupgrade` | Existing family platform backend; never implicit |
 
 The new commands use exit 0 for successful checks/actions and exit 1 for refusal/failure,
