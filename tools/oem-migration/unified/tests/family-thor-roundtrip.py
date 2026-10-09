@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('common_lib',type=Path);ap.add_argument('runtime_root',type=Path);ap.add_argument('provider',type=Path)
-    ap.add_argument('kernel',type=Path);ap.add_argument('rootfs',type=Path);ap.add_argument('image',type=Path);ap.add_argument('bdf',type=Path);ap.add_argument('settings',type=Path);ap.add_argument('--negative',choices=('residual-cert','bad-vault','unknown-child'));ap.add_argument('--confirm-negative',choices=('ram-root','kernel-mismatch','root-drift','wrong-target'))
+    ap.add_argument('kernel',type=Path);ap.add_argument('rootfs',type=Path);ap.add_argument('image',type=Path);ap.add_argument('bdf',type=Path);ap.add_argument('settings',type=Path);ap.add_argument('--negative',choices=('residual-cert','bad-vault','bdf-mismatch','unknown-child'));ap.add_argument('--confirm-negative',choices=('ram-root','kernel-mismatch','root-drift','wrong-target','env-rollback-uncertain'))
     a=ap.parse_args();base=Path(__file__).resolve().parents[1]; count=0
     with tempfile.TemporaryDirectory(prefix='thor-layout-') as td:
         top=Path(td).resolve();shared=top/'shared';shared.mkdir()
@@ -114,6 +114,7 @@ elif cmd=='ubiupdatevol':Path(a[0]).write_bytes(Path(a[1]).read_bytes())
 elif cmd=='fw_setenv':
  data=json.loads((root/'environment.json').read_text())
  if '-s' in a:
+  if os.environ.get('CONFIRM_NEGATIVE')=='env-rollback-uncertain' and Path(a[a.index('-s')+1]).name in ('thor-confirm.tsv','thor-confirm-rollback.tsv'):sys.exit(1)
   for line in Path(a[a.index('-s')+1]).read_text().splitlines():
    k,_,v=line.partition(' ')
    if v:data[k]=v
@@ -222,11 +223,12 @@ oem_backup_upload(){ [ "$1" = "$OEM_WORK/critical" ]; }
 oem_backup_receipt_check(){ [ -f "$1/OFFDEVICE_VERIFIED" ]; }
 oem_restore_confirm_inspect && oem_restore_confirm_preflight && oem_restore_confirm
 """
-            cenv={**env,'OEM_SUPPORTED_RELEASE':'7.2-r1'}
+            cenv={**env,'OEM_SUPPORTED_RELEASE':'7.2-r1','CONFIRM_NEGATIVE':a.confirm_negative or ''}
             r=subprocess.run(['sh','-c',confirm],env=cenv,capture_output=True,text=True,timeout=180)
             if a.confirm_negative:
                 assert r.returncode!=0,(a.confirm_negative,r.stdout,r.stderr)
                 assert (root/'environment.json').read_bytes()==before_confirm
+                if a.confirm_negative=='env-rollback-uncertain':assert 'confirmation selector rollback is uncertain; source firmware was not erased' in r.stderr+r.stdout
                 print('PASS: OEM candidate',target,'refuses confirmation',a.confirm_negative,'without ENV change',flush=True)
                 continue
             assert r.returncode==0,(r.stdout,r.stderr)
@@ -239,6 +241,14 @@ oem_restore_confirm_inspect && oem_restore_confirm_preflight && oem_restore_conf
                 shutil.rmtree(root/f'sys/class/ubi/{u}_4');(root/f'dev/{u}_4').unlink()
             if a.negative=='bad-vault':
                 p=root/'dev/ubi6_3';b=bytearray(p.read_bytes());b[20]^=1;p.write_bytes(b)
+            if a.negative=='bdf-mismatch':
+                # Own ART and manifest remain valid; only the incoming asset
+                # binding can reject these self-consistent different bytes.
+                vd=root/'initial-vault';bf=vd/'files/lib/firmware/IPQ8074/WIFI_FW/bdwlan.b215.accton'
+                oldhash=hashlib.sha256(bf.read_bytes()).hexdigest();b=bytearray(bf.read_bytes());b[0]^=1;bf.write_bytes(b)
+                manifest=vd/'MANIFEST';manifest.write_text(manifest.read_text().replace(oldhash,hashlib.sha256(b).hexdigest()))
+                subprocess.run(['tar','--format=ustar','-cf',str(root/'mismatch.tar'),'-C',str(vd),'MANIFEST','files'],check=True)
+                (root/'dev/ubi6_3').write_bytes((root/'mismatch.tar').read_bytes().ljust(8*126976,b'\0'))
             if a.negative=='unknown-child':(root/'sys/class/ubi/ubi6_2/name').write_text('unqualified-software')
             rawvault=(root/'dev/ubi6_3').read_bytes()
             forward=r"""

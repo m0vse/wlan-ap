@@ -277,7 +277,8 @@ oem_restore_confirm() (
     done
     printf 'image %s\nbootcmd aq_load_fw&&bootipq\nthor_restore_state confirmed\nthor_ab_state confirmed\nthor_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/thor-confirm.tsv" || exit 1
     if ! oem_thor_environment_batch "$OEM_WORK/thor-confirm.tsv"; then
-        oem_thor_environment_batch "$OEM_WORK/thor-confirm-rollback.tsv" || :
+        oem_thor_environment_batch "$OEM_WORK/thor-confirm-rollback.tsv" ||
+            oem_fail 'confirmation selector rollback is uncertain; source firmware was not erased'
         exit 1
     fi
     printf 'oem_boot=confirmed\ndefaults_committed=no\nidentity_retired=no\n'

@@ -160,7 +160,10 @@ critical backup, then commits only native bootcmd/image and confirmation fields.
 It does not reboot, run a factory reset or retire an identity. The known OEM
 startup resets ENV on nonempty mtdids/fsbootargs; reverse preflight refuses
 that incompatible handoff before writing rather than permitting an implicit
-OEM repair to discard the saved source.
+OEM repair to discard the saved source. A real converted unit retaining either
+field is therefore currently refused; these fixtures do not prove that every
+installed converted unit clears them. Failed confirmation rollback reports
+explicit selector uncertainty and that source firmware was not erased.
 
 After separately authorized defaults reset and unused-store retirement, forward
 admits the exact confirmed-return marker tuple only when both unused certificate
@@ -168,7 +171,10 @@ stores are absent. The held native target must have kernel0/rootfs1/overlay2 and
 its own raw vault3; unknown children, residual identity, foreign/corrupt vault
 or busy aliases refuse. The raw-vault parser is the reviewed Jaguar parser with
 the Thor file/model/ART bindings, not a new archive format or issuer gate.
-Only inactive software and old overlay are reclaimed. Vault3 is neither resized
+Extracted required radio files must also match the authenticated incoming
+`vault-assets.tsv` sizes and hashes; a self-consistent old manifest alone is
+insufficient. A differing BDF refuses before target writes without replacing
+the raw vault. Only inactive software and old overlay are reclaimed. Vault3 is neither resized
 nor written; cert4 is created only from proven absence. The original fresh-OEM
 format path remains separate. Entire raw-vault bytes are compared throughout.
 
@@ -178,6 +184,9 @@ unused-store-retirement actor→fresh forward reuse. Six residual-cert/vault/
 namespace refusal cases and eight RAM-root/kernel/root/pending-selector
 confirmation refusals passed. Device, boot, backup transport, reset and
 retirement are declared fixture boundaries; no real identity action occurred.
+The final asset-binding revision replayed both positive chains, two
+self-consistent differing-BDF refusals before target writes, and two explicit
+confirmation-selector rollback-uncertainty cases successfully.
 
 Installed readiness is a separate read-only phase. It loads actual installed
 helpers, never the publisher's corrected runtime cache. Confirmed single-native

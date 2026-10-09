@@ -742,6 +742,7 @@ oem_thor_target_namespace() {
     THOR_REUSE_LEBS=$thor_n
     thor_file=$(mktemp -d "$OEM_WORK/thor-reuse-vault.XXXXXX") || return 1
     oem_thor_reuse_vault_capture "$(oem_thor_target_node 3)" "$thor_file/vault.tar" "$thor_n" >/dev/null || return 1
+    oem_thor_reused_assets_match "$thor_file/vault.tar.dir" || return 1
     THOR_REUSE_PIN=$(oem_sha "$(oem_thor_target_node 3)") && oem_hex64 "$THOR_REUSE_PIN"
 }
 
@@ -788,6 +789,20 @@ oem_thor_reuse_boundary() {
         oem_thor_critical_check && oem_thor_raw_target_idle || return 1
     oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" 3 cambium_device_data &&
         [ "$(oem_sha "$(oem_thor_target_node 3)")" = "$THOR_REUSE_PIN" ]
+}
+
+# A self-consistent old vault must also match the authenticated incoming
+# radio assets. Preserve its raw bytes; mismatch never authorizes replacement.
+oem_thor_reused_assets_match() {
+    local thor_dir=$1 thor_table thor_src thor_rel thor_bytes thor_sha thor_file
+    oem_thor_vault_assets_ready || return 1
+    thor_table=$(oem_bundle_member profiles/XV3-8/vault-assets.tsv) || return 1
+    while IFS="$(printf '\t')" read -r thor_src thor_rel thor_bytes thor_sha; do
+        thor_file=$thor_dir/files/$thor_src
+        [ -f "$thor_file" ] && [ ! -L "$thor_file" ] &&
+            [ "$(wc -c < "$thor_file")" -eq "$thor_bytes" ] &&
+            [ "$(oem_sha "$thor_file")" = "$thor_sha" ] || return 1
+    done < "$thor_table"
 }
 
 oem_thor_reuse_vault_capture() (
