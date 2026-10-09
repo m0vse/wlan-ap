@@ -65,7 +65,14 @@ elif cmd=='mount':
 elif cmd=='umount':
  m=Path(a[0]);f=p/'proc/mounts';f.write_text('\n'.join(row for row in f.read_text().splitlines() if row.split()[1]!=str(m))+'\n')
  for c in m.iterdir():shutil.move(str(c),str(p/('staged-'+c.name)))
-elif cmd=='ubiattach':raise AssertionError('fixture target is already attached')
+elif cmd=='ubiattach':
+ assert a==['-m',str(1-int(e['image']))]
+ if fault=='attach-missing':sys.exit(0)
+ for old in (p/'detached/sys').iterdir():shutil.move(str(old),str(sysdir/old.name))
+ for old in (p/'detached/dev').iterdir():shutil.move(str(old),str(dev/old.name))
+ if fault=='attach-alias':
+  (sysdir/'ubi2').mkdir();(sysdir/'ubi2/mtd_num').write_text(a[1])
+ if fault=='attach-wrong-parent':(sysdir/'ubi1/mtd_num').write_text(e['image'])
 elif cmd!='sync':raise AssertionError(cmd)
 '''
 class ForwardTests(unittest.TestCase):

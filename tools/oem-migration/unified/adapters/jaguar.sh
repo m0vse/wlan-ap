@@ -143,11 +143,6 @@ oem_adapter_preflight() {
   case "$label" in 0:ART) OEM_JAGUAR_ART_MTD=$index;;mfginfo) OEM_JAGUAR_MFG_MTD=$index;;esac
  done
  oem_jaguar_target_locate || return 1
- # Native reuse must bind the retained assets before even saving SOURCE ENV.
- # Do not move UBI attachment ahead of the existing SOURCE-first boundary.
- if [ "$OEM_JAGUAR_RETURNED" = 1 ] && [ -z "$OEM_JAGUAR_TARGET_UBI" ];then
-  oem_fail 'native reuse requires the inactive bank already attached for pre-write asset validation';return 1
- fi
  OEM_JAGUAR_REUSE=0 OEM_JAGUAR_REUSE_LEBS= OEM_JAGUAR_REUSE_PIN=
  if [ -n "$OEM_JAGUAR_TARGET_UBI" ];then oem_jaguar_target_namespace || return 1;fi
  oem_jaguar_plan || return 1

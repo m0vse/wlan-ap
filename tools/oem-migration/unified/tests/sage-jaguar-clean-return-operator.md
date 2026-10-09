@@ -19,9 +19,11 @@ raw `cambium_device_data` bytes. Certificate volume 4 is created from absence;
 unknown namespaces and remaining stores are refused. This is not an automatic
 identity cleanup or a forced-install flag.
 Retained radio files must also match the incoming image's authenticated asset
-table. Native reuse requires the inactive bank already attached during the
-separate reviewed read/retirement preparation: the installer refuses otherwise
-before saving SOURCE, rather than moving attachment ahead of that boundary.
+table. An already attached vault is checked before SOURCE is saved. Otherwise,
+the installer first saves and verifies the source-only boot path, attaches only
+the inactive bank, then validates its namespace and incoming asset binding.
+Discovery or compatibility uncertainty stops before target erase or payload
+writes; no manual attach or preparation is required.
 
 ## One separate operator action, after healthy OEM confirmation
 

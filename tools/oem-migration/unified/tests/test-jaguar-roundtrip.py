@@ -99,8 +99,8 @@ class RoundtripTests(unittest.TestCase):
    before={p:p.read_bytes() for p in (root/'dev').iterdir()}
    result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0,fault)
    self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertFalse((root/'events').exists())
- def test_self_consistent_changed_bdf_refuses_before_any_write(self):
-  case=self.carried('XV2-2',0);root=case[0];vault=root/'dev/ubi1_3'
+ def change_bdf(self,case):
+  root=case[0];vault=root/'dev/ubi1_3'
   unpacked=root/'changed-vault';unpacked.mkdir()
   with tarfile.open(vault,'r:') as archive:archive.extractall(unpacked)
   asset=unpacked/'files/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock'
@@ -110,6 +110,8 @@ class RoundtripTests(unittest.TestCase):
   with tarfile.open(changed,'w',format=tarfile.USTAR_FORMAT) as archive:
    archive.add(manifest,arcname='MANIFEST');archive.add(unpacked/'files',arcname='files')
   data=changed.read_bytes();vault.write_bytes(data+b'\xff'*(vault.stat().st_size-len(data)))
+ def test_self_consistent_changed_bdf_refuses_before_any_write(self):
+  case=self.carried('XV2-2',0);root=case[0];self.change_bdf(case)
   # The old own-ART/model/SKU/manifest parser really accepts this archive.
   import os,subprocess
   _,bundle,work,bin,model,sku=case
@@ -120,13 +122,30 @@ class RoundtripTests(unittest.TestCase):
   result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0)
   self.assertIn('radio assets differ',result.stderr+result.stdout)
   self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertEqual(state,(root/'env.json').read_bytes());self.assertFalse((root/'events').exists())
- def test_unattached_native_reuse_refuses_before_source_save(self):
-  case=self.carried('XV2-2',0);root=case[0];detached=root/'detached';detached.mkdir()
-  for p in list((root/'sys/class/ubi').glob('ubi1*')):p.rename(detached/('sys-'+p.name))
-  for p in list((root/'dev').glob('ubi1*')):p.rename(detached/('dev-'+p.name))
-  state=(root/'env.json').read_bytes();before={p:p.read_bytes() for p in [*(root/'dev').iterdir(),*detached.glob('dev-*')]}
-  result=load('forward').ForwardTests().invoke(case);self.assertNotEqual(result.returncode,0)
-  self.assertIn('pre-write asset validation',result.stderr+result.stdout)
-  self.assertEqual(state,(root/'env.json').read_bytes());self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertFalse((root/'events').exists())
+ def detach(self,case):
+  root=case[0];detached=root/'detached';(detached/'sys').mkdir(parents=True);(detached/'dev').mkdir()
+  for p in list((root/'sys/class/ubi').glob('ubi1*')):p.rename(detached/'sys'/p.name)
+  for p in list((root/'dev').glob('ubi1*')):p.rename(detached/'dev'/p.name)
+ def test_unattached_native_reuse_saves_source_before_attach_both_slots(self):
+  for slot in (0,1):
+   case=self.carried('XV2-2',slot);root=case[0];raw=(root/'dev/ubi1_3').read_bytes()
+   before={p:p.read_bytes() for p in (root/'dev').iterdir() if not p.name.startswith('ubi1_')}
+   self.detach(case);result=load('forward').ForwardTests().invoke(case);self.assertEqual(result.returncode,0,result.stderr)
+   events=(root/'events').read_text();self.assertLess(events.index('SOURCE '),events.index('ubiattach '));self.assertLess(events.index('ubiattach '),events.index('ubirmvol '))
+   self.assertEqual(before,{p:p.read_bytes() for p in before});self.assertEqual(raw,(root/'dev/ubi1_3').read_bytes())
+ def test_unattached_discovery_and_asset_uncertainty_keep_source_default_no_erase(self):
+  for fault in ('ubiattach','attach-missing','attach-alias','attach-wrong-parent','changed-bdf','retained-cert','unknown'):
+   case=self.carried('XV2-2',0);root=case[0]
+   if fault=='changed-bdf':self.change_bdf(case)
+   if fault in ('retained-cert','unknown'):
+    node=root/'sys/class/ubi/ubi1_4';node.mkdir();(node/'name').write_text('certificates' if fault=='retained-cert' else 'unknown');(root/'dev/ubi1_4').write_bytes(b'retained identity')
+   source={p:p.read_bytes() for p in (root/'dev').iterdir() if not p.name.startswith('ubi1_')}
+   target={p.name:p.read_bytes() for p in (root/'dev').glob('ubi1_*')}
+   self.detach(case);result=load('forward').ForwardTests().invoke(case,fault);self.assertNotEqual(result.returncode,0,fault)
+   events=(root/'events').read_text();self.assertLess(events.index('SOURCE '),events.index('ubiattach '))
+   self.assertFalse(any(row.startswith(('ubirmvol ','ubimkvol ','ubiupdatevol ','ARM ','SELECTOR ')) for row in events.splitlines()),events)
+   state=json.loads((root/'env.json').read_text());self.assertEqual(state['bootcmd'],'run jaguar_boot1');self.assertEqual(state['image'],'1')
+   self.assertEqual(source,{p:p.read_bytes() for p in source})
+   self.assertEqual(target,{name:(root/'dev'/name if (root/'dev'/name).exists() else root/'detached/dev'/name).read_bytes() for name in target})
 
 if __name__=='__main__':unittest.main()
