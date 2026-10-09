@@ -250,7 +250,7 @@ oem_restore_sage_native_reset_instructions() {
   [ "$(oem_sha "$OEM_SYS_ROOT/usr/bin/scripts/$file")" = "$hash" ] || return 1
  done
  printf '%s\n' 'OEM confirmed; shared configuration and certificates are still preserved.' \
-  'Clean re-enrollment is NOT ready: separately authorize retirement of this AP native OpenWiFi identity after healthy OEM confirmation; verify private backup, exact certificate stores and retained key copies before using server --offline-identity-cleared.' \
+  'Clean re-enrollment is NOT ready: separately authorize retirement of this AP native OpenWiFi identity after healthy OEM confirmation; verify exact unused certificate stores and retained key copies before using server --offline-identity-cleared. AP old-key backup is optional and separately approved encrypted/private only, never the HTTP critical relay; the server tool requires its own database backup.' \
   'Separate explicit factory-reset action (reboots): /bin/sh /usr/bin/scripts/delconfig.sh force' \
   'After OEM has rebooted with defaults: /bin/sh /usr/bin/scripts/savecfg2nor.sh' \
   'The native save script masks flashcp errors. Verify the named NOR gzip/tar config.txt equals the regenerated /mnt/flash/config/config.txt; exit 0 alone is not proof.'

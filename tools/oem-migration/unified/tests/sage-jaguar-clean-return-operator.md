@@ -30,12 +30,15 @@ The retirement operation must:
    bank-local certificate ID 4; examine both banks for retained copies of the
    same old identity. Never erase the bank, source kernel/root, ART, MFG, vault,
    OEM identity, shared nvram or unrelated configuration to clear a certificate.
-3. Privately inventory and back up only indispensable retirement/recovery
-   material: exact old identity files, any on-AP native-enrollment backup copies,
-   leaf fingerprint and exact store/bank/parent bindings. Verify the off-device
-   private backup before removing anything. Directories must be private 0700,
-   files 0600; do not publish contents or accept a public upload receipt for
-   private keys. The existing ENV/ART/MFG receipt is **not** a certificate backup.
+3. Inventory the exact old identity stores, retained on-AP private-key copies,
+   old leaf fingerprint and store/bank/parent bindings. This is the operator's
+   cleanup boundary, not a new manufacturing registry. There is **no mandatory
+   per-AP backup of replaceable certificates or private keys**. Routine unique
+   recovery material remains ART/MFG/ENV/indispensable BOOTCONFIG only.
+   If the human separately requests old-key recovery, use a separately approved
+   encrypted/private destination under a Root-only 0700 directory with files
+   0600. Never send keys or certificates through the ordinary HTTP critical
+   relay, and never make optional old-key recovery a routine admission gate.
 4. Clear only the proved old native identity and its retained private-key
    copies, then verify absence/readback on every identified store. An automatic
    reset, unmount success or server revocation does not prove AP key removal.
@@ -43,9 +46,11 @@ The retirement operation must:
    is unresolved, stop rather than claiming `identity-cleared`.
 5. On the server, use the already delivered `reset_native_enrollment.py` with
    this exact serial and old leaf fingerprint. Obtain a fresh read-only dry-run
-   binding, then apply with that exact binding, a new private backup destination
+   binding, then apply with that exact binding, a new private database-backup destination
    and `--offline-identity-cleared` **only after steps 1–4 are actually proved**.
-   The tool does not access or clear the AP. It preserves issued/revoked,
+   That mandatory backup protects the server tool's own database state; it is
+   distinct from optional AP old-key recovery. The tool does not access or clear
+   the AP. It preserves issued/revoked,
    lifecycle and audit history; it retires only the named current membership,
    grant/cache and lifecycle state. Do not replace this with SQL or Delete-unused.
 6. Use the existing approved fresh enrollment-batch flow after authoritative
@@ -65,7 +70,8 @@ introduced here.
 
 The adapter does not yet automate this destructive retirement operation. It
 preserves identities and displays the lifecycle boundary. Exact live store and
-backup-copy discovery, private retirement-backup transport and human cleanup
-authorization must be reviewed before an executable cleanup command is issued.
+retained-key-copy discovery and human cleanup authorization must be reviewed
+before an executable cleanup command is issued. Optional old-key recovery needs
+separate consent and a private encrypted destination, not an extra routine gate.
 No AP/server credential operation was run to prepare this note. Fixture writer
 or OEM confirmation success is not evidence of a completed identity retirement.

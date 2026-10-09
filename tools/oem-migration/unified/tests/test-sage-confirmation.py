@@ -96,6 +96,9 @@ oem_restore_confirm_preflight && oem_restore_confirm
    self.assertNotIn('sage_oem_restore_state',values);self.assertEqual((case.r/'operations').read_text().splitlines(),['ENV_BATCH'])
    self.assertIn('Separate explicit factory-reset action',result.stdout)
    self.assertIn('Clean re-enrollment is NOT ready',result.stdout)
+   self.assertIn('AP old-key backup is optional',result.stdout)
+   self.assertIn('never the HTTP critical relay',result.stdout)
+   self.assertIn('server tool requires its own database backup',result.stdout)
  def test_failed_vendor_backup_upload_or_selector_never_reports_confirmed(self):
   for fault in ('vendor','backup','upload','batch'):
    fixture=self.fixture(0);original=(fixture[0].r/'env-snapshot').read_bytes();result=self.invoke(fixture,fault)
