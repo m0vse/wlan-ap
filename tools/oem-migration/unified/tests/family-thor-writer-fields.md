@@ -116,3 +116,35 @@ Original stock `thor_write` uses ubiformat/factory UBI, which this shared child
 plan intentionally does not pretend to authorize. The FORMAT2 seed/native
 worker already exists; the owner wires it after the actual transition and
 readback, using existing private 0700/0600/public-upper0755 rules.
+
+## Actual retained inputs resolved on 9 October 2026
+
+See `../profiles/XV3-8/README.md` and `vendor-source.json`: independently
+verified vendor source really has VERSION 7.2-r1, product thor and the exact
+source build tuple. The OEM DT resolves manufacturing as a separate 64 KiB
+NOR partition and OEM config as 64 KiB, not the converted tail size. Both target
+profiles and minimal five-region critical map are present. Four actual shared
+physical-profile cases pass; the real 128 KiB BOOTCONFIG records expose the
+common helper's current 64 KiB cap, which remains explicitly refused.
+
+Inspection now validates the complete fw_printenv response, including stderr,
+before consuming image/bootcmd. Failed exit, bad-CRC default warnings, unknown
+warnings, duplicate keys and malformed responses are refused. Thirty actual
+inspection/context cases pass. The existing local child checks still pass 23.
+No full ENV or private capture is committed or emitted.
+
+The vendor FORMAT3 body contains raw UBI directly after its IMAGE delimiter,
+not xz; extracted dynamic kernel ID0 reserves31 LEBs and ubi_rootfs ID1 reserves
+317. Meaningful FIT and SquashFS pins are recorded from the shared vendor file,
+not the per-unit raw-bank capture. The verified vendor root includes the
+format/attach/detach/create/remove/update/rename tools, resolving the assumed
+missing-ubiformat/RAM-carrier question for this exact source release.
+
+Remaining concrete work is the current OpenWiFi factory/parts/vault contents
+mapping, full live profile including genuine exposed master containers,
+shared whole-target/rename/allocation plan binding, FORMAT2 and vault/certificate
+allocation/readback before arm, native mixed-bank confirmation/first-normal-
+sysupgrade state and converted-to-OEM/default-reset transition. The original
+stock factory reference is not a current OpenWiFi artifact and is not relabeled
+as one. This is no longer blocked on an unknown real OEM version or unknown
+manufacturing offset; no new registry, issuer or watchdog gate is introduced.

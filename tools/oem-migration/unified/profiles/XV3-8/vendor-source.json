@@ -1,0 +1,53 @@
+{
+  "model": "XV3-8",
+  "sku_hex": "00000013",
+  "source_version": "7.2-r1",
+  "source_product": "thor",
+  "source_build_changeset": "b169bb7e02ecbf1cdf31152220f63b30959ec9c2",
+  "cimg": {
+    "bytes": 45878858,
+    "sha256": "66a9b4bb558bf18a8e678d65ecf3857065683ba1da60885fa416d27a40f15192",
+    "supported_products": [
+      "XV3-8",
+      "XE5-8"
+    ],
+    "image_uboot_version": "v2.7.5a"
+  },
+  "external_signer_sha256": "be9d6c8d723c724c134f2c663ff5dd65b23eb19ad0de271c43ca1e9d2d2fa1cb",
+  "verified_content": {
+    "bytes": 45877779,
+    "sha256": "dab5f7a78190cbc9fc240ea40ef09a83c6be9700a3bd866213cff4c0f80a4e69",
+    "raw_ubi_offset": 2579
+  },
+  "raw_ubi": {
+    "bytes": 45875200,
+    "sha256": "70eca663c38409b1b136deed2aa67654b6a97f3647e0c0b59dddd0d49d386cde",
+    "min_io": 2048,
+    "peb": 131072,
+    "leb": 126976
+  },
+  "vendor_volumes": [
+    {
+      "id": 0,
+      "name": "kernel",
+      "type": "dynamic",
+      "reserved_lebs": 31,
+      "padded_bytes": 3936256,
+      "padded_sha256": "d4a53f4c5c3a4783cceafe53a128dad4021516cca2dfb425ecd5cd35deae7220",
+      "meaningful_bytes": 3905000,
+      "meaningful_sha256": "9650712dc69a82342ebe2dee753110805dd6154024f305db80ae91d1165a93aa"
+    },
+    {
+      "id": 1,
+      "name": "ubi_rootfs",
+      "type": "dynamic",
+      "reserved_lebs": 317,
+      "padded_bytes": 40251392,
+      "padded_sha256": "16efd93d9d4c30e59e5410b7ba9d94ad1827d8ea3588382c32ce71f150bfa048",
+      "meaningful_bytes": 40233806,
+      "meaningful_sha256": "75bc545a6cad4fb66642798194318be02a32cf21cd4cd07caf08a75da48a3214"
+    }
+  ],
+  "oem_running_dt_sha256": "35d46f0960dd687f5a42e6af16f054955d4d6f88d1a535fc8299c57494266d68",
+  "production_admission": false
+}

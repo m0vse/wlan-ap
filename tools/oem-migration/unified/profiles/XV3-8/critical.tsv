@@ -1,0 +1,5 @@
+ART	0:ART	262144	unique-calibration
+MFG	mfginfo	65536	factory-identity
+ENV	0:APPSBLENV	65536	boot-selection
+BOOTCONFIG0	0:BOOTCONFIG	131072	boot-selection-record
+BOOTCONFIG1	0:BOOTCONFIG1	131072	boot-selection-record
