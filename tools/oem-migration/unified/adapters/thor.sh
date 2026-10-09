@@ -21,7 +21,7 @@ oem_thor_bank_offset() {
 }
 
 oem_adapter_inspect() {
-    local thor_root=${OEM_SYS_ROOT:-} thor_source_name thor_source_mtd thor_target_mtd
+    local thor_mode=${1:-source} thor_root=${OEM_SYS_ROOT:-} thor_source_name thor_source_mtd thor_target_mtd
     local thor_zero thor_one thor_ubi thor_count thor_node thor_art thor_art_file thor_serial
     local thor_config= thor_next thor_file thor_env thor_cmdline thor_env_config thor_release thor_slot thor_env_dump
     OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT=
@@ -80,8 +80,19 @@ oem_adapter_inspect() {
     printf '%s\n' "$thor_env_dump" | awk '
       {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_]+$/ || seen[key]++)bad=1}
       END{exit bad || !seen["image"] || !seen["bootcmd"]}' || return 1
+    case "$thor_mode" in
+    source)
     [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$thor_slot" ] &&
         [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^bootcmd=//p')" = 'aq_load_fw&&bootipq' ] || return 1
+    ;;
+    restored-oem)
+        [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$((1-thor_slot))" ] &&
+            [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^bootcmd=//p')" = 'run thor_restore_prior' ] &&
+            [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^thor_restore_target=//p')" = "$thor_slot" ] &&
+            [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^thor_restore_state=//p')" = trial-started ] || return 1
+    ;;
+    *) return 1 ;;
+    esac
     thor_env_dump=
     thor_art=$(oem_physical_index "$thor_root/sys/class/mtd" 0:ART) || return 1
     [ "$(cat "$thor_root/sys/class/mtd/mtd$thor_art/type")" = nor ] &&
@@ -172,8 +183,8 @@ oem_thor_published_image_valid() {
 oem_thor_stage_native_overlay() {
     local thor_input=$1 thor_image=$2 thor_mount=$3 thor_volume
     [ "${OEM_SKU:-}:${OEM_MODEL:-}" = 00000013:XV3-8 ] || return 1
-    # Original reviewed OEM writer: source bank 1, incoming bank 0.
-    [ "${OEM_SOURCE_SLOT:-}:${OEM_TARGET_SLOT:-}" = 1:0 ] || return 1
+    # Both persistent FIT bank configurations use the same verified .8 parts.
+    case "${OEM_SOURCE_SLOT:-}:${OEM_TARGET_SLOT:-}" in 0:1|1:0) ;; *) return 1 ;; esac
     [ "$OW_EXPECT_SERIAL" = "$OEM_SERIAL" ] &&
         [ "$OW_EXPECT_FAMILY:$OW_EXPECT_MODEL" = thor:XV3-8 ] &&
         [ "$OW_EXPECT_OPERATION" = production-oem-migration ] &&
@@ -240,15 +251,16 @@ oem_thor_prepare_native_layout() (
     thor_root_bytes=$THOR_PAYLOAD_BYTES
     # Owner's exact model/revision radio map is staged before preparation.
     oem_thor_vault_assets_ready || exit 1
-    thor_profile=$(oem_bundle_member profiles/XV3-8/mtd-slot0.tsv) || exit 1
     oem_adapter_inspect && oem_context_check || exit 1
-    [ "$OEM_SOURCE_RELEASE:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" = 7.2-r1:1:0 ] || exit 1
+    [ "$OEM_SOURCE_RELEASE" = 7.2-r1 ] || exit 1
+    case "$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" in 0:1|1:0) ;; *) exit 1 ;; esac
+    thor_profile=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || exit 1
     [ -d "$OEM_WORK" ] && [ ! -L "$OEM_WORK" ] || exit 1
     thor_map=$OEM_WORK/thor-format-physical.tsv
     oem_physical_inventory "$thor_profile" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$thor_map" || exit 1
-    awk -F '\t' -v src="$OEM_SOURCE_MTD" -v dst="$OEM_TARGET_MTD" '
-      $1==src {s++;if($2!=100663296 || $3!=100663296 || $4!="active-oem" || $5!="nand0")bad=1}
-      $1==dst {d++;if($2!=0 || $3!=100663296 || $4!="target" || $5!="nand0")bad=1}
+    awk -F '\t' -v src="$OEM_SOURCE_MTD" -v dst="$OEM_TARGET_MTD" -v soff="$((OEM_SOURCE_SLOT*100663296))" -v doff="$((OEM_TARGET_SLOT*100663296))" '
+      $1==src {s++;if($2!=soff || $3!=100663296 || $4!="active-oem" || $5!="nand0")bad=1}
+      $1==dst {d++;if($2!=doff || $3!=100663296 || $4!="target" || $5!="nand0")bad=1}
       END{exit bad || s!=1 || d!=1}' "$thor_map" || exit 1
     [ "$(cat "$OEM_WORK/critical/OFFDEVICE_VERIFIED")" = "$(oem_sha "$OEM_WORK/critical/SHA256SUMS")" ] || exit 1
     (cd "$OEM_WORK/critical" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || exit 1
@@ -366,7 +378,7 @@ oem_thor_environment() (
 oem_thor_raw_target_idle() (
     local thor_proc=${OEM_SYS_ROOT:-}/proc thor_dev=${OEM_SYS_ROOT:-}/dev
     local thor_sys=${OEM_SYS_ROOT:-}/sys/class thor_n=$OEM_TARGET_MTD
-    local thor_table thor_path thor_link thor_fd thor_number thor_numbers= thor_listing
+    local thor_table thor_path thor_link thor_fd thor_number thor_numbers= thor_listing thor_u thor_unames=
     [ -r "$thor_proc/mounts" ] && [ -r "$thor_proc/self/mountinfo" ] || exit 1
     for thor_path in "$thor_sys/mtd/mtd$thor_n/dev" "$thor_sys/mtd/mtd${thor_n}ro/dev" "$thor_sys/block/mtdblock$thor_n/dev"; do
         [ -r "$thor_path" ] || continue
@@ -377,6 +389,18 @@ oem_thor_raw_target_idle() (
             thor_numbers="$thor_numbers ${thor_number%:*}:$((${thor_number#*:}+1))"
         fi
     done
+
+    for thor_path in "$thor_sys"/ubi/ubi[0-9]*/mtd_num; do
+        [ -r "$thor_path" ] || continue
+        [ "$(cat "$thor_path")" = "$thor_n" ] || continue
+        thor_u=${thor_path%/mtd_num};thor_u=${thor_u##*/};thor_unames="$thor_unames $thor_u"
+        for thor_table in "$thor_sys/ubi/$thor_u/dev" "$thor_sys/ubi/${thor_u}_"*/dev; do
+            [ -r "$thor_table" ] || continue
+            thor_number=$(cat "$thor_table") || exit 1
+            printf '%s\n' "$thor_number" | awk 'NR!=1 || $0!~/^[0-9]+:[0-9]+$/ {bad=1}END{exit bad}' || exit 1
+            thor_numbers="$thor_numbers $thor_number"
+        done
+    done
     awk -v numbers="$thor_numbers" 'BEGIN{n=split(numbers,a," ");for(i=1;i<=n;i++)wanted[a[i]]=1} wanted[$3]{bad=1}END{exit bad}' "$thor_proc/self/mountinfo" || exit 1
     while read -r thor_path thor_table; do
         case "$thor_path" in
@@ -385,13 +409,19 @@ oem_thor_raw_target_idle() (
             *) continue ;;
         esac
         case "$thor_link" in "$thor_dev/mtd$thor_n"|"$thor_dev/mtd${thor_n}ro"|"$thor_dev/mtdblock$thor_n") exit 1 ;; esac
+        for thor_u in $thor_unames; do
+            case "$thor_link" in "$thor_dev/$thor_u"|"$thor_dev/${thor_u}_"*|"$thor_dev/ubiblock${thor_u#ubi}_"*) exit 1 ;; esac
+        done
     done < "$thor_proc/mounts"
     for thor_fd in "$thor_proc"/[0-9]*/fd/*; do
         [ -L "$thor_fd" ] || continue
         thor_link=$(readlink "$thor_fd") || exit 1
         case "$thor_link" in
             /*) thor_path=$(readlink -f "$thor_fd" 2>/dev/null) || thor_path=$thor_link
-                case "$thor_path" in "$thor_dev/mtd$thor_n"|"$thor_dev/mtd${thor_n}ro"|"$thor_dev/mtdblock$thor_n") exit 1 ;; esac ;;
+                case "$thor_path" in "$thor_dev/mtd$thor_n"|"$thor_dev/mtd${thor_n}ro"|"$thor_dev/mtdblock$thor_n") exit 1 ;; esac
+                for thor_u in $thor_unames; do
+                    case "$thor_path" in "$thor_dev/$thor_u"|"$thor_dev/${thor_u}_"*|"$thor_dev/ubiblock${thor_u#ubi}_"*) exit 1 ;; esac
+                done ;;
         esac
         [ -n "$thor_numbers" ] || continue
         thor_listing=$(LC_ALL=C ls -Lldn "$thor_fd" 2>/dev/null) || exit 1
@@ -428,14 +458,15 @@ oem_thor_target_attachment() {
 }
 
 oem_adapter_preflight() {
-    local thor_profile thor_source thor_tool thor_ubi thor_n thor_file
+    local thor_profile thor_source thor_tool thor_ubi thor_n thor_file thor_id thor_name
     oem_thor_forward_load && oem_adapter_inspect && oem_context_check || return 1
-    [ "$OEM_SOURCE_RELEASE:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" = 7.2-r1:1:0 ] || return 1
+    [ "$OEM_SOURCE_RELEASE" = 7.2-r1 ] || return 1
+    case "$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" in 0:1|1:0) ;; *) return 1 ;; esac
     thor_source=$(oem_bundle_member profiles/XV3-8/source.tsv) || return 1
     oem_source_identifiers_check "${OEM_SYS_ROOT:-}/etc/version" "$thor_source" || return 1
     THOR_SOURCE_CONTRACT=$(oem_sha "$thor_source") || return 1
     oem_thor_local_payload kernel && oem_thor_local_payload rootfs && oem_thor_vault_assets_ready || return 1
-    thor_profile=$(oem_bundle_member profiles/XV3-8/mtd-slot0.tsv) || return 1
+    thor_profile=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
     OEM_PROTECTED_RANGES=$OEM_WORK/thor-ranges.tsv OEM_WRITE_PLAN=$OEM_WORK/thor-write-plan.tsv
     oem_physical_inventory "$thor_profile" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$OEM_PROTECTED_RANGES" || return 1
     {
@@ -443,6 +474,13 @@ oem_adapter_preflight() {
         printf 'ubi-create\t%s\t2\trootfs_data\nubi-create\t%s\t4\tcertificates\n' "$OEM_TARGET_MTD" "$OEM_TARGET_MTD"
         printf 'environment-fields\t%s\tfields\tpreserve-unlisted\n' "$(oem_physical_index "${OEM_SYS_ROOT:-}/sys/class/mtd" 0:APPSBLENV)"
     } > "$OEM_WRITE_PLAN" || return 1
+    if oem_thor_return_state; then
+        awk -F '\t' '$4!="cambium_device_data"' "$OEM_WRITE_PLAN" > "$OEM_WRITE_PLAN.tmp" && mv "$OEM_WRITE_PLAN.tmp" "$OEM_WRITE_PLAN" || return 1
+        for thor_id in 0 1 2; do
+            case "$thor_id" in 0) thor_name=kernel ;; 1) thor_name=rootfs ;; 2) thor_name=rootfs_data ;; esac
+            printf 'ubi-remove\t%s\t%s\t%s\nubi-create\t%s\t%s\t%s\n' "$OEM_TARGET_MTD" "$thor_id" "$thor_name" "$OEM_TARGET_MTD" "$thor_id" "$thor_name" >> "$OEM_WRITE_PLAN" || return 1
+        done
+    fi
     oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
     thor_n=0; thor_ubi=
     for thor_file in "${OEM_SYS_ROOT:-}"/sys/class/ubi/ubi[0-9]*/mtd_num; do
@@ -454,11 +492,16 @@ oem_adapter_preflight() {
     [ "$thor_n" -le 1 ] || return 1
     if [ "$thor_n" = 1 ]; then
     oem_bank_idle_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "${OEM_SYS_ROOT:-}/dev" "${OEM_SYS_ROOT:-}/proc" "$OEM_TARGET_MTD" "$thor_ubi" no || return 1
-    oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$thor_ubi" 0 kernel &&
-        oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$thor_ubi" 1 ubi_rootfs || return 1
-    [ "$(ls "${OEM_SYS_ROOT:-}/sys/class/ubi/${thor_ubi}_"*/name | wc -l)" -eq 2 ] || return 1
     fi
-    oem_thor_environment | awk -F= '$1~/^thor_(installer_|migration_|ab_)/ && length(substr($0,index($0,"=")+1)) {bad=1}END{exit bad}' || return 1
+    THOR_RETURN_SOURCE=0
+    if oem_thor_return_state; then THOR_RETURN_SOURCE=1
+    else oem_thor_environment | awk -F= '$1~/^thor_(installer_|migration_|ab_|restore_)/ && length(substr($0,index($0,"=")+1)) {bad=1}END{exit bad}' || return 1; fi
+    if [ "$thor_n" = 1 ]; then
+        OEM_TARGET_UBI=$thor_ubi
+        oem_thor_target_namespace || return 1
+    fi
+
+    [ "${THOR_RETURN_SOURCE:-0}" != 1 ] || command -v ubirmvol >/dev/null 2>&1 || return 1
     for thor_tool in ubiattach ubidetach ubiformat ubimkvol ubiupdatevol fw_printenv fw_setenv mount umount tar sync cmp head od sha256sum; do
         command -v "$thor_tool" >/dev/null 2>&1 || return 1
     done
@@ -528,12 +571,12 @@ oem_thor_build_vault() {
 }
 
 oem_thor_forward_write_boundary() {
-    local thor_profile thor_source thor_serial=$OEM_SERIAL thor_parent=$OEM_TARGET_MTD thor_active=$OEM_SOURCE_MTD thor_ubi=$OEM_TARGET_UBI thor_id thor_name
+    local thor_profile thor_source thor_serial=$OEM_SERIAL thor_parent=$OEM_TARGET_MTD thor_active=$OEM_SOURCE_MTD thor_ubi=$OEM_TARGET_UBI thor_id thor_name thor_slots=$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT
     oem_adapter_inspect && oem_context_check || return 1
-    [ "$OEM_SERIAL:$OEM_SOURCE_MTD:$OEM_TARGET_MTD:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" = "$thor_serial:$thor_active:$thor_parent:1:0" ] || return 1
+    [ "$OEM_SERIAL:$OEM_SOURCE_MTD:$OEM_TARGET_MTD:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" = "$thor_serial:$thor_active:$thor_parent:$thor_slots" ] || return 1
     thor_source=$(oem_bundle_member profiles/XV3-8/source.tsv) || return 1
     oem_source_identifiers_check "${OEM_SYS_ROOT:-}/etc/version" "$thor_source" || return 1
-    thor_profile=$(oem_bundle_member profiles/XV3-8/mtd-slot0.tsv) || return 1
+    thor_profile=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
     oem_physical_inventory "$thor_profile" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$OEM_PROTECTED_RANGES" &&
         oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" && oem_thor_critical_check || return 1
     [ "$OEM_TARGET_UBI" = "$thor_ubi" ] &&
@@ -542,7 +585,8 @@ oem_thor_forward_write_boundary() {
         case "$thor_id" in 0) thor_name=kernel ;; 1) thor_name=rootfs ;; 2) thor_name=rootfs_data ;; 3) thor_name=cambium_device_data ;; 4) thor_name=certificates ;; esac
         oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$thor_ubi" "$thor_id" "$thor_name" || return 1
     done
-    oem_bank_idle_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "${OEM_SYS_ROOT:-}/dev" "${OEM_SYS_ROOT:-}/proc" "$OEM_TARGET_MTD" "$thor_ubi" no
+    oem_bank_idle_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "${OEM_SYS_ROOT:-}/dev" "${OEM_SYS_ROOT:-}/proc" "$OEM_TARGET_MTD" "$thor_ubi" no || return 1
+    [ "${THOR_TARGET_KIND:-}" != retired-native ] || oem_thor_reuse_boundary
 }
 
 oem_thor_write_vault() {
@@ -579,7 +623,7 @@ oem_thor_arm_forward() {
     {
         printf 'changing_bootcmd 1\nthor_boot%s setenv image %s && aq_load_fw && bootipq\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT"
         printf 'thor_boot%s %s\nthor_stable%s run thor_boot%s; run thor_boot%s\n' "$OEM_TARGET_SLOT" "$thor_boot" "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_SLOT"
-        printf 'thor_migration_oem_slot %s\nthor_ab_confirmed %s\nthor_ab_state armed\nthor_ab_target %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
+        printf 'thor_restore_state\nthor_restore_target\nthor_restore_prior\nthor_restore_oem\nthor_ab_version\nthor_migration_oem_slot %s\nthor_ab_confirmed %s\nthor_ab_state armed\nthor_ab_target %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
         printf 'thor_installer_target %s\nthor_installer_job %s\nthor_installer_image %s\n' "$OEM_TARGET_SLOT" "$OW_EXPECT_JOB" "$(oem_sha "$THOR_IMAGE")"
     } > "$thor_batch" || return 1
     oem_thor_environment_batch "$thor_batch" || return 1
@@ -602,8 +646,9 @@ oem_adapter_migrate() (
     umask 077
     oem_adapter_preflight && oem_adapter_boot_preflight || exit 1
     oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
-    printf '%s\n' bootcmd image changing_bootcmd thor_boot0 thor_boot1 thor_stable0 thor_stable1 thor_migration_oem_slot thor_ab_confirmed thor_ab_state thor_ab_target thor_installer_target thor_installer_job thor_installer_image > "$OEM_WORK/thor-env-allowed" || exit 1
-    oem_thor_critical_check && oem_thor_build_vault || exit 1
+    printf '%s\n' bootcmd image changing_bootcmd thor_restore_state thor_restore_target thor_restore_prior thor_restore_oem thor_ab_version thor_boot0 thor_boot1 thor_stable0 thor_stable1 thor_migration_oem_slot thor_ab_confirmed thor_ab_state thor_ab_target thor_installer_target thor_installer_job thor_installer_image > "$OEM_WORK/thor-env-allowed" || exit 1
+    oem_thor_critical_check || exit 1
+    [ "${THOR_RETURN_SOURCE:-0}" = 1 ] || oem_thor_build_vault || exit 1
     thor_job=$(oem_read_hex "${OEM_SYS_ROOT:-}/dev/urandom" 32) || exit 1
     oem_hex64 "$thor_job" || exit 1
     thor_image_sha=$(oem_sha "$THOR_IMAGE") || exit 1
@@ -622,10 +667,13 @@ oem_adapter_migrate() (
     # Persist and read back the actual working OEM source, before any erase.
     printf 'bootcmd aq_load_fw&&bootipq\nimage %s\n' "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-source.tsv" || exit 1
     oem_thor_environment_batch "$OEM_WORK/thor-source.tsv" || exit 1
-    OEM_TARGET_UBI=$(oem_thor_prepare_native_layout "$THOR_IMAGE") || exit 1
+    if [ "${THOR_RETURN_SOURCE:-0}" = 1 ]; then
+        oem_thor_target_attachment after-source-save && oem_thor_prepare_reused_layout || exit 1
+    else OEM_TARGET_UBI=$(oem_thor_prepare_native_layout "$THOR_IMAGE") || exit 1; fi
     oem_thor_forward_write_boundary && oem_thor_update_existing_child kernel &&
         oem_thor_forward_write_boundary && oem_thor_update_existing_child rootfs &&
-        oem_thor_forward_write_boundary && oem_thor_write_vault || exit 1
+        oem_thor_forward_write_boundary || exit 1
+    [ "${THOR_TARGET_KIND:-}" = retired-native ] || oem_thor_write_vault || exit 1
     OW_SETTINGS_SYS=${OEM_SYS_ROOT:-}/sys/class/ubi OW_SETTINGS_DEV=${OEM_SYS_ROOT:-}/dev OW_SETTINGS_MOUNTS=${OEM_SYS_ROOT:-}/proc/mounts OW_SETTINGS_OWNER=0
     OW_EXPECT_TARGET_MTD=$OEM_TARGET_MTD OW_EXPECT_TARGET_VOLUME=${OEM_TARGET_UBI}_2
     thor_mount=$OEM_WORK/thor-overlay
@@ -644,4 +692,173 @@ oem_adapter_migrate() (
     umount "$thor_mount" && sync || exit 1
     [ "$thor_rc" = 0 ] && oem_thor_forward_write_boundary && oem_thor_arm_forward || exit 1
     printf 'handoff=one-shot-armed\nonboarded=not-yet-verified\nsysupgrade_ready=not-yet-verified\n'
+)
+
+
+# Known clean-return state; retirement is observed as absence, never performed
+# or inferred from an operator force flag by the forward writer.
+oem_thor_return_state() {
+    local thor_state
+    thor_state=$(oem_thor_environment) || return 1
+    printf '%s\n' "$thor_state" | awk -F= -v src="$OEM_SOURCE_SLOT" -v dst="$OEM_TARGET_SLOT" '
+      $1=="thor_restore_state" {if($2!="confirmed")bad=1;s++}
+      $1=="thor_restore_target" {if($2!=src)bad=1;t++}
+      $1=="thor_ab_version" {if($2!=1)bad=1;v++}
+      $1=="thor_ab_state" {if($2!="confirmed")bad=1;a++}
+      $1=="thor_ab_confirmed" {if($2!=dst)bad=1;c++}
+      $1=="thor_ab_target" || $1~/^thor_installer_/ {if(length(substr($0,index($0,"=")+1)))bad=1}
+      END{exit bad || s!=1 || t!=1 || v!=1 || a!=1 || c!=1}'
+}
+oem_thor_vault_files() { printf 'lib/firmware/IPQ8074/WIFI_FW/bdwlan.b215.accton 131072\n'; }
+
+oem_thor_target_namespace() {
+    local thor_id thor_name thor_n=0 thor_file
+    THOR_TARGET_KIND=fresh-oem
+    oem_thor_raw_target_idle || return 1
+    for thor_file in "${OEM_SYS_ROOT:-}/sys/class/ubi/$OEM_TARGET_UBI"_*/name; do
+        [ -r "$thor_file" ] || continue
+        thor_id=${thor_file%/name};thor_id=${thor_id##*_};thor_name=$(cat "$thor_file") || return 1
+        case "$thor_id:$thor_name" in 0:kernel|1:ubi_rootfs|1:rootfs|2:rootfs_data|3:cambium_device_data) ;; *) return 1 ;; esac
+        oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" "$thor_id" "$thor_name" || return 1
+        thor_n=$((thor_n+1))
+    done
+    if [ "$thor_n" = 2 ] && [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_1/name")" = ubi_rootfs ]; then
+        [ "${THOR_RETURN_SOURCE:-0}" = 0 ] || return 1
+        return 0
+    fi
+    [ "$thor_n" = 4 ] && [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_1/name")" = rootfs ] &&
+        [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_2/name")" = rootfs_data ] &&
+        [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_3/name")" = cambium_device_data ] &&
+        oem_thor_return_state || return 1
+    # All unused certificate stores must actually be absent after separately
+    # authorized retirement. Never replace an existing store, including empty.
+    for thor_file in "${OEM_SYS_ROOT:-}/sys/class/ubi/$THOR_ACTIVE_UBI"_*/name; do
+        [ -r "$thor_file" ] || continue
+        [ "$(cat "$thor_file")" != certificates ] || return 1
+    done
+    THOR_TARGET_KIND=retired-native
+    THOR_REUSE_ART_PIN=$(oem_sha "$(oem_thor_art_node "$(oem_physical_index "${OEM_SYS_ROOT:-}/sys/class/mtd" 0:ART)")") || return 1
+    thor_n=$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_3/reserved_ebs") || return 1
+    THOR_REUSE_LEBS=$thor_n
+    thor_file=$(mktemp -d "$OEM_WORK/thor-reuse-vault.XXXXXX") || return 1
+    oem_thor_reuse_vault_capture "$(oem_thor_target_node 3)" "$thor_file/vault.tar" "$thor_n" >/dev/null || return 1
+    THOR_REUSE_PIN=$(oem_sha "$(oem_thor_target_node 3)") && oem_hex64 "$THOR_REUSE_PIN"
+}
+
+oem_thor_target_parent_node() {
+    local thor_node=${OEM_SYS_ROOT:-}/dev/$OEM_TARGET_UBI
+    [ -c "$thor_node" ] && [ ! -L "$thor_node" ] &&
+        oem_thor_character_matches "$thor_node" "${OEM_SYS_ROOT:-}/sys/class/ubi/$OEM_TARGET_UBI/dev" || return 1
+    printf '%s\n' "$thor_node"
+}
+
+oem_thor_prepare_reused_layout() {
+    local thor_id thor_name thor_parent thor_node thor_kbytes thor_rbytes
+    oem_thor_target_namespace && [ "$THOR_TARGET_KIND" = retired-native ] || return 1
+    thor_parent=$(oem_thor_target_parent_node) || return 1
+    oem_thor_local_payload kernel || return 1;thor_kbytes=$THOR_PAYLOAD_BYTES
+    oem_thor_local_payload rootfs || return 1;thor_rbytes=$THOR_PAYLOAD_BYTES
+    [ $(( (thor_kbytes+126975)/126976 + (thor_rbytes+126975)/126976 + THOR_REUSE_LEBS + 20 + 67 )) -le 724 ] || return 1
+    for thor_id in 2 0 1; do
+        case "$thor_id" in 0) thor_name=kernel ;; 1) thor_name=rootfs ;; 2) thor_name=rootfs_data ;; esac
+        oem_thor_reuse_boundary && oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" "$thor_id" "$thor_name" || return 1
+        ubirmvol "$thor_parent" -n "$thor_id" || return 1
+        [ ! -e "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_$thor_id" ] || return 1
+    done
+    for thor_id in 0 1 4 2; do
+        oem_thor_reuse_boundary || return 1
+        case "$thor_id" in
+            0) ubimkvol "$thor_parent" -n 0 -N kernel -s "$thor_kbytes" ;;
+            1) ubimkvol "$thor_parent" -n 1 -N rootfs -s "$thor_rbytes" ;;
+            4) [ ! -e "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_4" ] && ubimkvol "$thor_parent" -n 4 -N certificates -s 2539520 ;;
+            2) ubimkvol "$thor_parent" -n 2 -N rootfs_data -m ;;
+        esac || return 1
+    done
+    [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_4/reserved_ebs")" = 20 ] &&
+        [ "$(cat "${OEM_SYS_ROOT:-}/sys/class/ubi/${OEM_TARGET_UBI}_2/data_bytes")" -ge 8507392 ] &&
+        oem_thor_reuse_boundary
+}
+
+oem_thor_reuse_boundary() {
+    local thor_profile
+    thor_profile=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
+    oem_physical_inventory "$thor_profile" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$OEM_PROTECTED_RANGES" &&
+        oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" &&
+        oem_bank_idle_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "${OEM_SYS_ROOT:-}/dev" "${OEM_SYS_ROOT:-}/proc" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" no &&
+        oem_thor_critical_check && oem_thor_raw_target_idle || return 1
+    oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$OEM_TARGET_UBI" 3 cambium_device_data &&
+        [ "$(oem_sha "$(oem_thor_target_node 3)")" = "$THOR_REUSE_PIN" ]
+}
+
+oem_thor_reuse_vault_capture() (
+ local device=$1 output=$2 blocks=$3 offset=0 bytes header zero name prefix kind octal size entries src expected entry value count file
+ case "$blocks" in 1|2|3|4|5|6|7|8) ;;*) exit 1;;esac
+ bytes=$((blocks*126976));header=$output.header;entries=$output.entries
+ [ ! -e "$output" ] && [ ! -e "$output.dir" ] || exit 1
+ umask 077;: > "$entries" || exit 1
+ dd if=/dev/zero of="$header" bs=512 count=1 2>/dev/null || exit 1
+ zero=$(oem_sha "$header") || exit 1
+ while [ "$((offset+1024))" -le "$bytes" ];do
+  dd if="$device" of="$header" bs=512 skip="$((offset/512))" count=1 2>/dev/null || exit 1
+  [ "$(wc -c < "$header")" -eq 512 ] || exit 1
+  if [ "$(oem_sha "$header")" = "$zero" ];then
+   dd if="$device" of="$header" bs=512 skip="$((offset/512+1))" count=1 2>/dev/null || exit 1
+   [ "$(wc -c < "$header")" -eq 512 ] && [ "$(oem_sha "$header")" = "$zero" ] || exit 1
+   offset=$((offset+1024));break
+  fi
+  name=$(dd if="$header" bs=1 count=100 2>/dev/null | tr -d '\000') || exit 1
+  prefix=$(dd if="$header" bs=1 skip=345 count=155 2>/dev/null | tr -d '\000') || exit 1
+  [ -z "$prefix" ] || name=$prefix/$name
+  name=${name%/}
+  case "$name" in ''|/*|*[!A-Za-z0-9_./-]*) exit 1;;esac
+  printf '%s\n' "$name" | awk '$0~/(^|\/)\.\.?($|\/)/ {bad=1}END{exit bad}' || exit 1
+  kind=$(dd if="$header" bs=1 skip=156 count=1 2>/dev/null | tr -d '\000') || exit 1
+  case "$kind" in ''|0|5) ;;*) exit 1;;esac
+  expected=0
+  if [ "$name" = MANIFEST ];then [ "$kind" != 5 ] || exit 1;expected=1
+  else
+   while read -r src size;do
+    if [ "$name" = "files/$src" ] && [ "$kind" != 5 ];then expected=1;fi
+    case "files/$src" in "$name/"*) [ "$kind" = 5 ] && expected=1;;esac
+   done <<EOF_VAULT_FILES
+$(oem_thor_vault_files)
+EOF_VAULT_FILES
+  fi
+  [ "$expected" = 1 ] || exit 1
+  printf '%s\n' "$name" >> "$entries" || exit 1
+  octal=$(dd if="$header" bs=1 skip=124 count=12 2>/dev/null | tr -d '\000 ' | sed 's/^0*//') || exit 1
+  [ -n "$octal" ] || octal=0
+  case "$octal" in *[!0-7]*) exit 1;;esac
+  [ "${#octal}" -le 7 ] || exit 1
+  size=$((0$octal));[ "$size" -le "$bytes" ] || exit 1
+  [ "$kind" != 5 ] || [ "$size" = 0 ] || exit 1
+  offset=$((offset+512+((size+511)/512)*512))
+ done
+ [ "$offset" -gt 1024 ] && [ "$offset" -le "$bytes" ] && [ "$(oem_sha "$header")" = "$zero" ] || exit 1
+ awk 'seen[$0]++ {bad=1}END{exit bad}' "$entries" || exit 1
+ head -c "$offset" "$device" > "$output" && [ "$(wc -c < "$output")" -eq "$offset" ] || exit 1
+ tar -tf "$output" >/dev/null 2>&1 && mkdir -m 700 "$output.dir" && tar -xf "$output" -C "$output.dir" || exit 1
+ file=$output.dir/MANIFEST
+ [ -f "$file" ] && [ ! -L "$file" ] || exit 1
+ for entry in format board sku art_sha256;do
+  value=$(awk -v key="$entry" '$1==key {if(NF!=2)bad=1;v=$2;n++}END{if(bad || n!=1)exit 1;print v}' "$file") || exit 1
+  case "$entry" in
+   format) [ "$value" = 1 ] || exit 1;;
+   board) [ "$value" = "cambiumnetworks,$(printf '%s' "$OEM_MODEL" | tr 'A-Z' 'a-z')" ] || exit 1;;
+   sku) [ "$value" = "$OEM_SKU" ] || exit 1;;
+   art_sha256) [ "$value" = "$THOR_REUSE_ART_PIN" ] || exit 1;;
+  esac
+ done
+ count=0
+ while read -r src size;do
+  entry=$(awk -v src="$src" '$1=="file" && $2==src {if(NF!=4)bad=1;print;n++}END{if(bad || n!=1)exit 1}' "$file") || exit 1
+  set -- $entry;[ "$3" = "$size" ] && oem_hex64 "$4" || exit 1
+  [ -f "$output.dir/files/$src" ] && [ ! -L "$output.dir/files/$src" ] &&
+   [ "$(wc -c < "$output.dir/files/$src")" -eq "$size" ] && [ "$(oem_sha "$output.dir/files/$src")" = "$4" ] || exit 1
+  count=$((count+1))
+ done <<EOF_VAULT_FILES
+$(oem_thor_vault_files)
+EOF_VAULT_FILES
+ [ "$(awk '$1=="file" {n++}END{print n+0}' "$file")" = "$count" ] || exit 1
+ printf '%s\t%s\n' "$offset" "$(oem_sha "$output")"
 )

@@ -62,7 +62,7 @@ The real reusable BDF map, own-vault binding/readback, full forward phase
 composition, native mixed-bank confirmation and converted-to-OEM writer are
 now implemented and fixture-tested. Exact local member names and result scope
 are in `../../tests/family-thor-release-interface.md`. Unknown/resumed targets
-remain refused. Physical qualification, first-normal-sysupgrade integration
+remain refused. Physical qualification, actual installed first-normal-sysupgrade support
 and an explicit OEM defaults/reset step remain separate; no AP readiness is
 claimed.
 

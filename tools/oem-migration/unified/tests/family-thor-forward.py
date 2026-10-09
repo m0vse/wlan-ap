@@ -14,14 +14,15 @@ import json, re
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('common_lib',type=Path);ap.add_argument('runtime_root',type=Path);ap.add_argument('provider',type=Path)
-    ap.add_argument('image',type=Path);ap.add_argument('bdf',type=Path);ap.add_argument('settings',type=Path);ap.add_argument('--positive-only',action='store_true')
+    ap.add_argument('image',type=Path);ap.add_argument('bdf',type=Path);ap.add_argument('settings',type=Path);ap.add_argument('--positive-only',action='store_true');ap.add_argument('--source-slot',type=int,choices=(0,1),default=1)
     a=ap.parse_args();base=Path(__file__).resolve().parents[1]; count=0
     with tempfile.TemporaryDirectory(prefix='thor-layout-') as td:
         top=Path(td).resolve();shared=top/'shared';shared.mkdir()
         for n in ('common.sh','protection.sh'): (shared/n).write_bytes((a.common_lib/n).read_bytes())
 
         def fixture(fail=0,unattached=False,cert=False):
-            root=top/f'case-{fail}-{unattached}-{cert}';shutil.rmtree(root,ignore_errors=True);root.mkdir(mode=0o700)
+            slot=a.source_slot;target_slot=1-slot
+            root=top/f'case-{slot}-{fail}-{unattached}-{cert}';shutil.rmtree(root,ignore_errors=True);root.mkdir(mode=0o700)
             bundle=root/'bundle';shutil.copytree(a.provider,bundle)
             runtime=bundle/'runtime';runtime.mkdir()
             for n,p in [('cambium-ab.sh','cambium-ab/files/cambium-ab.sh'),('cambium-ab-upgrade.sh','cambium-ab/files/cambium-ab-upgrade.sh'),('cambium-ab-thor.sh','cambium-thor-support/files/cambium-ab-thor.sh')]:
@@ -33,7 +34,7 @@ def main():
             (bundle/'profiles/XV3-8/vault-assets.tsv').write_bytes((base/'profiles/XV3-8/vault-assets.tsv').read_bytes())
             files=[p for p in bundle.rglob('*') if p.is_file() and p.name!='SHA256SUMS']
             (bundle/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(bundle)}\n' for p in sorted(files)))
-            profile=(bundle/'profiles/XV3-8/mtd-slot0.tsv').read_text().splitlines();names=[]
+            profile=(bundle/f'profiles/XV3-8/mtd-slot{target_slot}.tsv').read_text().splitlines();names=[]
             sys=root/'sys/class/mtd';sys.mkdir(parents=True);dev=root/'dev';dev.mkdir()
             for domain in ('nor0','nand0'): (root/domain).mkdir()
             for i,line in enumerate(profile):
@@ -42,7 +43,7 @@ def main():
                 (node/'device').symlink_to(root/domain)
                 (dev/f'mtd{i}').write_bytes(b'synthetic-raw-target')
                 (dev/f'mtd{i}ro').write_bytes(bytes(int(size)) if name in ('0:ART','mfginfo','0:APPSBLENV','0:BOOTCONFIG','0:BOOTCONFIG1') else b'synthetic-readonly-region')
-            target=names.index('rootfs');source=names.index('rootfs_1');art=names.index('0:ART');envindex=names.index('0:APPSBLENV')
+            target=names.index('rootfs' if target_slot==0 else 'rootfs_1');source=names.index('rootfs' if slot==0 else 'rootfs_1');art=names.index('0:ART');envindex=names.index('0:APPSBLENV')
             data=bytearray((dev/f'mtd{art}ro').read_bytes());data[64:70]=bytes.fromhex('001122334455');(dev/f'mtd{art}ro').write_bytes(data)
             ubi=root/'sys/class/ubi';ubi.mkdir()
             for u,mtd,rootname in (('ubi6',source,'ubi_rootfs'),('ubi8',target,'ubi_rootfs')):
@@ -62,9 +63,9 @@ def main():
             (crit/'OFFDEVICE_VERIFIED').write_text(hashlib.sha256((crit/'SHA256SUMS').read_bytes()).hexdigest()+'\n')
             (root/'etc').mkdir();(root/'etc/version').write_text(''.join(line.replace('\t','=')+'\n' for line in (base/'profiles/XV3-8/source.tsv').read_text().splitlines()))
             (root/'tmp').mkdir();(root/'tmp/fw_env.config').write_text(f'/dev/mtd{envindex} 0x0 0x10000 0x10000 1\n')
-            proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text('ubi.mtd=rootfs_1 root=ubi6:ubi_rootfs');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
+            proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text(('ubi.mtd=rootfs' if slot==0 else 'ubi.mtd=rootfs_1')+' root=ubi6:ubi_rootfs');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
             (dev/'urandom').write_bytes(bytes(range(64)))
-            (root/'environment.json').write_text('{"image":"1","bootcmd":"aq_load_fw&&bootipq","factory_keep":"untouched"}')
+            (root/'environment.json').write_text(json.dumps({'image':str(slot),'bootcmd':'aq_load_fw&&bootipq','factory_keep':'untouched'}))
             tools=root/'bin';tools.mkdir()
             actor=tools/'actor'
             actor.write_text(r'''#!/usr/bin/env python3
@@ -110,7 +111,9 @@ elif cmd=='ubiupdatevol':Path(a[0]).write_bytes(Path(a[1]).read_bytes())
 elif cmd=='fw_setenv':
  data=json.loads((root/'environment.json').read_text());file=Path(a[a.index('-s')+1])
  for line in file.read_text().splitlines():
-  k,_,v=line.partition(' ');data[k]=v
+  k,_,v=line.partition(' ')
+  if v:data[k]=v
+  else:data.pop(k,None)
  (root/'environment.json').write_text(json.dumps(data))
 elif cmd=='mount':
  mnt=Path(a[-1]);store=root/'overlay-store';store.mkdir(exist_ok=True)
@@ -129,7 +132,7 @@ elif cmd=='sync':pass
 else:sys.exit(99)
 ''');actor.chmod(0o700)
             for cmd in ('ubidetach','ubiformat','ubiattach','ubimkvol','mknod','ubiupdatevol','fw_setenv','fw_printenv','mount','umount','sync','ls'): (tools/cmd).symlink_to('actor')
-            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='7.2-r1',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),FAIL_OPERATION=str(fail),CERT_TARGET='1' if cert else '0')
+            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='7.2-r1',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),SLOT=str(slot),FAIL_OPERATION=str(fail),CERT_TARGET='1' if cert else '0')
             return root,env,names
 
         script=r'''
@@ -153,8 +156,8 @@ oem_adapter_migrate 'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
         root,env,names=fixture();r=run(root,env,True)
         assert 'handoff=one-shot-armed' in r.stdout
         data=__import__('json').loads((root/'environment.json').read_text())
-        assert 'thor_ab_version' not in data and data['thor_installer_target']=='0'
-        assert data['factory_keep']=='untouched' and 'saveenv && run thor_boot0' in data['bootcmd']
+        assert 'thor_ab_version' not in data and data['thor_installer_target']==str(1-a.source_slot)
+        assert data['factory_keep']=='untouched' and f'saveenv && run thor_boot{1-a.source_slot}' in data['bootcmd']
         # Check this newly constructed vault with the unchanged shipped .8
         # consumer. Only its final command invocation and hardware readers are
         # isolated; board_files/manifest/hash checks execute byte-for-byte.
@@ -178,12 +181,12 @@ vault_check "$VAULT_CHECK"
         shipped=base/'tests/fixtures/thor-2026.10.05.8'
         identity=(shipped/'usr/libexec/ucentral-installer-identity').read_text()
         context=json.loads(re.search(r'^const CONTEXT_COMMAND = (".*");$',identity,re.M)[1])
-        bridge=root/'incoming-core.sh';bridge.write_text('ab_family(){ AB_ENV=thor; }; ab_identity(){ ab_family; AB_FAMILY=thor; AB_MODEL=XV3-8; AB_ACTIVE=0; }; ab_getenv(){ fw_printenv -c fixture -n "$1"; }\n')
+        bridge=root/'incoming-core.sh';bridge.write_text('ab_family(){ AB_ENV=thor; }; ab_identity(){ ab_family; AB_FAMILY=thor; AB_MODEL=XV3-8; AB_ACTIVE=$((1-SLOT)); }; ab_getenv(){ fw_printenv -c fixture -n "$1"; }\n')
         system=root/'incoming-system.sh';system.write_text('get_mac_label_dt(){ echo 00:11:22:33:44:55; }; get_mac_label(){ echo 00:11:22:33:44:55; }\n')
         context=context.replace('/lib/functions/system.sh',str(system)).replace('/lib/functions/cambium-ab.sh',str(bridge))
         result=subprocess.run(['sh','-c',context],env=env,capture_output=True,text=True,check=True)
         binding=dict(line.split('\t',1) for line in (root/'overlay-store/upper/root/.cambium-installer-settings/binding.tsv').read_text().splitlines())
-        assert result.stdout.strip().split('\t')==[binding['serial'],'thor','XV3-8','0',binding['target_slot'],binding['job_id'],binding['image_sha256']]
+        assert result.stdout.strip().split('\t')==[binding['serial'],'thor','XV3-8',str(1-a.source_slot),binding['target_slot'],binding['job_id'],binding['image_sha256']]
         boot=(shipped/'usr/libexec/ucentral-installer-boot').read_text().replace('/lib/functions/system.sh',str(system)).replace('/lib/functions/cambium-ab.sh',str(bridge))
         subprocess.run(['sh','-c',boot,'incoming','pending'],env=env,check=True,capture_output=True)
         trace=(root/'trace').read_text().splitlines()

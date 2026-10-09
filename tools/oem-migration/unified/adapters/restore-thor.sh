@@ -58,6 +58,10 @@ oem_restore_boot_preflight() {
     thor_stored=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || return 1
     case "$thor_expected" in 'aq_load_fw; '*) thor_expected="aq_load_fw && ${thor_expected#aq_load_fw; }" ;; esac
     [ "$thor_stored" = "$thor_expected" ] || [ "$thor_stored" = "aq_load_fw; ${thor_expected#aq_load_fw && }" ] || return 1
+    # Actual 7.2 S03fwenv_cleanup resets the whole ENV and reboots when
+    # these native-only routing fields persist. Refuse that incompatible
+    # handoff before any writer; never let OEM repair discard the saved source.
+    awk -F= '$1=="mtdids" || $1=="fsbootargs" {if(length(substr($0,index($0,"=")+1)))bad=1}END{exit bad}' "$OEM_WORK/thor-restore-env-check" || return 1
     awk -F= '$1~/^thor_installer_/ || $1~/^thor_restore_/ {if(length(substr($0,index($0,"=")+1)))bad=1}END{exit bad}' "$OEM_WORK/thor-restore-env-check" || return 1
     OEM_BOOT_PRIOR_SLOT=$OEM_SOURCE_SLOT OEM_BOOT_TARGET_SLOT=$OEM_TARGET_SLOT
     OEM_BOOT_MODE=persist-prior-before-load OEM_BOOT_WATCHDOG=manual-reset
@@ -205,4 +209,76 @@ oem_restore_migrate() (
         exit 1
     fi
     printf 'handoff=one-shot-oem-armed\noem_boot=not-yet-verified\ndefaults_committed=no\n'
+)
+
+
+# Confirm actual running OEM bytes separately from reset/identity retirement.
+oem_restore_confirm_inspect() {
+    local thor_running thor_mtd
+    oem_restore_thor_load && oem_adapter_inspect restored-oem || return 1
+    thor_running=$OEM_SOURCE_SLOT;thor_mtd=$OEM_SOURCE_MTD
+    THOR_CONFIRMED_OEM_UBI=$THOR_ACTIVE_UBI
+    OEM_SOURCE_SLOT=$((1-thor_running));OEM_TARGET_SLOT=$thor_running
+    OEM_SOURCE_MTD=$OEM_TARGET_MTD;OEM_TARGET_MTD=$thor_mtd
+    oem_context_check
+}
+
+oem_restore_confirm_preflight() {
+    local thor_file thor_expected thor_saved thor_kver thor_id thor_sha thor_bytes thor_name thor_node
+    [ "$OEM_SOURCE_RELEASE" = 7.2-r1 ] && oem_context_check || return 1
+    thor_file=$(oem_bundle_member profiles/XV3-8/source.tsv) || return 1
+    oem_source_identifiers_check "${OEM_SYS_ROOT:-}/etc/version" "$thor_file" && oem_restore_thor_payloads || return 1
+    ab_thor_board cambiumnetworks,xv3-8 || return 1
+    AB_ENV_CONFIG=$THOR_ENV_CONFIG
+    thor_expected=$(ab_thor_boot_command "$OEM_SOURCE_SLOT") || return 1
+    case "$thor_expected" in 'aq_load_fw; '*) thor_expected="aq_load_fw && ${thor_expected#aq_load_fw; }" ;; esac
+    thor_saved=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || return 1
+    [ "$thor_saved" = "$thor_expected" ] || [ "$thor_saved" = "aq_load_fw; ${thor_expected#aq_load_fw && }" ] || return 1
+    [ "$(ab_getenv thor_restore_prior)" = "$thor_saved" ] &&
+        [ "$(ab_getenv thor_restore_oem)" = "setenv image $OEM_TARGET_SLOT && aq_load_fw && bootipq" ] &&
+        [ "$(ab_getenv thor_ab_confirmed)" = "$OEM_SOURCE_SLOT" ] &&
+        [ "$(ab_getenv "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] || return 1
+    thor_file=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
+    OEM_PROTECTED_RANGES=$OEM_WORK/thor-confirm-ranges.tsv;OEM_WRITE_PLAN=$OEM_WORK/thor-confirm-plan.tsv
+    oem_physical_inventory "$thor_file" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$OEM_PROTECTED_RANGES" || return 1
+    printf 'environment-fields\t%s\tfields\tpreserve-unlisted\n' "$(oem_physical_index "${OEM_SYS_ROOT:-}/sys/class/mtd" 0:APPSBLENV)" > "$OEM_WRITE_PLAN" || return 1
+    oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
+    # Genuine mounted OEM SquashFS, never a RAM root carrying version files.
+    awk -v block="/dev/ubiblock${THOR_CONFIRMED_OEM_UBI#ubi}_1" -v named="$THOR_CONFIRMED_OEM_UBI:ubi_rootfs" '
+      ($1=="/dev/root" || $1==block || $1==named || $1=="mtd:ubi_rootfs") && $3=="squashfs" && ("," $4 ",")~/,ro,/ {if($2=="/")direct++;if($2=="/rom")rom++}
+      $2=="/" && $3=="overlay" && ("," $4 ",")~/,rw,/ {merged++}
+      END{exit !(direct==1 || (rom==1 && merged==1))}' "${OEM_SYS_ROOT:-}/proc/mounts" || return 1
+    # The actual 7.2 S04kernel_check compares these two exact build strings.
+    thor_kver=$(uname -r) || return 1
+    case "$thor_kver" in ''|*[!A-Za-z0-9._+-]*) return 1 ;; esac
+    cmp -s "${OEM_SYS_ROOT:-}/lib/modules/$thor_kver/kernel_build_version" "${OEM_SYS_ROOT:-}/proc/version" || return 1
+    for thor_id in 0 1; do
+        if [ "$thor_id" = 0 ]; then thor_name=kernel thor_bytes=3905000 thor_sha=9650712dc69a82342ebe2dee753110805dd6154024f305db80ae91d1165a93aa
+        else thor_name=ubi_rootfs thor_bytes=40233806 thor_sha=75bc545a6cad4fb66642798194318be02a32cf21cd4cd07caf08a75da48a3214; fi
+        oem_ubi_child_check "${OEM_SYS_ROOT:-}/sys/class/ubi" "$OEM_TARGET_MTD" "$THOR_CONFIRMED_OEM_UBI" "$thor_id" "$thor_name" || return 1
+        thor_node=${OEM_SYS_ROOT:-}/dev/${THOR_CONFIRMED_OEM_UBI}_$thor_id
+        [ "$(head -c "$thor_bytes" "$thor_node" | sha256sum | awk '{print $1}')" = "$thor_sha" ] || return 1
+    done
+}
+
+oem_restore_confirm() (
+    local thor_context thor_key thor_value
+    thor_context=$(oem_context_fingerprint) || exit 1
+    oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$thor_context" ] && oem_restore_confirm_preflight || exit 1
+    oem_restore_recovery && oem_backup_receipt_check "$OEM_RECOVERY_DIR" || exit 1
+    oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$thor_context" ] && oem_restore_confirm_preflight || exit 1
+    umask 077
+    oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
+    printf '%s\n' bootcmd image thor_restore_state thor_ab_state thor_ab_target > "$OEM_WORK/thor-env-allowed" || exit 1
+    : > "$OEM_WORK/thor-confirm-rollback.tsv" || exit 1
+    for thor_key in bootcmd image thor_restore_state thor_ab_state thor_ab_target; do
+        thor_value=$(fw_printenv -c "$THOR_ENV_CONFIG" -n "$thor_key") || thor_value=
+        printf '%s %s\n' "$thor_key" "$thor_value" >> "$OEM_WORK/thor-confirm-rollback.tsv" || exit 1
+    done
+    printf 'image %s\nbootcmd aq_load_fw&&bootipq\nthor_restore_state confirmed\nthor_ab_state confirmed\nthor_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/thor-confirm.tsv" || exit 1
+    if ! oem_thor_environment_batch "$OEM_WORK/thor-confirm.tsv"; then
+        oem_thor_environment_batch "$OEM_WORK/thor-confirm-rollback.tsv" || :
+        exit 1
+    fi
+    printf 'oem_boot=confirmed\ndefaults_committed=no\nidentity_retired=no\n'
 )

@@ -1,11 +1,10 @@
 # Frozen Thor shared-release interface
 
-Forward source: exact XV3-8/SKU00000013 OEM7.2-r1, retained build tuple in
-`profiles/XV3-8/source.tsv`, running bank1 to incoming bank0. Inspection supports
-both slots for evidence, but forward installation admits only the original
-reviewed direction. Source-only ENV persistence/readback precedes detach/format;
-the repeated source inspector remains compatible with that expected ENV state.
-Unlisted ENV fields and all unique regions stay protected.
+Forward source is exact XV3-8/SKU00000013 OEM7.2-r1, with the retained build
+tuple in `profiles/XV3-8/source.tsv`. Both source0→target1 and source1→target0
+use the same actual .8 parts and the corresponding physical profile/FIT bank
+configuration. Source-only ENV persistence/readback precedes target operations;
+all unlisted ENV fields and unique regions stay protected.
 
 ## Authenticated local release members
 
@@ -13,12 +12,13 @@ The shared SHA256SUMS ledger must cover every member below before preflight.
 The operator launcher/framework files retain their existing shared assembly.
 No helper fetches lazily or streams HTTP to flash.
 
-- `adapters/thor.sh`, `adapters/restore-thor.sh`, `adapters/thor-handoff.sh`
+- `adapters/thor.sh`, `adapters/restore-thor.sh`, `adapters/thor-handoff.sh`,
+  `adapters/upgrade-thor.sh`
 - `lib/cambium-installer-settings.sh` (existing FORMAT2 producer/stager)
 - `runtime/cambium-ab.sh`, `runtime/cambium-ab-upgrade.sh`,
   `runtime/cambium-ab-thor.sh` (existing prepared allocator/boot source)
 - `profiles/XV3-8/source.tsv`, `critical.tsv`, `payloads.tsv`, `vault-assets.tsv`,
-  `mtd-slot0.tsv` for forward; `mtd-openwifi-slot0.tsv` and
+  `mtd-slot0.tsv`/`mtd-slot1.tsv` for forward; `mtd-openwifi-slot0.tsv` and
   `mtd-openwifi-slot1.tsv` for reverse
 - `payloads/XV3-8/image.bin`, `kernel.bin`, `rootfs.bin`
 - `payloads/shared-radio/thor-bdwlan.b215.accton`
@@ -145,3 +145,39 @@ proved busy sources cause no attachment. No real device/ENV action was taken.
 root/file hashes and both already-decoded signed OEM object paths on cnbeacon.
 These are publisher input receipts, not new AP ELF/libc admission checks.
 Publication remains on hold pending review of these targeted corrections.
+
+## Clean return and reuse composition
+
+The confirmation phase observes the actually running OEM bank, healthy mounted
+SquashFS, exact signed7.2 kernel/root readbacks, the vendor kernel-build check,
+physical geometry and pending/prior selectors. It repeats those checks after
+critical backup, then commits only native bootcmd/image and confirmation fields.
+It does not reboot, run a factory reset or retire an identity. The known OEM
+startup resets ENV on nonempty mtdids/fsbootargs; reverse preflight refuses
+that incompatible handoff before writing rather than permitting an implicit
+OEM repair to discard the saved source.
+
+After separately authorized defaults reset and unused-store retirement, forward
+admits the exact confirmed-return marker tuple only when both unused certificate
+stores are absent. The held native target must have kernel0/rootfs1/overlay2 and
+its own raw vault3; unknown children, residual identity, foreign/corrupt vault
+or busy aliases refuse. The raw-vault parser is the reviewed Jaguar parser with
+the Thor file/model/ART bindings, not a new archive format or issuer gate.
+Only inactive software and old overlay are reclaimed. Vault3 is neither resized
+nor written; cert4 is created only from proven absence. The original fresh-OEM
+format path remains separate. Entire raw-vault bytes are compared throughout.
+
+Both complete source-only round-trip directions passed on actual pinned input
+bytes: return→running OEM confirmation→explicit config-reset actor→explicit
+unused-store-retirement actor→fresh forward reuse. Six residual-cert/vault/
+namespace refusal cases and eight RAM-root/kernel/root/pending-selector
+confirmation refusals passed. Device, boot, backup transport, reset and
+retirement are declared fixture boundaries; no real identity action occurred.
+
+Installed readiness is a separate read-only phase. It loads actual installed
+helpers, never the publisher's corrected runtime cache. Confirmed single-native
+state reports conversion required; actual bare .8's unsafe older trial command
+reports unsupported. Ready also requires actual installed source-persistence
+support, correct source routing, existing native upgrade preflight and own-vault
+validation. Four exact .8 cases passed without ENV mutation. No installed .8
+first-normal-upgrade support is inferred from these source changes.
