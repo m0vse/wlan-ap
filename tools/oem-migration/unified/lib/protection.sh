@@ -152,7 +152,7 @@ oem_env_preserved() (
  awk 'NF!=1 || $1!~/^[A-Za-z0-9_]+$/ || $1~/^(eth.*addr|serial.*|.*[Mm][Aa][Cc].*|.*[Cc][Aa][Ll].*)$/ || seen[$1]++ {bad=1} END{exit bad || NR<1}' "$allowed" || return 1
  awk '
   FILENAME==ARGV[1]{allow[$0]=1;next}
-  {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_]+$/)bad=1}
+  {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_#.-]+$/)bad=1}
   FILENAME==ARGV[2]{if(seenbefore[key]++)bad=1;old[key]=$0;next}
   {if(seenafter[key]++)bad=1;new[key]=$0}
   END{for(key in old)if(!allow[key] && old[key]!=new[key])bad=1;for(key in new)if(!allow[key] && old[key]!=new[key])bad=1;exit bad}' "$allowed" "$before" "$after"

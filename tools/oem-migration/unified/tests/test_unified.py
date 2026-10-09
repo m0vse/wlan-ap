@@ -222,4 +222,19 @@ class BoundaryTests(unittest.TestCase):
             self.assertEqual(run().returncode,0);(root/'after').write_text('bootcmd=new\nethaddr=donor\ncustom=keep=exact\n');self.assertNotEqual(run().returncode,0)
             (root/'allowed').write_text('bootcmd\nethaddr\n');self.assertNotEqual(run().returncode,0)
 
+    def test_factory_environment_names_preserved_without_mutation_authority(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            original='bootcmd=old\nserial#=own-unit\nfactory.region=EU\nvendor-option=keep=exact\n'
+            (root/'before').write_text(original);(root/'allowed').write_text('bootcmd\n')
+            run=lambda:self.shell(f'. "{BASE}/lib/protection.sh";oem_env_preserved "{root}/before" "{root}/after" "{root}/allowed"')
+            (root/'after').write_text(original.replace('bootcmd=old','bootcmd=new'));self.assertEqual(run().returncode,0)
+            for field in ('serial#=own-unit','factory.region=EU','vendor-option=keep=exact'):
+                for replacement in (field+'-changed',''):
+                    (root/'after').write_text(original.replace('bootcmd=old','bootcmd=new').replace(field,replacement))
+                    self.assertNotEqual(run().returncode,0,(field,replacement))
+            (root/'after').write_text(original.replace('bootcmd=old','bootcmd=new'))
+            for field in ('serial#','factory.region','vendor-option'):
+                (root/'allowed').write_text('bootcmd\n'+field+'\n');self.assertNotEqual(run().returncode,0,field)
+
 if __name__=='__main__':unittest.main()
