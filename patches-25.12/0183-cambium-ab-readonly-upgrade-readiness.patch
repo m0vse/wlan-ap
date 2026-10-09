@@ -1,0 +1,29 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: expose read-only family sysupgrade readiness
+
+Keep onboarding separate from upgrade readiness. Missing family hooks report
+unsupported; this dispatcher never changes environment or converts a bank.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-ab/files/cambium-ab.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab.sh
+@@ -116,6 +116,18 @@
+ ab_hook() {
+ 	[ -n "${AB_FAMILY:-}" ] && command -v "ab_${AB_FAMILY}_$1" >/dev/null 2>&1
+ }
+ 
++# Shared operator readiness; hardware checks belong to the existing family hook.
++ab_sysupgrade_readiness() {
++	AB_UPGRADE_READY=unsupported
++	AB_UPGRADE_REASON=readiness-hook-unavailable
++	if ab_hook sysupgrade_readiness; then
++		"ab_${AB_FAMILY}_sysupgrade_readiness" || return 1
++	fi
++	case "$AB_UPGRADE_READY" in ready|onboarded|unsupported) ;; *) return 1 ;; esac
++	case "$AB_UPGRADE_REASON" in ''|*[!A-Za-z0-9._:-]*) return 1 ;; esac
++	return 0
++}
++
+ # The slot named by ubi.mtd= on the kernel command line.
+ ab_running_slot() {

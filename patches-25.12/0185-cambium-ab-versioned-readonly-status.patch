@@ -1,0 +1,43 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: provide versioned read-only operator status
+
+Keep legacy no-argument output while adding consistent help, usage errors
+and a schema-versioned TSV status for every family. No state is changed.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-ab/files/cambium-ab-status
++++ b/package/cambium/cambium-ab/files/cambium-ab-status
+@@ -4,9 +4,32 @@
+ # (confirmed, armed, trial-started, rolled-back, fallback, writing,
+ # write-failed, converting, convert-failed) and the last failure.
+ 
++format=legacy
++case "$*" in
++ '') ;;
++ '--help') echo 'Usage: cambium-ab-status [--format tsv]'; exit 0 ;;
++ '--format tsv') format=tsv ;;
++ *) echo 'Usage: cambium-ab-status [--format tsv]' >&2; exit 2 ;;
++esac
+ . "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
+ . "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"
+ 
++if [ "$format" = tsv ]; then
++ printf 'schema\t1\noperation\tab-status\n'
++ ab_family || { printf 'mode\tnone\nstatus\tunsupported\n';exit 1; }
++ if ab_converted; then mode=ab;else mode=oem-fallback;fi
++ for name in mode family model running confirmed target state last_failure oem_image board_data; do
++  case "$name" in
++   mode) value=$mode;; family) value=$AB_FAMILY;; model) value=$AB_MODEL;;
++   running) value=$(ab_running_slot 2>/dev/null) || exit 1;;
++   board_data) value=$(cat "${CAMBIUM_BDF_STATUS:-/tmp/cambium-board-data.status}" 2>/dev/null) || value=;;
++   *) value=$(ab_getenv "${AB_ENV}_ab_$name") || value=;;
++  esac
++  value=$(printf '%s' "$value" | tr '\t\r\n' '   ')
++  printf '%s\t%s\n' "$name" "$value"
++ done
++ exit 0
++fi
+ ab_family || { echo 'mode=none'; exit 0; }
+ if ab_converted; then
+ 	echo 'mode=ab'

@@ -1,0 +1,26 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: refuse the deprecated untested conversion override
+
+Unsupported models must not reach flash or environment operations. Reject the
+old override before sourcing runtime libraries; keep normal verified conversion
+and resume options intact. This is not the unified OEM migration path.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-ab/files/cambium-ab-convert
++++ b/package/cambium/cambium-ab/files/cambium-ab-convert
+@@ -18,6 +18,14 @@
+ # running bank must hold a valid device-data vault (filled from the OEM slot
+ # at first boot), and the boot environment must already boot the running
+ # bank first. The OEM image value is kept as ${AB_ENV}_ab_oem_image.
++
++for argument in "$@"; do
++ case "$argument" in
++ --allow-untested)
++  echo 'cambium-ab-convert: --allow-untested is no longer supported; use a reviewed exact-model path' >&2
++  exit 2 ;;
++ esac
++done
+ 
+ . "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
+ . "${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}"

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=certificates
-PKG_RELEASE:=19
+PKG_RELEASE:=20
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -32,6 +32,8 @@ define Package/certificates/install
 	$(INSTALL_BIN) ./files/etc/init.d/early_boot $(1)/etc/init.d/early_boot
 	# Recursive copies preserve checkout directory modes; normalize last.
 	$(INSTALL_DIR) $(1)/etc/ucentral
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) ./files/usr/sbin/cambium-ab-ready $(1)/usr/sbin/cambium-ab-ready
 endef
 
 $(eval $(call BuildPackage,certificates))
