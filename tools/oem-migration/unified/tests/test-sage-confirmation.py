@@ -116,5 +116,15 @@ oem_restore_sage_write_check ubi-update "$((2*OEM_TARGET_SLOT))" || exit 1
    result=subprocess.run(['sh','-c',script],env=env,capture_output=True,text=True)
    self.assertEqual(result.returncode,0,result.stderr)
    self.assertFalse((case.r/'operations').exists())
+ def test_normal_oem_root_activity_not_golden_image_equality_after_boot(self):
+  fixture=self.fixture(0)
+  fixture[0].f.put('dev/ubi0_3',b'legitimate OEM UBIFS firstboot journal/config changes')
+  result=self.invoke(fixture);self.assertEqual(result.returncode,0,result.stderr)
+  self.assertIn('OEM confirmed',result.stdout)
+ def test_wrong_running_root_changed_runtime_or_kernel_refuses_confirmation(self):
+  for path,data in (('proc/cmdline','ubi.mtd=fs root=ubi0:rootfs0 rootfstype=squashfs\n'),('etc/version','PRODUCT=sage\nVERSION=4.2.3.4-r1\n'),('dev/ubi0_2',b'wrong deployed kernel')):
+   fixture=self.fixture(0);fixture[0].f.put(path,data)
+   result=self.invoke(fixture);self.assertNotEqual(result.returncode,0)
+   self.assertFalse((fixture[0].r/'operations').exists())
 
 if __name__=='__main__':unittest.main()

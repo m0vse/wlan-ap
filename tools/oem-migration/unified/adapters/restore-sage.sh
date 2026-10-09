@@ -215,7 +215,10 @@ oem_restore_confirm_preflight() {
  index=$(oem_physical_index "$CSR_MTD_SYS" fs) || return 1
  oem_ubi_child_check "$CSR_UBI_SYS" "$index" ubi0 "$((2*OEM_TARGET_SLOT))" "linux$OEM_TARGET_SLOT" &&
   oem_ubi_child_check "$CSR_UBI_SYS" "$index" ubi0 "$((2*OEM_TARGET_SLOT+1))" "rootfs$OEM_TARGET_SLOT" || return 1
- csp_readback "$CSR_KERNEL" "$CSR_DEV/ubi0_$((2*OEM_TARGET_SLOT))" && csp_readback "$CSR_ROOT" "$CSR_DEV/ubi0_$((2*OEM_TARGET_SLOT+1))" &&
+ # The authenticated runtime ledger and actual root command line establish
+ # deployed OEM files. Its mounted UBIFS root can legitimately change after
+ # boot; raw golden-root equality belongs to preboot staging, not confirmation.
+ csp_readback "$CSR_KERNEL" "$CSR_DEV/ubi0_$((2*OEM_TARGET_SLOT))" &&
   oem_restore_sage_native_reset_instructions >/dev/null
 }
 oem_restore_confirm() {
