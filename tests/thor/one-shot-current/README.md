@@ -17,9 +17,9 @@ must match the supported routing, confirmed slot and saved marker; only the
 exact old/current PHY prefix difference is admitted. No first-OEM conversion
 bypass or firmware/persistence contract change is introduced.
 
-Actual prepared package releases are `cambium-ab` 18 → 19 and
-`cambium-thor-support` 12 → 13. Both packages are bumped because both installed
-source files change. This is not a firmware build or release.
+The common package 18 → 19 bump is owned by generic pre-erase patch 0184;
+0181 does not duplicate it. Thor support is bumped 12 → 13 here. Integrate
+the pair before release; this is not a firmware build or release.
 
 ## Validation
 
@@ -31,7 +31,7 @@ python3 tools/oem-migration/unified/tests/family-thor-boot.py PREPARED_OPENWRT_R
 python3 tests/ab-one-shot/test-trial.py --core PREPARED_OPENWRT_ROOT/package/cambium/cambium-ab/files/cambium-ab.sh
 ```
 
-On 9 October 2026, 72 Thor cases passed: patch application without fuzz,
+On 9 October 2026, 86 Thor cases passed: patch application without fuzz,
 unchanged current common core, both slot directions, stable and prior-only
 defaults, both mixed and fully legacy PHY prefixes, failed fields/save/load,
 PHY failure, legacy wrong-bank routing refusals and no
@@ -73,3 +73,10 @@ can call this hook through `ab_hook boot_command_matches`; it must not reject
 the qualified legacy PHY prefix solely because the new generator uses `&&`.
 Only the two complete known commands for the specified bank are accepted;
 wrong-bank FIT/offset routing remains refused. No generic helper is edited here.
+
+Final 0184 ABI is `ab_thor_prior_boot_valid STORED EXPECTED`, discoverable via
+`ab_hook prior_boot_valid`. This thin wrapper first checks EXPECTED equals the
+current active-bank generator, then calls the exact stored-command matcher for
+AB_ACTIVE. Fixture checks accept current and qualified legacy commands, and
+refuse a wrong expected bank, wrong stored bank (both PHY prefixes), unknown
+command or appended command. No environment or target argument is regenerated.

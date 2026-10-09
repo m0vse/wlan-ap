@@ -32,7 +32,7 @@ def main():
         subprocess.run(['patch', '--fuzz=0', '-p1', '-d', str(work / 'source'),
                         '-i', str(patch)], check=True, capture_output=True)
         assert (tree / 'cambium-ab.sh').read_bytes() == (source_base / 'cambium-ab/files/cambium-ab.sh').read_bytes()
-        assert 'PKG_RELEASE:=19' in (tree.parent / 'Makefile').read_text()
+        assert (tree.parent / 'Makefile').read_bytes() == (source_base / 'cambium-ab/Makefile').read_bytes()
         module = work / 'source/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh'
         protected = work / 'protected'
         protected.mkdir()
@@ -71,6 +71,18 @@ ab_getenv() {
  esac
 }
 ab_bank_hex() { echo 0x6000000; }
+if [ "$ACTION" = prior-callback ]; then
+ expected=$(ab_thor_boot_command "$AB_ACTIVE") || exit 1
+ stored=$(ab_getenv "thor_boot$AB_ACTIVE") || exit 1
+ case "$CALLBACK_FAULT" in
+ expected-bank) expected=$(ab_thor_boot_command "$AB_TARGET");;
+ unknown) stored='unqualified command';;
+ suffix) stored="$stored; run arbitrary";;
+ esac
+ ab_hook prior_boot_valid && ab_thor_prior_boot_valid "$stored" "$expected" || exit 1
+ printf '%s\n' CALLBACK_PASSED > "$TRACE"
+ exit 0
+fi
 if [ "$ACTION" = preflight ] || [ "$MODE" = upgrade ]; then
  ab_identity() { return 0; }
  ab_certificate_lebs() { echo 20; }
@@ -135,7 +147,7 @@ eval "$command"
                 'MODULE': str(module), 'TRACE': str(work / 'trace'),
                 'DURABLE': str(work / 'durable'), 'MARKER': '1', 'FAULT': '',
                 'ACTION': 'execute', 'BAD_BOOT_VAR': '', 'LEGACY_BOOT_SLOT': '',
-                'BAD_LEGACY_ROUTING': ''}
+                'BAD_LEGACY_ROUTING': '', 'CALLBACK_FAULT': ''}
 
         def run_case(name, prior, mode='upgrade', fault='', override=None, accepted=True):
             env = {**base, 'PRIOR': str(prior), 'CONFIRMED': str(prior), 'MODE': mode,
@@ -154,6 +166,19 @@ eval "$command"
 
         for prior in (0, 1):
             candidate = 1 - prior
+            for prefix in ('', 'both'):
+                trace, saved = run_case(f'0184-callback-{prior}-{"legacy" if prefix else "current"}-accepted', prior,
+                                       override={'ACTION': 'prior-callback', 'LEGACY_BOOT_SLOT': prefix})
+                assert trace == ['CALLBACK_PASSED'] and saved is None
+            for fault in ('expected-bank', 'unknown', 'suffix'):
+                trace, saved = run_case(f'0184-callback-{prior}-{fault}-refused', prior,
+                                       override={'ACTION': 'prior-callback', 'CALLBACK_FAULT': fault}, accepted=False)
+                assert not trace and saved is None
+            for prefix in ('', 'both'):
+                trace, saved = run_case(f'0184-callback-{prior}-wrong-bank-{"legacy" if prefix else "current"}-refused', prior,
+                                       override={'ACTION': 'prior-callback', 'LEGACY_BOOT_SLOT': prefix,
+                                                 'BAD_LEGACY_ROUTING': f'thor_boot{prior}'}, accepted=False)
+                assert not trace and saved is None
             legacy = {'CORE': str(source_base / 'cambium-ab/files/cambium-ab.sh'),
                       'UPGRADE': str(source_base / 'cambium-ab/files/cambium-ab-upgrade.sh'),
                       'CAMBIUM_AB_LIB': str(source_base / 'cambium-ab/files/cambium-ab.sh'),

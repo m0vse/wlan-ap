@@ -6,17 +6,6 @@ rollback defaults valid, and validate their actual bank routing before writes.
 
 Signed-off-by: Phil Taylor <phil@m0vse.uk>
 ---
---- a/package/cambium/cambium-ab/Makefile
-+++ b/package/cambium/cambium-ab/Makefile
-@@ -1,7 +1,7 @@
- include $(TOPDIR)/rules.mk
- 
- PKG_NAME:=cambium-ab
--PKG_RELEASE:=18
-+PKG_RELEASE:=19
- PKG_LICENSE:=GPL-2.0-only
- PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
- 
 --- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
 +++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
 @@ -97,6 +97,9 @@
@@ -40,7 +29,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  		"$mtdparts" "$part" "$config"
  }
  
-@@ -65,5 +65,40 @@
+@@ -65,5 +65,49 @@
  ab_thor_guarded_command() {
  	local boot
  	boot=$(ab_thor_boot_command "$1") || return 1
@@ -81,6 +70,15 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +	expected=$(ab_thor_boot_command "$1") || return 1
 +	legacy="aq_load_fw; ${expected#aq_load_fw && }"
 +	[ "$2" = "$expected" ] || [ "$2" = "$legacy" ]
++}
++
++# Common pre-erase 0184 compatibility ABI: STORED EXPECTED.
++# Confirm EXPECTED is the current active-bank command before permitting
++# the exact qualified legacy/current stored command for that same bank.
++ab_thor_prior_boot_valid() {
++	[ "$#" = 2 ] || return 1
++	[ "$2" = "$(ab_thor_boot_command "$AB_ACTIVE")" ] || return 1
++	ab_thor_boot_command_matches "$AB_ACTIVE" "$1"
 +}
 --- a/package/cambium/cambium-thor-support/Makefile
 +++ b/package/cambium/cambium-thor-support/Makefile
