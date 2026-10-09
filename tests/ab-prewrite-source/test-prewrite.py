@@ -8,10 +8,31 @@ from pathlib import Path
 import argparse,json,os,subprocess,tempfile
 
 repo=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser();p.add_argument('--core',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--core',type=Path);a=p.parse_args()
+
+def reconstruct_upgrade(root):
+ """Replay only this file's real repository hunks; no SDK/private input."""
+ relative='package/cambium/cambium-ab/files/cambium-ab-upgrade.sh'
+ created=next((repo/'patches-25.12').glob('0124-*.patch'))
+ section=created.read_text().split('+++ b/'+relative+'\n',1)[1].split('\ndiff --git ',1)[0]
+ target=root/relative;target.parent.mkdir(parents=True)
+ target.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
+ marker='--- a/'+relative+'\n'
+ for path in sorted((repo/'patches-25.12').glob('*.patch')):
+  if not created.name<path.name<'0184-':continue
+  text=path.read_text()
+  if marker not in text:continue
+  fragment=marker+text.split(marker,1)[1]
+  fragment=fragment.split('\ndiff --git ',1)[0].split('\n--- a/',1)[0].split('\n--- /dev/null',1)[0]
+  patch=root/'component.patch';patch.write_text(fragment.rstrip()+'\n')
+  subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(patch)],cwd=root,check=True,capture_output=True)
+ subprocess.run(['sh','-n',str(target)],check=True)
+ return target.read_text()
+
 with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
  root=Path(td);files=root/'package/cambium/cambium-ab/files';files.mkdir(parents=True)
- original=a.core.read_text();core=files/'cambium-ab-upgrade.sh';core.write_text(original)
+ original=a.core.read_text() if a.core else reconstruct_upgrade(root/'repository-source')
+ core=files/'cambium-ab-upgrade.sh';core.write_text(original)
  recipe=files.parent/'Makefile'
  recipe.write_text('include $(TOPDIR)/rules.mk\n\nPKG_NAME:=cambium-ab\nPKG_RELEASE:=18\nPKG_LICENSE:=GPL-2.0-only\nPKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>\n\n')
  subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0184-cambium-ab-preserve-working-source-before-write.patch')],cwd=root,check=True,capture_output=True)
@@ -24,7 +45,10 @@ with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
   section=patch.split(marker,1)[1].split('\ndiff --git ',1)[0]
   source=root/(family+'.sh');source.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
   modules[family]=source
- modules['miami']=repo/'feeds/tip/cambium-miami-persistent/files/cambium-ab-miami.sh'
+ # Test-only frozen renderer: the shared main tree does not admit Miami
+ # firmware profiles. Prefer actual port source when it is present.
+ miami=repo/'feeds/tip/cambium-miami-persistent/files/cambium-ab-miami.sh'
+ modules['miami']=miami if miami.is_file() else Path(__file__).with_name('fixtures')/'miami-boot.sh'
  modules['sage']=repo/'tests/installer/sage-existing-openwifi-r2/modules/cambium-ab-sage.sh'
  cases=[('jaguar','cambiumnetworks,xv2-2',''),('cheetah','cambiumnetworks,xv2-21x',''),
         ('thor','cambiumnetworks,xv3-8',''),('gambit','cambiumnetworks,e400',''),
