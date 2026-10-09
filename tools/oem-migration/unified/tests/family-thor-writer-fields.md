@@ -1,150 +1,81 @@
-# Thor local writer-piece integration
+# Thor shared-installer source pieces
 
-These are source helpers for the single shared installer, not a second launcher
-or a released migration adapter. `adapters/thor.sh` implements actual read-only `oem_adapter_inspect` and the
-local existing-child pieces. It does not define all four complete dispatcher
-phases until their exact OEM transition mapping is wired.
-An incomplete adapter therefore cannot satisfy the dispatcher's phase checks.
-The main-reviewed boot increment is separate at
-`/private/tmp/thor-one-shot-current-main`, frozen HEAD
-`327c42f8b035f6c19bd77df38188c1eef7365c13`.
+These helpers belong to the single shared installer. They are not a complete
+migration adapter: only inspection and individual preparation/write/staging
+pieces are implemented, so the dispatcher's full phase checks still refuse
+installation. No AP writes, builds, ENV changes or reboots were performed.
 
-## Implemented pieces
+## Implemented and verified
 
-`oem_thor_local_payload kernel|rootfs` reads only independently authenticated
-local bundle members. `profiles/XV3-8/payloads.tsv` has exactly two tab-separated
-rows: role, direct role-specific `payloads/XV3-8/ROLE.bin` path, positive byte
-count at most 100663296, lowercase SHA256. Every row and payload is a pinned
-bundle member, and role-specific descriptor size/hash must match actual bytes.
-This does not itself establish FIT/DT/rootfs/model boot semantics; reuse the
-existing release image validators before calling the writer.
+`oem_adapter_inspect` publishes context only after checking the exact model,
+source release, own ART identity, physical bank geometry and offsets, current
+cmdline/UBI binding, healthy original OEM volumes, explicit ENV configuration
+and the complete warning-free fw_printenv response. The retained vendor source
+is genuinely Thor 7.2-r1; source metadata and the complete 26-partition profiles
+are in `profiles/XV3-8`. Thirty inspection cases passed.
 
-`oem_thor_update_existing_child kernel|rootfs` requires context derived by the
-owner's preflight: exact SKU `00000013`/XV3-8, distinct source/target slots and
-physical MTDs, a uniquely attached target UBI and the complete protected-range
-inventory. It calls actual shared `oem_write_boundary` and `oem_ubi_child_check`
-before updating only existing kernel child 0 or rootfs child 1. It repeats child
-health/binding and checks exact pinned payload readback afterward. It retains
-a per-role writing/failure/verified journal. No bank erase, child removal,
-create/resize, ENV arm, network fetch, service stop or reboot is implemented.
+`oem_thor_local_payload` authenticates both local kernel/root members against
+bundle and descriptor pins. `oem_thor_update_existing_child` constrains writes
+to the inactive bank's existing kernel0/rootfs1 children, checks shared physical
+boundaries and UBI health, then verifies exact readback. Twenty-three cases
+passed. Original OEM `ubi_rootfs` is not silently renamed by this helper.
 
-The existing OEM `ubi_rootfs` child is not silently reclassified or removed.
-Both-bank conversion and restore need the owner's explicit, validated
-name/ID/layout transition and volume inventory. Certificate/vault children are
-not accepted writer roles. The current active bank and unique ART/MFG/boot data
-are never writable via this helper. A backup does not override those boundaries.
-All required release objects must be staged locally by the common network
-owner before any earlier erase; these helpers perform no network operation.
+`oem_thor_prepare_native_layout` requires the published 2026.10.05.8 image and
+its actual kernel/root pins, local authenticated runtime and reusable radio
+assets, the complete physical inventory, verified off-device minimal backup,
+and an idle target containing only the two original OEM volumes. It supports
+the original reviewed source-bank1/target-bank0 direction. It calls the existing
+`ab_prepare_bank` allocator unchanged, constraining each operation to the same
+physical target. It reserves eight vault and twenty certificate LEBs before
+allocating the remaining overlay. It performs no ENV arm or payload/seed write.
+Unknown, unattached or resumed OpenWiFi targets are refused rather than erased.
 
-## Required mapping, context and remaining source gap
+Seventeen allocator/wrapper cases passed using the actual allocator, current
+shared helpers and actual .8 kernel/root bytes. Failures were injected at all
+11 operation points. Synthetic active-bank, ART, manufacturing, ENV and boot
+bytes remained unchanged. Device operations and character-node lookup are
+fixture actors; this is not physical power-loss qualification.
 
-The existing common model record needs exact SKU/family/model/adapter/tested OEM
-source version; no Thor OEM version is guessed here. The owner can use the
-existing `/etc/version` reader only with its actual tested exact version row,
-and derive serial from verified own factory identity, not an operator field.
-Source/target bank proof includes cmdline, current UBI parent, ENV image and
-captured 96 MiB/0x20000/2048/126976 geometry. The original OEM writer reference
-allows OEM on bank 1 and target bank 0; bank-0 OEM requires its actual reviewed
-opposite-direction mapping, not an inherited flag.
+`oem_thor_stage_native_overlay` binds the existing FORMAT2 stager to the exact
+inspected Thor serial, release, slots, target MTD/overlay and published image.
+Nine actual producer/stager cases passed, including fresh umask077, public
+upper0755, private directories700/files600, context and failure checks. Image
+policy and mount records are fixture boundaries; no real OverlayFS/UID81
+execution, enrollment, device or boot operation occurred.
 
-The release also needs the complete eight-column physical profile, genuine
-manufacturing-identity location, minimal critical backup map, destination
-kernel/root pins and both FIT/root-bank configurations, shared model/revision
-radio/BDF/regdb assets, exact local-only helper inventory, and original OEM
-restore payload/container extraction mapping. None requires a new registry,
-issuer or signing service. Do not copy unique ART/calibration into generic
-release payloads. Reuse existing protected FORMAT2 producer/stager with actual
-serial/source slot/target slot/source contract/image hash/job/controller/EST
-context. No private input/key/CSR/cert material is included in this commit.
+Character nodes must be nonsymlinks with major/minor matching their sysfs
+identity. All release objects must be fully authenticated locally before
+preparation. No streaming download, unique identity in generic assets, new
+registry, issuer or watchdog admission gate is introduced. Existing manual
+reset/power-cycle one-shot scope remains unchanged.
 
-The remaining full adapter phases are exact released source preflight,
-critical backup/upload receipt, the explicit OEM volume-layout transition,
-vault/FORMAT2 staging and readback, sync/unmount and existing one-shot arm.
-Restore must preserve the previous working OpenWiFi slot and identity, and
-factory configuration reset needs exact nonunique targets. Those gaps are not
-passing stub cases and do not admit Thor installation. No new watchdog gate is
-added; the agreed manual-reset/power-cycle one-shot scope remains.
+## Remaining integration work
 
-## Fixtures
+The owner still needs the real reusable radio/vault contents map and own-device
+vault construction/readback; safe attachment/resume handling; composition of
+payload writes, FORMAT2 staging/readback, sync/unmount and the reviewed armer;
+and native mixed-bank confirmation plus the first normal sysupgrade while the
+OEM bank remains intact. Converted-to-OEM restoration needs its own validated
+volume transition and exact nonunique configuration reset operation.
+
+Profiles must account for genuine exposed master MTD nodes if present; their
+names cannot be invented or omitted. The shared backup helper's named
+BOOTCONFIG allowance was fixed upstream to accept the actual 128 KiB records.
+Use the updated shared helper; never truncate those protected records.
+
+The .8 artifact does not by itself establish that later source boot fixes are
+packaged. The completed boot fix remains separate and is not reopened here.
+No full migration, restore or first-sysupgrade readiness is claimed.
+
+## Running the focused fixtures
+
+Each test prints its precise fixture boundaries. Pass the current shared helper
+location explicitly when testing this source branch against the owner's code.
 
 ```sh
-python3 tools/oem-migration/unified/tests/family-thor-existing-child.py PATH_TO_UNIFIED_OWNER_LIB
+python3 tools/oem-migration/unified/tests/family-thor-inspection.py COMMON_LIB
+python3 tools/oem-migration/unified/tests/family-thor-existing-child.py COMMON_LIB
+python3 tools/oem-migration/unified/tests/family-thor-profiles.py COMMON_LIB
+python3 tools/oem-migration/unified/tests/family-thor-seed.py SETTINGS_LIB
+python3 tools/oem-migration/unified/tests/family-thor-layout.py COMMON_LIB PREPARED_RUNTIME_ROOT ACTUAL_PROVIDER
 ```
-
-23 cases passed with the actual owner `common.sh` and `protection.sh` from
-`/private/tmp/unified-oem-wlan-ap/tools/oem-migration/unified/lib`: both banks and
-roles, local pin/size/descriptor failures, active aliases, wrong parents,
-duplicate UBI attachments/names, unhealthy markers, protected/overlapping
-ranges, partial update/retry and readback/metadata failures. Character-device
-lookup and ubiupdatevol are temporary-file actors; actual bundle/range/child
-logic executes. Synthetic active-bank/ART/MFG/ENV/BOOTCONFIG/certificate/vault
-sentinels stay unchanged. No device, network, mounts, firmware build, real key
-prompt or ENV/boot action occurs. This is not physical power-loss or complete
-forward/restore qualification.
-
-## Retained source fields now implemented
-
-`oem_adapter_inspect` clears stale context and only publishes it after complete
-read-only validation. It uses the shared `/etc/version` reader (VERSION token),
-unique physical `rootfs`/`rootfs_1` names, sizes/erase/write geometry and exact
-physical offsets, cmdline `ubi.mtd`/root, uniquely bound dynamic UBI index and
-healthy `kernel`/`ubi_rootfs` children. The explicit named NOR ENV configuration
-must agree across /etc and /tmp; `fw_printenv -c ... -n image/bootcmd` must agree
-with the actual source slot and original `aq_load_fw&&bootipq` default. Exact
-XV3-8 factory base identity is read from own 256 KiB ART at byte offset 0x40,
-length six, matching the retained reference; no radio-MAC arithmetic or donor
-identity is used. No manufacturing registry or new watchdog gate is introduced.
-
-25 actual inspection/context fixtures pass: both source banks, relocated MTD
-indices, synthetic exact-version acceptance and old/new/missing/conflicting
-version refusal, physical/root/volume/ENV disagreement, wrong model and invalid
-ART identity. Shared context enforces the released exact version; the synthetic
-`fixture-supported` token does not admit a real OEM version. Source file bytes
-and modes stay unchanged. fw_printenv and character-device lookup are actors,
-while actual inspection, shared readers and own-ART byte extraction execute.
-
-The concrete unavailable release inputs are: the exact real OEM version row and
-its applicable capabilities; authenticated complete model/source physical and
-minimal-critical profiles (including the genuine unique manufacturing record
-if it is a separate backup requirement); local destination image/contents/FIT
-metadata plus model/revision reusable radio assets; original OEM restoration
-payload/container mapping; and the approved kernel/ubi_rootfs-to-rootfs layout
-transition and allocation/inventory needed before the child writer can run.
-Keep all unknown/outside-target unique regions untouched. Absence of a factory
-record format does not justify a new registry or copying full customer config.
-Original stock `thor_write` uses ubiformat/factory UBI, which this shared child
-plan intentionally does not pretend to authorize. The FORMAT2 seed/native
-worker already exists; the owner wires it after the actual transition and
-readback, using existing private 0700/0600/public-upper0755 rules.
-
-## Actual retained inputs resolved on 9 October 2026
-
-See `../profiles/XV3-8/README.md` and `vendor-source.json`: independently
-verified vendor source really has VERSION 7.2-r1, product thor and the exact
-source build tuple. The OEM DT resolves manufacturing as a separate 64 KiB
-NOR partition and OEM config as 64 KiB, not the converted tail size. Both target
-profiles and minimal five-region critical map are present. Four actual shared
-physical-profile cases pass; the real 128 KiB BOOTCONFIG records expose the
-common helper's current 64 KiB cap, which remains explicitly refused.
-
-Inspection now validates the complete fw_printenv response, including stderr,
-before consuming image/bootcmd. Failed exit, bad-CRC default warnings, unknown
-warnings, duplicate keys and malformed responses are refused. Thirty actual
-inspection/context cases pass. The existing local child checks still pass 23.
-No full ENV or private capture is committed or emitted.
-
-The vendor FORMAT3 body contains raw UBI directly after its IMAGE delimiter,
-not xz; extracted dynamic kernel ID0 reserves31 LEBs and ubi_rootfs ID1 reserves
-317. Meaningful FIT and SquashFS pins are recorded from the shared vendor file,
-not the per-unit raw-bank capture. The verified vendor root includes the
-format/attach/detach/create/remove/update/rename tools, resolving the assumed
-missing-ubiformat/RAM-carrier question for this exact source release.
-
-Remaining concrete work is the current OpenWiFi factory/parts/vault contents
-mapping, full live profile including genuine exposed master containers,
-shared whole-target/rename/allocation plan binding, FORMAT2 and vault/certificate
-allocation/readback before arm, native mixed-bank confirmation/first-normal-
-sysupgrade state and converted-to-OEM/default-reset transition. The original
-stock factory reference is not a current OpenWiFi artifact and is not relabeled
-as one. This is no longer blocked on an unknown real OEM version or unknown
-manufacturing offset; no new registry, issuer or watchdog gate is introduced.

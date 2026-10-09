@@ -53,19 +53,22 @@ OpenWiFi payloads, exact source/profile validation and the published one-shot
 boot contract. Its old generic lazy fetch/full-bank backup behavior must not
 be inherited. No per-device raw bank is the reusable OEM restore payload.
 
-Remaining integration inputs are the current OpenWiFi factory/parts/vault
-artifact mapping and contents pins (the retained stock factory is historical),
-explicit whole-target/child-transition authorization in the shared write plan,
-empty-store/private FORMAT2 staging plus seed readback, and the existing native
-confirmation/first-normal-sysupgrade state handling while OEM remains intact.
-Restore additionally needs the converted layout/volume transition while
-preserving previous OpenWiFi and protected identity, and a specific nonunique
-default-reset recipe. These are implementation/profile interfaces, not new
-manufacturing or watchdog admission gates. No AP write, build or reboot was
-performed, and no firmware or private capture is committed.
+The current OpenWiFi .8 image and actual kernel/root contents pins are now
+resolved. The Thor preparation wrapper reuses the existing allocator and the
+FORMAT2 wrapper reuses the existing stager; focused fixture results and their
+limits are recorded in `../../tests/family-thor-writer-fields.md`.
 
-The common backup helper accepts the actual 131072-byte BOOTCONFIG records,
-binding BOOTCONFIG0 only to BOOTCONFIG and BOOTCONFIG1 only to BOOTCONFIG1
-(with or without the OEM `0:` prefix). Larger records, swapped names and other
-partitions refuse. This closes the backup-plan interface gap; it does not
-establish the remaining migration or restoration integration above.
+Remaining integration includes the real reusable radio/vault map and own
+vault readback, safe attachment/resume handling, complete phase composition,
+and native mixed-bank confirmation/first-normal-sysupgrade handling. Restore
+needs the converted layout transition and specific nonunique default-reset
+recipe. No full adapter readiness is claimed.
+
+The common owner fixed the named BOOTCONFIG allowance to accept the actual
+131072-byte records. Use the updated shared helper with the exact source
+profile; do not truncate records or invent smaller limits. No AP write, build
+or reboot was performed, and no firmware or private capture is committed.
+
+The shared backup plan binds BOOTCONFIG0 only to BOOTCONFIG and BOOTCONFIG1
+only to BOOTCONFIG1, with or without the OEM `0:` prefix. Larger records,
+swapped names and other partitions refuse.
