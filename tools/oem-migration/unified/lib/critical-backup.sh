@@ -9,11 +9,12 @@ oem_backup_plan_check() {
   $3!~/^[0-9]+$/ || $3==0 || $3>2097152 || $4!~/^[A-Za-z0-9_.-]+$/ {bad=1}
   $1=="MFG" && $3>262144 {bad=1}
   $1=="ENV" && $3>131072 {bad=1}
-  $1~/^BOOTCONFIG/ && $3>65536 {bad=1}
+  $1~/^BOOTCONFIG/ && $3>131072 {bad=1}
   $1=="ART" && $2!~/^(0:ART|ART|art)$/ {bad=1}
   $1=="MFG" && $2!~/^(mfginfo|0:mfginfo)$/ {bad=1}
   $1=="ENV" && $2!~/^(0:APPSBLENV|u-boot-env)$/ {bad=1}
-  $1~/^BOOTCONFIG/ && $2!~/^(0:BOOTCONFIG1?|BOOTCONFIG1?)$/ {bad=1}
+  $1=="BOOTCONFIG0" && $2!~/^(0:BOOTCONFIG|BOOTCONFIG)$/ {bad=1}
+  $1=="BOOTCONFIG1" && $2!~/^(0:BOOTCONFIG1|BOOTCONFIG1)$/ {bad=1}
   $1=="UNITDATA" && $2!="MRAM" {bad=1}
   END{exit bad || NR<2 || NR>6}' "$1"
 }
