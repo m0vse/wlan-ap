@@ -93,3 +93,44 @@ subsequent device migration, reboot or reset.
 Use the [operator quick starts](README.md) for migration and restoration.
 Factory reset is a separate explicit OEM-side step after healthy confirmation;
 confirmation itself must not run a rebooting vendor reset script.
+
+## Retire an old native identity for a clean test
+
+Keep the previous OpenWiFi identity through the unconfirmed OEM trial. After
+healthy OEM confirmation and the separate factory reset, the shared Sage
+`certificates` volume still exists. A fresh forward install must refuse it.
+The operator must first complete the reviewed own-device identity backup and
+named-store retirement procedure; do not erase the parent UBI device or use
+another AP's identity. The exact store cleanup is a separate action, requiring
+the matching live parent/name/volume, mount/alias checks and explicit consent.
+The current generic confirmation command does not authorize or perform it.
+
+Then use the already-delivered `/app/reset_native_enrollment.py` inside the
+existing PKI service's Root operator shell. Obtain this AP's exact serial and
+current leaf fingerprint from its authoritative enrollment record. The tool
+defaults to a read-only dry run:
+
+```sh
+python3 /app/reset_native_enrollment.py --state /state/issuer.sqlite \
+  --serial "$SERIAL" --expected-leaf "$LEAF"
+```
+
+After the AP is on OEM/offline, the old private identity has been cleared and
+will not be restored, and a new backup destination under a Root-private parent
+has been selected, the operator explicitly applies the fresh dry-run binding:
+
+```sh
+python3 /app/reset_native_enrollment.py --state /state/issuer.sqlite \
+  --serial "$SERIAL" --expected-leaf "$LEAF" --apply \
+  --expected-binding "$BINDING" --backup-dir "$NEW_PRIVATE_BACKUP_DIR" \
+  --offline-identity-cleared
+```
+
+These variables are the exact reviewed values, not a reusable example AP or an
+onboarding key. The existing tool creates a private database recovery copy,
+retains signing/revocation/audit history and resets only the named AP's old
+active membership/grant/cache state. It does not clear AP storage or enforce
+instant gateway-session revocation. The normal authenticated operator workflow
+then prepares a fresh approved batch, and the common installer privately
+prompts for its key. No issuer, AP identity or database reset is part of release
+assembly or the source fixtures.

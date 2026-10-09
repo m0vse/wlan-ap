@@ -92,6 +92,16 @@ cleared while the OEM attempt is still unconfirmed. A one-shot OEM boot whose
 saved selector still names the prior OpenWiFi slot is not a normal OEM source
 for the forward installer; do not change that selector manually.
 
+For a clean test on an AP that previously enrolled in OpenWiFi, factory reset
+also leaves the shared native certificate store intact. The forward installer
+deliberately rejects that existing store. After healthy OEM confirmation, use
+the reviewed operator procedure to back up and retire only the named old
+identity store, then the existing offline enrollment-reset tool and a fresh
+approved enrollment batch. Neither `--confirm` nor the vendor reset scripts
+perform that retirement. Until the exact store cleanup has been reviewed and
+explicitly performed, the restore/reset sequence is not a complete clean-test
+workflow. See [the operator retirement steps](RELEASE-ASSEMBLY.md#retire-an-old-native-identity-for-a-clean-test).
+
 The E410 pilot's nonempty NOR factory-config partition is read-only from
 OpenWiFi. Complete reset therefore needs a reviewed OEM-side procedure after
 healthy OEM confirmation, including refreshing the NOR config backup so stale
