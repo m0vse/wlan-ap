@@ -2,7 +2,7 @@
 # Validated physical partition inventory and child-only write plans.
 # Columns: physical MTD index, offset, size, role, flash-domain. Roles are model-derived,
 # never supplied by an operator flag. Essential boot code stays protected.
-oem_ranges_check() {
+oem_ranges_check() (
  awk -F '\t' '
   NF!=5 || $1!~/^[0-9]+$/ || $2!~/^[0-9]+$/ || $3!~/^[0-9]+$/ || $3==0 || seen[$1]++ {bad=1}
   $4!~/^(identity|bootcode|active-oem|target|environment|shared-parent|container|nonunique-config)$/ {bad=1}
@@ -17,10 +17,10 @@ oem_ranges_check() {
     }
    exit bad || NR<3
   }' "$1"
-}
+)
 # For Sage, target and active banks share one UBI MTD: parent must be marked
 # shared-parent, never eraseable. Child identity + UBI parent proof is required.
-oem_write_boundary() {
+oem_write_boundary() (
  inventory=$1 plan=$2
  oem_ranges_check "$inventory" || return 1
  awk -F '\t' -v target="${OEM_TARGET_SLOT:-}" '
@@ -38,10 +38,10 @@ oem_write_boundary() {
   }
   $3!~/^[0-9]+$/ || $4!~/^(kernel|rootfs|rootfs_data|linux[01]|rootfs[01]|rootfs_data[01])$/ {bad=1}
   END{exit bad || FNR<1}' "$inventory" "$plan"
-}
+)
 # Proof ties one named child ID to one physical parent. Refuse alternate
 # attachments, duplicate volume names and unhealthy UBI before each operation.
-oem_ubi_child_check() {
+oem_ubi_child_check() (
  sys=$1 parent=$2 device=$3 child=$4 expected=$5
  case "$device:$child" in ubi[0-9]*:[0-9]*) ;; *) return 1;; esac
  [ "$(cat "$sys/$device/mtd_num")" = "$parent" ] || return 1
@@ -60,9 +60,9 @@ oem_ubi_child_check() {
   [ "$(cat "$node")" != "$expected" ] || count=$((count+1))
  done
  [ "$count" = 1 ]
-}
+)
 
-oem_physical_index() {
+oem_physical_index() (
  sys=$1 name=$2 found= count=0
  for node in "$sys"/mtd[0-9]*; do
   index=${node##*/mtd};case "$index" in ''|*[!0-9]*) continue;; esac
@@ -72,7 +72,7 @@ oem_physical_index() {
  done
  [ "$count" = 1 ] || return 1
  printf '%s\n' "$found"
-}
+)
 # Profile: name, flash-domain, offset, size, type, erase, write, role.
 # Profiles come from reviewed model/source geometry, not operator guesses.
 oem_physical_inventory() (
@@ -108,7 +108,7 @@ oem_physical_inventory() (
  [ "$expected" -eq "$actual" ] && oem_ranges_check "$output"
 )
 
-oem_mtd_domain() {
+oem_mtd_domain() (
  node=$1
  if [ -e "$node/device" ]; then
   actual=$(readlink -f "$node/device") || return 1
@@ -116,8 +116,8 @@ oem_mtd_domain() {
   actual=$(readlink -f "$node") || return 1
  fi
  case "$actual" in */mtd/mtd[0-9]*) printf '%s\n' "${actual%/mtd/mtd*}";; *) [ -e "$node/device" ] && printf '%s\n' "$actual";; esac
-}
-oem_mtd_offset() {
+)
+oem_mtd_offset() (
  node=$1 name=$2 role=$3 physical=$4
  if [ -r "$node/offset" ]; then cat "$node/offset";return;fi
  # Whole-chip masters have offset zero by definition; their name must be the
@@ -140,10 +140,10 @@ EOF_RANGE
  case "$start:$end" in 0x*:0x*) ;; *) return 1;; esac
  [ "$((end-start))" = "$(cat "$node/size")" ] || return 1
  printf '%s\n' "$((start))"
-}
+)
 # Complete fw_printenv snapshots, plus an explicit reviewed field list.
 # Any unrelated addition, deletion or value change is a failure.
-oem_env_preserved() {
+oem_env_preserved() (
  before=$1 after=$2 allowed=$3
  awk 'NF!=1 || $1!~/^[A-Za-z0-9_]+$/ || $1~/^(eth.*addr|serial.*|.*[Mm][Aa][Cc].*|.*[Cc][Aa][Ll].*)$/ || seen[$1]++ {bad=1} END{exit bad || NR<1}' "$allowed" || return 1
  awk '
@@ -152,11 +152,11 @@ oem_env_preserved() {
   FILENAME==ARGV[2]{if(seenbefore[key]++)bad=1;old[key]=$0;next}
   {if(seenafter[key]++)bad=1;new[key]=$0}
   END{for(key in old)if(!allow[key] && old[key]!=new[key])bad=1;for(key in new)if(!allow[key] && old[key]!=new[key])bad=1;exit bad}' "$allowed" "$before" "$after"
-}
+)
 
 # Bank-local preflight: one precisely identified idle rootfs block view may be
 # reported for removal after INSTALL confirmation. Everything else stays busy.
-oem_bank_idle_check() {
+oem_bank_idle_check() (
  sys=$1 dev=$2 proc=$3 parent=$4 ubi=$5 allow_root_map=$6
  [ "$(cat "$sys/$ubi/mtd_num")" = "$parent" ] || return 1
  count=0
@@ -185,8 +185,8 @@ oem_bank_idle_check() {
   path=$(readlink "$fd" 2>/dev/null) || return 1
   case "$path" in "$dev/$ubi"|"$dev/${ubi}_"*|"$dev/mtd$parent"|"$dev/mtd${parent}ro"|"$dev/ubiblock${ubi#ubi}_"*) return 1;; esac
  done
-}
-oem_bank_remove_idle_root_map() {
+)
+oem_bank_remove_idle_root_map() (
  sys=$1 dev=$2 proc=$3 parent=$4 ubi=$5
  oem_bank_idle_check "$sys" "$dev" "$proc" "$parent" "$ubi" yes || return 1
  node=${sys%/ubi}/block/ubiblock${ubi#ubi}_1
@@ -196,12 +196,12 @@ oem_bank_remove_idle_root_map() {
   [ ! -e "$node" ] || return 1
  fi
  oem_bank_idle_check "$sys" "$dev" "$proc" "$parent" "$ubi" no
-}
+)
 
 # OEM-side factory config reset is permitted only after explicit healthy OEM
 # confirmation. This helper never changes data itself or authorizes identity,
 # boot-code, source-bank or whole-chip erasure.
-oem_confirmed_config_boundary() {
+oem_confirmed_config_boundary() (
  inventory=$1 plan=$2
  [ "${OEM_RESTORE_CONFIRMED:-}" = 1 ] && [ "${OEM_RUNNING_OS:-}" = oem ] || return 1
  oem_ranges_check "$inventory" || return 1
@@ -212,4 +212,4 @@ oem_confirmed_config_boundary() {
   $1=="ubi-config-reset"{if(role[$2]!="shared-parent" || $3!~/^[0-9]+$/ || $4!="nvram")bad=1;next}
   {bad=1}
   END{exit bad || FNR<1}' "$inventory" "$plan"
-}
+)

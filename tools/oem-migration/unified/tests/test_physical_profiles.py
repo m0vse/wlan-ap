@@ -3,6 +3,21 @@ from pathlib import Path
 BASE=Path(__file__).resolve().parents[1]
 
 class PhysicalProfileTests(unittest.TestCase):
+    def test_helpers_preserve_caller_variables_on_success_and_refusal(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);sys=root/'ubi';(sys/'ubi0').mkdir(parents=True);(sys/'ubi0_1').mkdir()
+            (sys/'ubi0/mtd_num').write_text('3\n')
+            for name,value in [('name','rootfs'),('upd_marker','0'),('corrupted','0')]:
+                (sys/'ubi0_1'/name).write_text(value+'\n')
+            variables='count sys node name parent device child expected inventory plan before after allowed offset size type found index dev proc ubi allow_root_map number path start end rows'
+            calls=[f'oem_ubi_child_check "{sys}" 3 ubi0 1 rootfs',f'oem_ubi_child_check "{sys}" 3 ubi0 1 wrong']
+            for call in calls:
+                initialize=';'.join(f'{v}=caller_{v}' for v in variables.split())
+                verify=';'.join(f'[ "${v}" = caller_{v} ] || exit 99' for v in variables.split())
+                script=f'. "{BASE}/lib/protection.sh";{initialize};{call} >/dev/null 2>&1;result=$?;{verify};exit "$result"'
+                p=subprocess.run(['sh','-c',script],capture_output=True)
+                self.assertEqual(p.returncode,0 if call.endswith('rootfs') else 1)
+
     def fixture(self,root,slot):
         sys=root/'sys';sys.mkdir();chips=root/'chips';chips.mkdir()
         for name in ('nand0','nor0'):(chips/name).mkdir()
