@@ -1,0 +1,200 @@
+[
+  {
+    "sku": "00000006",
+    "family": "gambit",
+    "model": "E400",
+    "fixture_oem_version": "synthetic-gambit-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 50331648,
+    "layout": "raw-yaffs",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "0000000a",
+    "family": "sage",
+    "model": "E410",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 134217728,
+    "layout": "shared-ubi-pair",
+    "fit": "config@5",
+    "production_admitted": false
+  },
+  {
+    "sku": "0000000b",
+    "family": "sage",
+    "model": "E600",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "0000000d",
+    "family": "sage",
+    "model": "E430W",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "0000000e",
+    "family": "sage",
+    "model": "E700",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "0000000f",
+    "family": "sage",
+    "model": "E430H",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "00000010",
+    "family": "sage",
+    "model": "E510",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "00000013",
+    "family": "thor",
+    "model": "XV3-8",
+    "fixture_oem_version": "synthetic-thor-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 100663296,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000014",
+    "family": "jaguar",
+    "model": "XV2-2",
+    "fixture_oem_version": "synthetic-jaguar-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 54525952,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000015",
+    "family": "sage",
+    "model": "E410B",
+    "fixture_oem_version": "synthetic-sage-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 134217728,
+    "layout": "shared-ubi-pair",
+    "fit": "config@17",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000016",
+    "family": "jaguar",
+    "model": "XV2-2T0",
+    "fixture_oem_version": "synthetic-jaguar-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "0000001f",
+    "family": "jaguar",
+    "model": "XV2-2T1",
+    "fixture_oem_version": "synthetic-jaguar-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 100663296,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000020",
+    "family": "jaguar",
+    "model": "XE3-4",
+    "fixture_oem_version": "synthetic-jaguar-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 100663296,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000021",
+    "family": "jaguar",
+    "model": "XE3-4TN",
+    "fixture_oem_version": "synthetic-jaguar-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "00000022",
+    "family": "cheetah",
+    "model": "XV2-22H",
+    "fixture_oem_version": "synthetic-cheetah-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "00000023",
+    "family": "cheetah",
+    "model": "XV2-21X",
+    "fixture_oem_version": "synthetic-cheetah-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 100663296,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  },
+  {
+    "sku": "00000024",
+    "family": "cheetah",
+    "model": "XV2-23T",
+    "fixture_oem_version": "synthetic-cheetah-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": null,
+    "layout": "unknown",
+    "fit": null,
+    "production_admitted": false
+  },
+  {
+    "sku": "0000002c",
+    "family": "miami",
+    "model": "X7-35X",
+    "fixture_oem_version": "synthetic-miami-v1",
+    "fixture_openwifi_version": "synthetic-openwifi-v1",
+    "bank_bytes": 100663296,
+    "layout": "bank-local-ubi",
+    "fit": "model-specific-unreleased",
+    "production_admitted": false
+  }
+]
