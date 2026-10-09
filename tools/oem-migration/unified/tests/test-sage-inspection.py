@@ -115,5 +115,9 @@ class SageAdapterTests(unittest.TestCase):
    if failure=='header':data=b'BADHDR'+data[6:]
    if failure=='multicast':data=data[:6]+b'010456abcdef'+data[18:]
    mfg.write_bytes(data);self.assertNotEqual(self.invoke(case,'detect').returncode,0)
+ def test_factory_header_uses_existing_hexdump_not_absent_od(self):
+  case=self.setup_case();root,_,_,bin,_,_=case
+  od=bin/'od';od.write_text('#!/bin/sh\necho forbidden >> "$FIXTURE/MUTATOR_INVOKED"\nexit 77\n');od.chmod(0o755)
+  result=self.invoke(case,'detect');self.assertEqual(result.returncode,0,result.stderr)
 
 if __name__=='__main__':unittest.main()

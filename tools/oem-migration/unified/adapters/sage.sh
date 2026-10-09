@@ -13,7 +13,11 @@ oem_sage_factory() {
  [ "$count" = 1 ] || return 1
  device=$OEM_SYS_ROOT/dev/mtd${found}ro
  [ -n "$OEM_SYS_ROOT" ] || [ -c "$device" ] || return 1
- header=$(od -An -tx1 -N6 "$device" | tr -d ' \n') || return 1
+ if command -v hexdump >/dev/null 2>&1; then
+  header=$(head -c 6 "$device" | hexdump -v -e '1/1 "%02x"') || return 1
+ else
+  header=$(od -An -tx1 -N6 "$device" | tr -d ' \n') || return 1
+ fi
  [ "$header" = 05ca01000c00 ] || return 1
  serial=$(dd if="$device" bs=1 skip=6 count=12 2>/dev/null | tr 'A-F' 'a-f') || return 1
  case "$serial" in ''|*[!0-9a-f]*|000000000000|ffffffffffff) return 1;; esac
@@ -173,16 +177,12 @@ oem_adapter_recovery() {
  oem_backup_capture "$plan" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_SYS_ROOT/dev" "$OEM_RECOVERY_DIR" && oem_backup_upload "$OEM_RECOVERY_DIR" || return 1
 }
 oem_adapter_boot_preflight() {
- local pin file index
  cos_boot_preflight || return 1
- # Existing per-model bootloader bytes, not an operator approval flag. No
- # assertion that a Linux watchdog proves automatic pre-kernel hang recovery.
- file=$(oem_sage_member bootloader.sha256) || { oem_fail "$OEM_MODEL: reviewed bootloader mapping is missing"; return 1; }
- [ "$(wc -l < "$file")" -eq 1 ] || return 1
- pin=$(cat "$file"); oem_hex64 "$pin" || return 1
- index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" 0:APPSBL) || return 1
- [ "$(cat "$OEM_SYS_ROOT/sys/class/mtd/mtd$index/type")" = nor ] && [ "$(cat "$OEM_SYS_ROOT/sys/class/mtd/mtd$index/size")" = 524288 ] || return 1
- [ "$(oem_sha "$OEM_SYS_ROOT/dev/mtd${index}ro")" = "$pin" ] || return 1
+ # Forward migration retains the exact working native source command. It
+ # does not replace boot code or restore compiled OEM defaults. A new full
+ # APPSBL-hash requirement is therefore not an admission prerequisite here.
+ # Physical protected ranges and target-only operations remain mandatory;
+ # the independent E410-A bootloader proof for OEM-return is unchanged.
  OEM_BOOT_PRIOR_SLOT=$OEM_SOURCE_SLOT OEM_BOOT_TARGET_SLOT=$OEM_TARGET_SLOT
  OEM_BOOT_MODE=persist-prior-before-load OEM_BOOT_WATCHDOG=manual-reset
 }

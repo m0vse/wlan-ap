@@ -223,7 +223,11 @@ oem_restore_confirm_preflight() {
 }
 oem_restore_confirm() {
  oem_restore_confirm_preflight || return 1
- OEM_BACKUP_ID=$(od -An -tx1 -N16 "$OEM_SYS_ROOT/dev/urandom" | tr -d ' \n') || return 1
+ if command -v hexdump >/dev/null 2>&1; then
+  OEM_BACKUP_ID=$(head -c 16 "$OEM_SYS_ROOT/dev/urandom" | hexdump -v -e '1/1 "%02x"') || return 1
+ else
+  OEM_BACKUP_ID=$(od -An -tx1 -N16 "$OEM_SYS_ROOT/dev/urandom" | tr -d ' \n') || return 1
+ fi
  [ "${#OEM_BACKUP_ID}" = 32 ] || return 1
  oem_restore_recovery && oem_backup_receipt_check "$OEM_RECOVERY_DIR" || return 1
  CSR_RECOVERY=$OEM_RECOVERY_DIR CSR_RECEIPT=$OEM_RECOVERY_DIR/OFFDEVICE_VERIFIED CSR_RECOVERY_FORMAT=unified

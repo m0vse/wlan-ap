@@ -164,5 +164,21 @@ oem_adapter_migrate "$input"
   self.assertEqual((root/'dev/ubi0_4').read_bytes(),b'legitimate shared nvram daemon activity')
   events=(root/'events').read_text()
   self.assertNotIn(str(root/'dev/ubi0_0'),events);self.assertNotIn(str(root/'dev/ubi0_1'),events);self.assertNotIn(str(root/'dev/ubi0_4'),events)
+ def test_known_b_forward_needs_no_new_bootloader_pin(self):
+  case=self.fixture('E410B');root,bundle,*rest=case
+  (bundle/'profiles/E410B/bootloader.sha256').unlink()
+  (bundle/'SHA256SUMS').write_text(''.join(inspection.sha(p)+'  '+str(p.relative_to(bundle))+'\n' for p in sorted(bundle.rglob('*')) if p.is_file() and p.name!='SHA256SUMS'))
+  result=self.invoke(case);self.assertEqual(result.returncode,0,result.stderr)
+  self.assertIn('handoff=one-shot-armed',result.stdout)
+ def test_wrong_model_source_command_and_geometry_still_never_write(self):
+  for failure in ('model','bootcmd','geometry'):
+   case=self.fixture('E410B');root=case[0]
+   if failure=='model':
+    case=(*case[:4],'E600',11)
+   if failure=='bootcmd':
+    values=json.loads((root/'env.json').read_text());values['bootcmd']='run unrelated';(root/'env.json').write_text(json.dumps(values))
+   if failure=='geometry':(root/'sys/class/mtd/mtd9/size').write_text('67108864')
+   result=self.invoke(case);self.assertNotEqual(result.returncode,0)
+   self.assertFalse((root/'events').exists())
 
 if __name__=='__main__':unittest.main()

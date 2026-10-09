@@ -73,7 +73,11 @@ oem_adapter_inspect() {
  oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$OEM_JAGUAR_SOURCE_MTD" ubi0 0 kernel && oem_ubi_child_check "$OEM_SYS_ROOT/sys/class/ubi" "$OEM_JAGUAR_SOURCE_MTD" ubi0 1 ubi_rootfs || return 1
  index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" mfginfo) || return 1
  [ "$(cat "$OEM_SYS_ROOT/sys/class/mtd/mtd$index/size")" = 65536 ] || return 1
- header=$(od -An -tx1 -N6 "$OEM_SYS_ROOT/dev/mtd${index}ro" | tr -d ' \n') || return 1
+ if command -v hexdump >/dev/null 2>&1; then
+  header=$(head -c 6 "$OEM_SYS_ROOT/dev/mtd${index}ro" | hexdump -v -e '1/1 "%02x"') || return 1
+ else
+  header=$(od -An -tx1 -N6 "$OEM_SYS_ROOT/dev/mtd${index}ro" | tr -d ' \n') || return 1
+ fi
  [ "$header" = 05ca01000c00 ] || { oem_fail 'Jaguar manufacturing label format is not recognized'; return 1; }
  serial=$(dd if="$OEM_SYS_ROOT/dev/mtd${index}ro" bs=1 skip=6 count=12 2>/dev/null | tr 'A-F' 'a-f') || return 1
  case "$serial" in ''|*[!0-9a-f]*|000000000000|ffffffffffff) return 1;; esac
