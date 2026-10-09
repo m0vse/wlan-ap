@@ -104,7 +104,15 @@ class ForwardTests(unittest.TestCase):
   image=member(f'payloads/{model}/image.bin',b'nonflashableimage');kernel=member(f'payloads/{model}/kernel.itb',bytes.fromhex('d00dfeed')+b'nonflashablekernel');fs=member(f'payloads/{model}/rootfs.squashfs',b'hsqsnonflashableroot')
   member(profile+'source-contract','7.2-r1\n'+'a'*64+'\n');member(profile+'source-sets/runtime-implementation.set','F '+sha(root/'etc/version')+' /etc/version\n')
   member('adapters/required-source.sh',(HERE/'adapters/required-source.sh').read_bytes())
-  member(profile+'mtd.tsv',''.join(rows));member(profile+'operator-artifact-pins',sha(image)+'\n'+sha(kernel)+'\n'+sha(fs)+'\n');member(profile+'fit.tsv',f'{sha(kernel)}\t{model}\t{sku}\t{fit}\n')
+  # One provider contains BOTH source-slot maps, not a regenerated single map.
+  for source in (0,1):
+   mapped=[]
+   for row in rows:
+    fields=row.rstrip('\n').split('\t')
+    if fields[0] in ('rootfs','rootfs_1'):fields[-1]='active-oem' if fields[0]==('rootfs' if source==0 else 'rootfs_1') else 'target'
+    mapped.append('\t'.join(fields)+'\n')
+   member(profile+f'mtd-slot{source}.tsv',''.join(mapped))
+  member(profile+'operator-artifact-pins',sha(image)+'\n'+sha(kernel)+'\n'+sha(fs)+'\n');member(profile+'fit.tsv',f'{sha(kernel)}\t{model}\t{sku}\t{fit}\n')
   member(profile+'vault-board','cambiumnetworks,'+model.lower()+'\n')
   assets=[('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock',65536)] if model!='XE3-4' else [('lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma',65536),('lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma',131072)]
   lines=[]
@@ -162,5 +170,12 @@ class ForwardTests(unittest.TestCase):
    case=self.fixture();root=case[0];state=json.loads((root/'env.json').read_text());state[key]=value;(root/'env.json').write_text(json.dumps(state))
    result=self.invoke(case);self.assertNotEqual(result.returncode,0)
    self.assertFalse((root/'events').exists());self.assertEqual(json.loads((root/'env.json').read_text()),state)
+ def test_wrong_slot_roles_refuse_before_env_or_target_writes(self):
+  for slot in (0,1):
+   case=self.fixture(slot=slot);root,bundle,work,bin,model,sku=case
+   path=bundle/f'profiles/{model}/mtd-slot{slot}.tsv';path.write_bytes((bundle/f'profiles/{model}/mtd-slot{1-slot}.tsv').read_bytes())
+   (bundle/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(bundle))+'\n' for p in sorted(bundle.rglob('*')) if p.is_file() and p.name!='SHA256SUMS'))
+   result=self.invoke(case);self.assertNotEqual(result.returncode,0)
+   self.assertFalse((root/'events').exists())
 
 if __name__=='__main__':unittest.main()

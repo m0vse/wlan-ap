@@ -2,6 +2,10 @@
 # Exact Jaguar OEM inspection. No stock sysupgrade source is silently admitted
 # as an OEM writer. Publication must supply the closed bank/payload/BDF tuple.
 oem_jaguar_member() { oem_bundle_member "profiles/$OEM_MODEL/$1"; }
+oem_jaguar_physical_profile() {
+ case "$OEM_SOURCE_SLOT" in 0|1) ;;*) return 1;;esac
+ oem_jaguar_member "mtd-slot$OEM_SOURCE_SLOT.tsv"
+}
 oem_jaguar_table() {
  case "$OEM_FAMILY:$OEM_MODEL:$OEM_SKU" in
   jaguar:XV2-2:00000014) OEM_JAGUAR_BANK=54525952 OEM_JAGUAR_FIT=config@cp01-c1 OEM_JAGUAR_LEBS=392;;
@@ -109,7 +113,7 @@ oem_adapter_preflight() {
  member=$(oem_jaguar_member fit.tsv) || return 1
  awk -F '\t' -v hash="$OEM_JAGUAR_KERNEL_PIN" -v model="$OEM_MODEL" -v sku="$OEM_SKU" -v fit="$OEM_JAGUAR_FIT" \
   'NF!=4 || $1!=hash || $2!=model || $3!=sku || $4!=fit {bad=1} END{exit bad || NR!=1}' "$member" || return 1
- profile=$(oem_jaguar_member mtd.tsv) || return 1
+ profile=$(oem_jaguar_physical_profile) || return 1
  OEM_PROTECTED_RANGES=$OEM_WORK/jaguar-ranges.tsv OEM_WRITE_PLAN=$OEM_WORK/jaguar-write-plan.tsv
  oem_physical_inventory "$profile" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_PROTECTED_RANGES" || return 1
  awk -F '\t' -v active="$OEM_JAGUAR_SOURCE_MTD" -v target="$OEM_JAGUAR_TARGET_MTD" -v env="$OEM_JAGUAR_ENV_MTD" \
@@ -215,7 +219,7 @@ oem_jaguar_target_locate() {
 oem_jaguar_live_target() (
  local profile flags
  oem_jaguar_table && oem_context_check || exit 1
- profile=$(oem_jaguar_member mtd.tsv) || exit 1
+ profile=$(oem_jaguar_physical_profile) || exit 1
  oem_physical_inventory "$profile" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_PROTECTED_RANGES" && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || exit 1
  [ "$OEM_JAGUAR_SOURCE_MTD" != "$OEM_JAGUAR_TARGET_MTD" ] || exit 1
  flags=$(cat "$OEM_SYS_ROOT/sys/class/mtd/mtd$OEM_JAGUAR_TARGET_MTD/flags") || exit 1
