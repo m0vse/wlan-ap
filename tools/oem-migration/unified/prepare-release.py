@@ -14,6 +14,13 @@ def sha(path):
         for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
     return h.hexdigest()
 
+def payload_data_path(name,model):
+    if re.search(r'\.(sh|py|uc|so|pem|key)$',name):return False
+    if name.startswith(('payloads/','assets/')) and not name.startswith((f'payloads/{model}/',f'assets/{model}/')):return False
+    if re.search(r'\.(bin|itb|squashfs|ubifs|ubi|json|contents)$',name):return True
+    radio=name.startswith((f'payloads/{model}/assets/lib/firmware/',f'assets/{model}/lib/firmware/'))
+    return radio and bool(re.fullmatch(r'(bdwlan\.[A-Za-z0-9_.-]+|regdb\.bin[A-Za-z0-9_.-]*|q6_fw[01]\.(mdt|b[0-9a-fA-F]+)|iu_fw\.(mdt|b[0-9a-fA-F]+))',name.rsplit('/',1)[-1]))
+
 def prepare(provider, expected, output, controller, download, backup, metadata_first=False):
     if not re.fullmatch('[0-9a-f]{64}',expected):raise ValueError('independent provider ledger digest required')
     if provider.is_symlink():raise ValueError('symlink provider')
@@ -63,7 +70,7 @@ def prepare(provider, expected, output, controller, download, backup, metadata_f
             seen.add(key)
             for value in (name,remote):
                 if not re.fullmatch('[A-Za-z0-9_./-]+',value) or any(p in ('','.','..') for p in value.split('/')):raise ValueError('unsafe payload path')
-            if name.startswith(('lib/','adapters/','readers/','profiles/')) or not re.search(r'\.(bin|itb|squashfs|ubifs|ubi|json|contents)$',name):raise ValueError('payload map cannot download code')
+            if name.startswith(('lib/','adapters/','readers/','profiles/')) or not payload_data_path(name,model):raise ValueError('payload map cannot download code or another model data')
             if not re.fullmatch('[1-9][0-9]*',size) or int(size)>268435456 or name not in entries or entries[name]!=pin or (provider/name).stat().st_size!=int(size):raise ValueError('payload binding differs from provider')
             staged.add(name)
         if not staged:raise ValueError('empty selected payload map')

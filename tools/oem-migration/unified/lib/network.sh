@@ -3,8 +3,16 @@
 # Conservative aggregate budget: reserve an entire attempt before starting it.
 oem_payload_map_check() {
  awk -F '\t' '
+  function data(p,model,leaf,radio) {
+   if(p~/\.(sh|py|uc|so|pem|key)$/)return 0
+   if(p~/^(payloads|assets)\// && p!~("^(payloads|assets)/" model "/"))return 0
+   if(p~/\.(bin|itb|squashfs|ubifs|ubi|json|contents)$/)return 1
+   radio=(index(p,"payloads/" model "/assets/lib/firmware/")==1 || index(p,"assets/" model "/lib/firmware/")==1)
+   leaf=p;sub(/^.*\//,"",leaf)
+   return radio && leaf~/^(bdwlan\.[A-Za-z0-9_.-]+|regdb\.bin[A-Za-z0-9_.-]*|q6_fw[01]\.(mdt|b[0-9a-fA-F]+)|iu_fw\.(mdt|b[0-9a-fA-F]+))$/
+  }
   NF!=6 || $1!~/^[A-Za-z0-9_-]+$/ || $2!~/^(install|restore|confirm)$/ || seen[$1 FS $2 FS $3]++ {bad=1}
-  $3!~/^[A-Za-z0-9_.\/-]+\.(bin|itb|squashfs|ubifs|ubi|json|contents)$/ || $4!~/^[A-Za-z0-9_.\/-]+$/ {bad=1}
+  $3!~/^[A-Za-z0-9_.\/-]+$/ || !data($3,$1) || $4!~/^[A-Za-z0-9_.\/-]+$/ {bad=1}
   $3~/^\// || $4~/^\// || $3~/(^|\/)\.\.?(\/|$)/ || $4~/(^|\/)\.\.?(\/|$)/ || $3~/\/\// || $4~/\/\// {bad=1}
   $3~/^(lib|adapters|readers|profiles)\// {bad=1}
   $5!~/^[1-9][0-9]*$/ || $5>268435456 || length($6)!=64 || $6~/[^0-9a-f]/ {bad=1}

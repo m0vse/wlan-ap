@@ -4,10 +4,28 @@ import hashlib,json,os,subprocess,tempfile,unittest
 
 BASE=Path(__file__).resolve().parents[1]
 MODELS=json.loads((BASE/'tests/models.json').read_text())
-from test_unified import Fixture,seal
+from test_unified import Fixture,seal,BUILDER
 
 
 class SelectedPayloadTests(unittest.TestCase):
+    def test_actual_radio_names_agree_in_formatter_and_runtime(self):
+        records=[('XV2-2','payloads/XV2-2/assets/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock',True),
+                 ('XE3-4','payloads/XE3-4/assets/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma',True),
+                 ('XE3-4','payloads/XE3-4/assets/lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma',True),
+                 ('XV2-21X','assets/XV2-21X/lib/firmware/qcn6122/bdwlan.b60',True),
+                 ('X7-35X','payloads/X7-35X/assets/lib/firmware/IPQ5332/WIFI_FW/q6_fw0.b01',True),
+                 ('XE3-4','payloads/XV2-2/assets/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock',False),
+                 ('XE3-4','payloads/XE3-4/assets/lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma.sh',False),
+                 ('XE3-4','payloads/XE3-4/assets/lib/firmware/IPQ6018/WIFI_FW/helper.py',False),
+                 ('XE3-4','lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma',False)]
+        with tempfile.TemporaryDirectory() as td:
+            plan=Path(td)/'map'
+            for model,name,accepted in records:
+                plan.write_text(f'{model}\tinstall\t{name}\tobjects/radio-data\t65536\t'+('a'*64)+'\n')
+                result=subprocess.run(['sh','-c',f'. "{BASE}/lib/network.sh";oem_payload_map_check "{plan}"'],capture_output=True)
+                self.assertEqual(result.returncode==0,accepted,(name,result.stderr))
+                self.assertEqual(BUILDER.payload_data_path(name,model),accepted,name)
+
     def test_launcher_selects_before_prompt_and_rejects_source_before_fetch(self):
         for version,accepted in [('fixture-supported',True),('wrong-source',False)]:
             with tempfile.TemporaryDirectory() as td:
