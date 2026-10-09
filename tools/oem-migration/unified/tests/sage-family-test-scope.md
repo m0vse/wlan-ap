@@ -19,6 +19,11 @@ that a production provider has its complete actual runtime/ELF/FIT closure.
 not a full forward transaction. Its runtime ledger and payloads are synthetic,
 nonflashable fixtures. A published provider still needs the complete actual
 OEM runtime ledger, extracted FIT binding and independently pinned payloads.
+The full runtime/ELF ledger is publisher evidence, not a device admission gate:
+runtime admission checks exact release/build and reviewed boot/updater/identity
+hooks plus required native command presence, not every libc/interpreter/library
+checksum. Missing unrelated library and missing required hook/wrong-build
+fixtures distinguish that boundary.
 
 The recovery `test_cambium_sage_oem_deferred.py` suite runs the actual pair
 writer, preflight, source-first environment persistence and final OEM armer.
@@ -50,3 +55,6 @@ sufficient. No vendor script, AP action or firmware build runs in these tests.
 Native certificates are never wiped or revoked here. A fresh forward migration
 with an existing shared certificate volume remains a distinct lifecycle case;
 the existing fresh-only transaction refuses rather than silently erasing it.
+The separate post-confirmation retirement action and existing server reset flow
+are documented in `sage-jaguar-clean-return-operator.md`. Confirmation and native
+factory reset are not proof that the old private identity has been cleared.
