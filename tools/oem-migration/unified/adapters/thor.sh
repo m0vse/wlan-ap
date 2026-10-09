@@ -78,7 +78,7 @@ oem_adapter_inspect() {
     # otherwise return apparently valid compiled image/bootcmd defaults.
     thor_env_dump=$(fw_printenv -c "$thor_env_config" 2>&1) || return 1
     printf '%s\n' "$thor_env_dump" | awk '
-      {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_]+$/ || seen[key]++)bad=1}
+      {key=$0;sub(/=.*/,"",key);if(index($0,"=")==0 || key!~/^[A-Za-z0-9_#.-]+$/ || seen[key]++)bad=1}
       END{exit bad || !seen["image"] || !seen["bootcmd"]}' || return 1
     case "$thor_mode" in
     source)
@@ -367,7 +367,7 @@ oem_thor_environment() (
     local thor_snapshot
     thor_snapshot=$(fw_printenv -c "$THOR_ENV_CONFIG" 2>&1) || exit 1
     printf '%s\n' "$thor_snapshot" | awk '
-      {k=$0;sub(/=.*/,"",k);if(index($0,"=")==0 || k!~/^[A-Za-z0-9_]+$/ || seen[k]++)bad=1}
+      {k=$0;sub(/=.*/,"",k);if(index($0,"=")==0 || k!~/^[A-Za-z0-9_#.-]+$/ || seen[k]++)bad=1}
       END{exit bad || !seen["image"] || !seen["bootcmd"]}' || exit 1
     printf '%s\n' "$thor_snapshot"
 )

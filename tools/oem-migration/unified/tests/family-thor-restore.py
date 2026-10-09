@@ -14,6 +14,7 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('common_lib',type=Path);ap.add_argument('runtime_root',type=Path);ap.add_argument('provider',type=Path)
     ap.add_argument('kernel',type=Path);ap.add_argument('rootfs',type=Path)
+    ap.add_argument('--env-only',action='store_true')
     a=ap.parse_args();base=Path(__file__).resolve().parents[1]; count=0
     with tempfile.TemporaryDirectory(prefix='thor-layout-') as td:
         top=Path(td).resolve();shared=top/'shared';shared.mkdir()
@@ -63,7 +64,7 @@ def main():
             (root/'tmp').mkdir();(root/'tmp/cambium-ab-fw_env.config').write_text(f'/dev/mtd{envindex} 0x0 0x10000 0x10000 1\n')
             proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text(('ubi.mtd=rootfs_1' if slot==1 else 'ubi.mtd=rootfs')+' root=ubi6:rootfs');(proc/'mtd').write_text(''.join(f'mtd{i}: {int(row.split(chr(9))[3]):08x} {int(row.split(chr(9))[5]):08x} \"{names[i]}\"\n' for i,row in enumerate(profile)));(proc/'device-tree').mkdir();(proc/'device-tree/compatible').write_bytes(b'cambiumnetworks,xv3-8\0');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
             (dev/'urandom').write_bytes(bytes(range(64)))
-            (root/'environment.json').write_text(__import__('json').dumps({'image':str(slot),'bootcmd':f'run thor_stable{slot}','factory_keep':'untouched','changing_bootcmd':'1','thor_ab_confirmed':str(slot),'thor_ab_state':'confirmed','thor_ab_version':'1'}))
+            (root/'environment.json').write_text(__import__('json').dumps({'image':str(slot),'bootcmd':f'run thor_stable{slot}','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me','changing_bootcmd':'1','thor_ab_confirmed':str(slot),'thor_ab_state':'confirmed','thor_ab_version':'1'}))
             tools=root/'bin';tools.mkdir()
             actor=tools/'actor'
             actor.write_text(r'''#!/usr/bin/env python3
@@ -152,6 +153,8 @@ if kind in ('kernel','root'):
  p=r/('dev/ubi8_'+('0' if kind=='kernel' else '1'));b=bytearray(p.read_bytes());b[0]^=1;p.write_bytes(b)
 elif kind=='identity':(r/'dev/ubi8_4').write_bytes(b'external-identity-drift')
 elif kind=='env-unlisted':d['factory_keep']='external-drift'
+elif kind=='env-punctuation-changed':d['factory.region']='external-drift'
+elif kind=='env-punctuation-removed':d.pop('serial#')
 elif kind.startswith('arm-'):d['thor_restore_'+kind[4:]]='external-drift'
 (r/'environment.json').write_text(json.dumps(d))
 ''')
@@ -208,6 +211,11 @@ commit_trial "$SLOT" || exit 1
             restored=__import__('json').loads((root/'environment.json').read_text())
             assert restored['bootcmd']==f'run thor_stable{slot}'
             assert restored[f'thor_stable{slot}']==f'run thor_boot{slot}'
+            assert {k:data[k] for k in ('serial#','factory.region','vendor-option')}=={'serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}
+            for drift in ('env-punctuation-changed','env-punctuation-removed'):
+                root,env,names=fixture(slot=slot,drift=drift);boot_environment(root,env);run(root,env,False)
+                assert __import__('json').loads((root/'environment.json').read_text())['bootcmd']==f'run thor_boot{slot}'
+            if a.env_only:continue
             print('Thor restore slot',slot,'positive passed; sweeping',operations,'failure points',flush=True)
             def failed_case(fail):
                 root,env,names=fixture(fail,slot)
@@ -223,6 +231,9 @@ commit_trial "$SLOT" || exit 1
                 root,env,names=fixture(slot=slot,drift=drift);boot_environment(root,env);run(root,env,False)
                 d=__import__('json').loads((root/'environment.json').read_text())
                 assert d['bootcmd']==f'run thor_boot{slot}' and d[f'thor_stable{slot}']==f'run thor_boot{slot}'
+        if a.env_only:
+            print('PASS: six whole return cases, unchanged punctuation keys and changed/removed refusal in both slots')
+            return
         print(f'PASS: {count} whole OEM-return cases, failures at all {operations} persistent/process steps; active bank and both identity children unchanged')
         print('Scope: actual vendor pins, common physical/ENV/idle checks and source writer. DT reader/device/fwtools are actors. No AP, factory reset, boot, build or identity export.')
 

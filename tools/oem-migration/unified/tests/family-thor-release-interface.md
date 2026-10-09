@@ -4,7 +4,12 @@ Forward source is exact XV3-8/SKU00000013 OEM7.2-r1, with the retained build
 tuple in `profiles/XV3-8/source.tsv`. Both source0→target1 and source1→target0
 use the same actual .8 parts and the corresponding physical profile/FIT bank
 configuration. Source-only ENV persistence/readback precedes target operations;
-all unlisted ENV fields and unique regions stay protected.
+all unlisted ENV fields and unique regions stay protected. Whole ENV readers accept
+standard factory key punctuation (`serial#`, `factory.region`, `vendor-option`)
+using the shared `[A-Za-z0-9_#.-]` alphabet. Mutation authority stays restricted
+to the reviewed fields; duplicate keys, warning lines and malformed records
+still refuse admission. The focused `--env-only` forward/return cases preserve
+these factory values and refuse their late change or removal in both slots.
 
 ## Authenticated local release members
 

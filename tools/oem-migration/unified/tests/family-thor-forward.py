@@ -15,12 +15,13 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('common_lib',type=Path);ap.add_argument('runtime_root',type=Path);ap.add_argument('provider',type=Path)
     ap.add_argument('image',type=Path);ap.add_argument('bdf',type=Path);ap.add_argument('settings',type=Path);ap.add_argument('--positive-only',action='store_true');ap.add_argument('--source-slot',type=int,choices=(0,1),default=1)
+    ap.add_argument('--env-only',action='store_true')
     a=ap.parse_args();base=Path(__file__).resolve().parents[1]; count=0
     with tempfile.TemporaryDirectory(prefix='thor-layout-') as td:
         top=Path(td).resolve();shared=top/'shared';shared.mkdir()
         for n in ('common.sh','protection.sh'): (shared/n).write_bytes((a.common_lib/n).read_bytes())
 
-        def fixture(fail=0,unattached=False,cert=False):
+        def fixture(fail=0,unattached=False,cert=False,drift=""):
             slot=a.source_slot;target_slot=1-slot
             root=top/f'case-{slot}-{fail}-{unattached}-{cert}';shutil.rmtree(root,ignore_errors=True);root.mkdir(mode=0o700)
             bundle=root/'bundle';shutil.copytree(a.provider,bundle)
@@ -65,7 +66,7 @@ def main():
             (root/'tmp').mkdir();(root/'tmp/fw_env.config').write_text(f'/dev/mtd{envindex} 0x0 0x10000 0x10000 1\n')
             proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text(('ubi.mtd=rootfs' if slot==0 else 'ubi.mtd=rootfs_1')+' root=ubi6:ubi_rootfs');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
             (dev/'urandom').write_bytes(bytes(range(64)))
-            (root/'environment.json').write_text(json.dumps({'image':str(slot),'bootcmd':'aq_load_fw&&bootipq','factory_keep':'untouched'}))
+            (root/'environment.json').write_text(json.dumps({'image':str(slot),'bootcmd':'aq_load_fw&&bootipq','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}))
             tools=root/'bin';tools.mkdir()
             actor=tools/'actor'
             actor.write_text(r'''#!/usr/bin/env python3
@@ -114,6 +115,9 @@ elif cmd=='fw_setenv':
   k,_,v=line.partition(' ')
   if v:data[k]=v
   else:data.pop(k,None)
+ if file.name=='thor-source.tsv':
+  if os.environ['DRIFT']=='env-punctuation-changed':data['factory.region']='external-drift'
+  elif os.environ['DRIFT']=='env-punctuation-removed':data.pop('serial#')
  (root/'environment.json').write_text(json.dumps(data))
 elif cmd=='mount':
  mnt=Path(a[-1]);store=root/'overlay-store';store.mkdir(exist_ok=True)
@@ -132,7 +136,7 @@ elif cmd=='sync':pass
 else:sys.exit(99)
 ''');actor.chmod(0o700)
             for cmd in ('ubidetach','ubiformat','ubiattach','ubimkvol','mknod','ubiupdatevol','fw_setenv','fw_printenv','mount','umount','sync','ls'): (tools/cmd).symlink_to('actor')
-            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='7.2-r1',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),SLOT=str(slot),FAIL_OPERATION=str(fail),CERT_TARGET='1' if cert else '0')
+            env=dict(os.environ,PATH=str(tools)+':'+os.environ['PATH'],COMMON=str(shared),ADAPTER=str(base/'adapters/thor.sh'),OEM_SYS_ROOT=str(root),OEM_SKU='00000013',OEM_MODEL='XV3-8',OEM_SUPPORTED_RELEASE='7.2-r1',OEM_FAMILY='thor',OEM_CONTROLLER='controller.example',OEM_BUNDLE=str(bundle),OEM_WORK=str(work),TARGET=str(target),SOURCE=str(source),SLOT=str(slot),FAIL_OPERATION=str(fail),CERT_TARGET='1' if cert else '0',DRIFT=drift)
             return root,env,names
 
         script=r'''
@@ -158,6 +162,7 @@ oem_adapter_migrate 'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
         data=__import__('json').loads((root/'environment.json').read_text())
         assert 'thor_ab_version' not in data and data['thor_installer_target']==str(1-a.source_slot)
         assert data['factory_keep']=='untouched' and f'saveenv && run thor_boot{1-a.source_slot}' in data['bootcmd']
+        assert {k:data[k] for k in ('serial#','factory.region','vendor-option')}=={'serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}
         # Check this newly constructed vault with the unchanged shipped .8
         # consumer. Only its final command invocation and hardware readers are
         # isolated; board_files/manifest/hash checks execute byte-for-byte.
@@ -196,10 +201,18 @@ vault_check "$VAULT_CHECK"
         assert source_save < first_detach
         assert sum(v.startswith('ubiupdatevol') for v in trace)==3
         operations=int((root/'counter').read_text())
-        print('Thor forward positive path passed; sweeping',operations,'failure points',flush=True)
+        print('Thor forward positive path passed',flush=True)
+        for drift in ('env-punctuation-changed','env-punctuation-removed'):
+            root,env,names=fixture(drift=drift);run(root,env,False)
+            assert json.loads((root/'environment.json').read_text())['bootcmd']=='aq_load_fw&&bootipq'
+            assert not any(v.startswith('ubiformat') for v in (root/'trace').read_text().splitlines())
+        if a.env_only:
+            print('PASS: forward unchanged punctuation keys and changed/removed refusal, slot',a.source_slot)
+            return
         if a.positive_only:
             print('PASS: whole forward and exact incoming vault/context/pending consumers, current source')
             return
+        print('Sweeping',operations,'failure points',flush=True)
         def failed_case(fail):
             root,env,names=fixture(fail)
             try:
