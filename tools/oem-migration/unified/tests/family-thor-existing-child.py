@@ -15,12 +15,23 @@ import tempfile
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('common_lib', type=Path, help='Unified owner lib directory')
+    ap.add_argument('common_lib', nargs='?', type=Path, default=Path(__file__).resolve().parents[1] / 'lib', help='Reviewed unified lib directory (defaults to this checkout)')
     a = ap.parse_args()
+    common_source = a.common_lib.resolve()
+    helper_bytes = {}
+    for helper in ('common.sh', 'protection.sh'):
+        path = common_source / helper
+        if not path.is_file():
+            ap.error(f'missing shared helper {path}; supply the reviewed unified lib directory')
+        helper_bytes[helper] = path.read_bytes()
     adapter = Path(__file__).resolve().parents[1] / 'adapters/thor.sh'
     cases = []
     with tempfile.TemporaryDirectory(prefix='thor-local-child-') as temporary:
         work = Path(temporary).resolve()
+        isolated_common = work / 'shared-lib'
+        isolated_common.mkdir(mode=0o700)
+        for helper, content in helper_bytes.items():
+            (isolated_common / helper).write_bytes(content)
 
         def fixture(prior=1):
             import shutil
@@ -65,7 +76,7 @@ def main():
                        OEM_SOURCE_SLOT=str(prior), OEM_TARGET_SLOT=str(1-prior),
                        OEM_SOURCE_MTD=str(source), OEM_TARGET_MTD=str(target), OEM_TARGET_UBI='ubi6',
                        OEM_SYS_ROOT=str(root), OEM_BUNDLE=str(bundle), OEM_WORK=str(private),
-                       OEM_PROTECTED_RANGES=str(inventory), COMMON=str(a.common_lib.resolve()),
+                       OEM_PROTECTED_RANGES=str(inventory), COMMON=str(isolated_common),
                        ADAPTER=str(adapter), TRACE=str(root / 'trace'), FAULT='')
             return root, bundle, env
 

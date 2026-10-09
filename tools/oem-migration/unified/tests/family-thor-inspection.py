@@ -9,11 +9,24 @@ import tempfile
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('common_lib', type=Path); a = ap.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('common_lib', nargs='?', type=Path, default=Path(__file__).resolve().parents[1] / 'lib', help='Reviewed unified lib directory (defaults to this checkout)')
+    a = ap.parse_args()
+    common_source = a.common_lib.resolve()
+    helper_bytes = {}
+    for helper in ('common.sh', 'protection.sh'):
+        path = common_source / helper
+        if not path.is_file():
+            ap.error(f'missing shared helper {path}; supply the reviewed unified lib directory')
+        helper_bytes[helper] = path.read_bytes()
     adapter = Path(__file__).resolve().parents[1] / 'adapters/thor.sh'
     count = 0
     with tempfile.TemporaryDirectory(prefix='thor-inspect-') as temporary:
         top = Path(temporary).resolve()
+        isolated_common = top / 'shared-lib'
+        isolated_common.mkdir(mode=0o700)
+        for helper, content in helper_bytes.items():
+            (isolated_common / helper).write_bytes(content)
 
         def fixture(slot=1, indices=(7, 9, 12, 15)):
             import shutil
@@ -61,7 +74,7 @@ printf '%s\n' "$OEM_SERIAL" "$OEM_SOURCE_RELEASE" "$OEM_SOURCE_SLOT" "$OEM_TARGE
             nonlocal count
             before = {str(p.relative_to(root)): (p.stat().st_mode, hashlib.sha256(p.read_bytes()).hexdigest())
                       for p in root.rglob('*') if p.is_file()}
-            env = dict(os.environ, COMMON=str(a.common_lib.resolve()), ADAPTER=str(adapter),
+            env = dict(os.environ, COMMON=str(isolated_common), ADAPTER=str(adapter),
                        OEM_SYS_ROOT=str(root), OEM_SKU='00000013', OEM_MODEL=model,
                        OEM_SUPPORTED_RELEASE='fixture-supported', OEM_SERIAL='stale',
                        OEM_SOURCE_RELEASE='stale', OEM_SOURCE_SLOT='stale', OEM_TARGET_SLOT='stale')
