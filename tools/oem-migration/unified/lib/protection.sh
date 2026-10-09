@@ -34,6 +34,7 @@ oem_write_boundary() (
    if($4=="rootfs" target && $3!=2*target+1)bad=1
   }
   role[$2]=="target" {
+   if($4!~/^(kernel|rootfs|ubi_rootfs|rootfs_data|cambium_device_data|certificates)$/)bad=1
    if($4=="kernel" && $3!=0 || $4=="rootfs" && $3!=1 || $4=="rootfs_data" && $3!=2)bad=1
    if($4=="ubi_rootfs" && $3!=1)bad=1
    if($4=="cambium_device_data" && ($3!=3 || $1!~/^(ubi-create|ubi-update)$/))bad=1

@@ -14,6 +14,9 @@ class PhysicalProfileTests(unittest.TestCase):
                     plan.write_text(f'{operation}\t{parent}\t{id}\t{name}\n');self.assertNotEqual(run(),0)
             for operation,id,name in [('ubi-update',4,'certificates'),('ubi-remove',4,'certificates'),('ubi-resize',4,'certificates'),('ubi-create',3,'certificates'),('ubi-remove',3,'cambium_device_data'),('ubi-create',4,'cambium_device_data'),('ubi-create',2,'ubi_rootfs')]:
                 plan.write_text(f'{operation}\t4\t{id}\t{name}\n');self.assertNotEqual(run(),0)
+            for name in ('linux0','linux1','rootfs0','rootfs1','rootfs_data0','rootfs_data1'):
+                for id in range(7):
+                    plan.write_text(f'ubi-update\t4\t{id}\t{name}\n');self.assertNotEqual(run(),0)
 
     def test_helpers_preserve_caller_variables_on_success_and_refusal(self):
         with tempfile.TemporaryDirectory() as td:
