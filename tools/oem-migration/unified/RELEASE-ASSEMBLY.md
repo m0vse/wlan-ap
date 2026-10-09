@@ -14,13 +14,13 @@ The following snapshot describes the reviewed source and retained provider
 inputs as of 2026-10-09. An image version here identifies existing input bytes;
 it is not a declaration that the image contains every newer migration or
 readiness fix. Private provider receipts stay outside source Git. The source
-status is based on reviewed unified entry points through the published Jaguar
-native confirmation handler `b66a3aad`; a pending owner candidate does not enable a row.
+status is based on reviewed unified entry points and their independently replayed
+source tests; a pending owner candidate does not enable a release row.
 
 | Exact models | Reviewed OEM source | Existing incoming input | Forward integration | Full OEM restore / confirmation |
 |---|---|---|---|---|
-| E410, E410B | 4.2.3.3-r10, exact factory variant | Sage 2026.10.07.1 | Private actual-data writer and enabled launcher validation complete | E410 bounded private return/confirmation data; clean reset and old-store retirement are separate. E410B reverse remains disabled |
-| XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Private actual-data return and native confirmation/generic checks pass for both slots with scoped host actors; full clean roundtrip still needs stale conversion-state handling and safe known-native target reuse, plus defaults/reset and retirement |
+| E410, E410B | 4.2.3.3-r10, exact factory variant | Sage 2026.10.07.1 | Private actual-data writer and enabled launcher validation complete | E410 actual-data carried return/confirmation/reset-retirement-actor/reinstall tests pass in both directions, including dynamic certificate IDs. Real reset and identity retirement remain separate operator actions; E410B reverse remains disabled |
+| XV2-2, XV2-2T1, XE3-4 | 7.2-r1, exact product/build | Jaguar 2026.10.05.8 | Private actual-data writer and enabled launcher checks pass for both source slots; XE3-4 source-version capture provenance still needs corroboration | Return and native confirmation checks pass. Confirmed-state known-native reuse and incoming radio-asset binding are now implemented; six model/slot carried source chains and fault tests pass. Final source-bound release assembly and real defaults/reset/identity-retirement acceptance remain separate |
 | XV3-8 | 7.2-r1, exact product/build | Thor 2026.10.05.8 | Actual incoming payloads retained; published component helpers need the owner's final composed writer and exact provider schema | No enabled reverse or confirmation claim from component tests |
 | XV2-21X | 7.2-r1, exact product/build | Cheetah 2026.10.05.7 | Actual incoming payloads retained; final composed family source/provider integration remains separate from legacy components | Keep reverse disabled until the final owner adapter and provider are validated |
 | X7-35X | 7.2-r1, exact product/build | Existing reviewed Miami payload/PAIR objects | Private current backend assembly; required Linux replay remains pending | No inference of restore/confirmation or installed readiness from generated source |
