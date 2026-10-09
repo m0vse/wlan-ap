@@ -278,8 +278,11 @@ select_payload() {
  [ "$((KLEBS+RLEBS))" -le "$POOL" ] || fail 'images exceed 48MiB upgrade pool'
 }
 fetch() {
+ local cached_size
  file=$1 hash=$2 size=$3
  case "$file" in ''|*[!A-Za-z0-9_.-]*) fail 'unsafe payload name';; esac
+ case "$size" in ''|*[!0-9]*) fail 'invalid payload size';; esac
+ [ "$size" -gt 0 ] || fail 'empty payload size'
  [ ! -L "$R/tmp/$file" ] || fail 'payload path is a symlink'
  if [ -n "${CAMBIUM_INSTALL_CACHE_DIR:-}" ]; then
   cache=$CAMBIUM_INSTALL_CACHE_DIR
@@ -288,7 +291,11 @@ fetch() {
   LC_ALL=C ls -ldn "$cache" | awk '$1=="drwx------" && $3==0 {good=1} END {exit !good}' || fail 'cache is not private and root-owned'
   [ -f "$cache/$file" ] && [ ! -L "$cache/$file" ] || fail 'required cached object missing'
   LC_ALL=C ls -ldn "$cache/$file" | awk '$1=="-rw-------" && $2==1 && $3==0 {good=1} END {exit !good}' || fail 'unsafe cached object'
-  [ "$(wc -c < "$cache/$file")" = "$size" ] && [ "$(sha256sum "$cache/$file" | cut -d ' ' -f1)" = "$hash" ] || fail 'cached payload validation failed'
+  cached_size=$(LC_ALL=C wc -c < "$cache/$file") || fail 'cached byte count failed'
+  cached_size=$(printf '%s\n' "$cached_size" | awk '
+   NF==1 && $1~/^[0-9]+$/ {value=$1;good++}
+   END {if(NR!=1 || good!=1)exit 1;print value}') || fail 'invalid cached byte count'
+  [ "$cached_size" -eq "$size" ] && [ "$(sha256sum "$cache/$file" | cut -d ' ' -f1)" = "$hash" ] || fail 'cached payload validation failed'
   [ "$cache/$file" = "$R/tmp/$file" ] || cp "$cache/$file" "$R/tmp/$file" || fail 'local cached copy failed'
  elif [ "${CAMBIUM_INSTALL_LOCAL_ONLY:-0}" = 1 ]; then
   fail 'local-only operation requires the verified cache'

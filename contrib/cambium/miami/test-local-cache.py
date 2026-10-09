@@ -7,9 +7,49 @@ Reuses the provider's existing geometry/env/storage fixture, not a fake writer.
 from pathlib import Path
 import os
 import sys
+import hashlib
+import subprocess
+import tempfile
 
 if os.geteuid() != 0 or not sys.platform.startswith('linux'):
     raise SystemExit('Requires root on Linux for the real cache ownership checks')
+
+if '--size-only' in sys.argv:
+    # Exercise the actual fetch function directly; no geometry/network/UBI
+    # boundary is entered for this formatting regression.
+    source=Path(__file__).with_name('miami-oem-persistent.sh.in').read_text()
+    fetch=source[source.index('fetch() {'):source.index('readback() {')]
+    with tempfile.TemporaryDirectory(prefix='miami-cache-size-') as td:
+        root=Path(td).resolve();cache=root/'cache';cache.mkdir(mode=0o700)
+        (root/'tmp').mkdir();tools=root/'bin';tools.mkdir()
+        data=b'complete cached object\n';member=cache/'payload';member.write_bytes(data);member.chmod(0o600)
+        wc=tools/'wc';wc.write_text('''#!/usr/bin/env python3
+import os,sys
+count=len(sys.stdin.buffer.read())
+if 'TEST_WC_COUNT' in os.environ:print(os.environ['TEST_WC_COUNT'])
+else:print(f'{count:12d}')
+if os.environ.get('TEST_WC_ERROR'):sys.exit(1)
+''');wc.chmod(0o700)
+        driver='fail(){ echo "cache refused" >&2;exit 1; };wget(){ fail; };'+fetch+'\nfetch payload "$1" "$2"'
+        env={**os.environ,'PATH':str(tools)+':'+os.environ['PATH'],'R':str(root),
+             'CAMBIUM_INSTALL_CACHE_DIR':str(cache),'CAMBIUM_INSTALL_LOCAL_ONLY':'1'}
+        def check(size,ok,**extra):
+            dest=root/'tmp/payload';dest.unlink(missing_ok=True)
+            p=subprocess.run(['sh','-c',driver,'fixture',hashlib.sha256(data).hexdigest(),size],
+                             env={**env,**extra},capture_output=True,text=True)
+            assert (p.returncode==0)==ok,(size,p.stdout,p.stderr)
+            assert member.read_bytes()==data
+            if ok:assert dest.read_bytes()==data
+            else:assert not dest.exists()
+        check(str(len(data)),True)
+        check(str(len(data)),True,TEST_WC_COUNT='\t  '+str(len(data))+'  ')
+        for size in ('','0','-1','bad','1.5',' '+str(len(data)),str(len(data)+1)):
+            check(size,False)
+        for count in ('bad','',f'1 {len(data)}','1.5','-1'):
+            check(str(len(data)),False,TEST_WC_COUNT=count)
+        check(str(len(data)),False,TEST_WC_ERROR='1')
+        print('PASS: 15 numeric cache-size cases; padded wc accepted, malformed/mismatching counts and wc failures refused before local copy')
+    raise SystemExit(0)
 
 fixture = Path(__file__).with_name('test-oem-persistent.py')
 text = fixture.read_text()

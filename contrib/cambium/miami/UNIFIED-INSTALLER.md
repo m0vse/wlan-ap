@@ -44,7 +44,10 @@ The provider accepts these non-secret variables:
 
 Every cached member must be a root-owned, single-link regular file, mode 0600,
 with exact size and SHA-256. Missing, changed or unsafe members fail. The
-provider copies verified local objects into its existing temporary paths and
+byte-count check accepts standard leading whitespace in `wc -c` output,
+validates a single decimal count and compares sizes numerically. Invalid
+size fields or malformed/mismatching counts stop before copying the object.
+The provider copies verified local objects into its existing temporary paths and
 verifies them again. Install/update validates the pair descriptor before
 attaching the target or recording any storage writes. Arm uses the same cache.
 The server may disappear after staging; it is not needed for storage writes or
