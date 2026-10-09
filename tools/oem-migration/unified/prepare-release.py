@@ -16,6 +16,7 @@ def sha(path):
 
 def payload_data_path(name,model):
     if re.search(r'\.(sh|py|uc|so|pem|key)$',name):return False
+    if model=='XV3-8' and re.fullmatch(r'payloads/shared-radio/thor-bdwlan\.[A-Za-z0-9_.-]+',name):return True
     if name.startswith(('payloads/','assets/')) and not name.startswith((f'payloads/{model}/',f'assets/{model}/')):return False
     if re.search(r'\.(bin|itb|squashfs|ubifs|ubi|json|contents)$',name):return True
     radio=name.startswith((f'payloads/{model}/assets/lib/firmware/',f'assets/{model}/lib/firmware/'))

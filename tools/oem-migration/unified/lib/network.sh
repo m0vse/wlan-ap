@@ -5,6 +5,7 @@ oem_payload_map_check() {
  awk -F '\t' '
   function data(p,model,leaf,radio) {
    if(p~/\.(sh|py|uc|so|pem|key)$/)return 0
+   if(model=="XV3-8" && p~/^payloads\/shared-radio\/thor-bdwlan\.[A-Za-z0-9_.-]+$/)return 1
    if(p~/^(payloads|assets)\// && p!~("^(payloads|assets)/" model "/"))return 0
    if(p~/\.(bin|itb|squashfs|ubifs|ubi|json|contents)$/)return 1
    radio=(index(p,"payloads/" model "/assets/lib/firmware/")==1 || index(p,"assets/" model "/lib/firmware/")==1)
