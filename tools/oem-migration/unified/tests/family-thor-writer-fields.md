@@ -1,9 +1,10 @@
 # Thor shared-installer source pieces
 
-These helpers belong to the single shared installer. They are not a complete
-migration adapter: only inspection and individual preparation/write/staging
-pieces are implemented, so the dispatcher's full phase checks still refuse
-installation. No AP writes, builds, ENV changes or reboots were performed.
+The source adapter now defines the shared dispatcher's complete forward phases
+and the separate converted-to-OEM test-return phases. The final release schema
+and transaction scope are in `family-thor-release-interface.md`. Publication,
+actual AP qualification and first-normal-upgrade integration are separate.
+No AP writes, builds, ENV changes or reboots were performed.
 
 ## Implemented and verified
 
@@ -28,7 +29,9 @@ the original reviewed source-bank1/target-bank0 direction. It calls the existing
 `ab_prepare_bank` allocator unchanged, constraining each operation to the same
 physical target. It reserves eight vault and twenty certificate LEBs before
 allocating the remaining overlay. It performs no ENV arm or payload/seed write.
-Unknown, unattached or resumed OpenWiFi targets are refused rather than erased.
+Unknown or resumed OpenWiFi targets are refused rather than erased. A currently
+unattached bank is attached only inside the confirmed transaction after backup
+and source save, then its entire namespace is inspected before erasure.
 
 Seventeen allocator/wrapper cases passed using the actual allocator, current
 shared helpers and actual .8 kernel/root bytes. Failures were injected at all
@@ -49,23 +52,47 @@ preparation. No streaming download, unique identity in generic assets, new
 registry, issuer or watchdog admission gate is introduced. Existing manual
 reset/power-cycle one-shot scope remains unchanged.
 
-## Remaining integration work
+## Whole-path results
 
-The owner still needs the real reusable radio/vault contents map and own-device
-vault construction/readback; safe attachment/resume handling; composition of
-payload writes, FORMAT2 staging/readback, sync/unmount and the reviewed armer;
-and native mixed-bank confirmation plus the first normal sysupgrade while the
-OEM bank remains intact. Converted-to-OEM restoration needs its own validated
-volume transition and exact nonunique configuration reset operation.
+33 complete forward cases passed, including unattached-target inspection and
+identity-store refusal: the successful path and failure injection at
+all30 persistent/process steps, with no premature arm. Actual published .8
+image/parts and the actual shared vendor BDF were used; the source producer,
+stager, allocator, source/physical/ENV checks executed. The generated vault also
+passed the unchanged shipped .8 consumer, and the actual identity context
+command/pending-boot script accepted the writer's staged triplet.
 
-Profiles must account for genuine exposed master MTD nodes if present; their
-names cannot be invented or omitted. The shared backup helper's named
-BOOTCONFIG allowance was fixed upstream to accept the actual 128 KiB records.
-Use the updated shared helper; never truncate those protected records.
+26 complete OEM-return cases passed across both source banks, including
+unattached targets, with failure
+injection at all11 persistent/process steps per direction. The actual pinned
+7.2-r1 meaningful FIT/SquashFS were used. Active firmware and both inactive
+identity children remained byte-identical in the fixtures. Six exact .8 guard/
+health cases proved native-accepted healthy commit, prior-only rollback, and
+handoff back to the standard guard after genuine conversion.
 
-The .8 artifact does not by itself establish that later source boot fixes are
-packaged. The completed boot fix remains separate and is not reopened here.
-No full migration, restore or first-sysupgrade readiness is claimed.
+All device/fwtools/mount operations remain isolated file actors. Native identity
+acceptance/cleanup and network/physical health are subprocess/health actors;
+these cases do not perform a production enrollment or physical power-loss test.
+
+## Integration and readiness boundary
+
+The full transaction now composes preparation, actual payload/vault writes and
+readback, private FORMAT2 production/staging, persisted read-only verification,
+sync/unmount and final guarded arm. The incoming .8 hook uses the shipped native
+health/confirmation mechanism without reporting its OEM bank as converted.
+The reverse writer preserves both identity children and implements the actual
+rootfs-to-ubi_rootfs transition using pinned vendor7.2-r1 parts.
+
+Release assembly needs the exact authenticated member paths in
+`family-thor-release-interface.md`; it must not use a stripped/intermediate
+upgrade file. Genuine extra master MTD nodes require genuine profile rows.
+The upstream named BOOTCONFIG allowance accepts the actual128KiB records;
+use the updated helper and never truncate them.
+
+The standard .8 first sysupgrade still requires actual conversion; no flag is
+fabricated here to bypass it. Physical migration/return qualification and OEM
+health confirmation/defaults remain separate. No AP readiness claim is made.
+The completed boot fix and working reboot-required setting remain untouched.
 
 ## Running the focused fixtures
 
@@ -78,4 +105,7 @@ python3 tools/oem-migration/unified/tests/family-thor-existing-child.py COMMON_L
 python3 tools/oem-migration/unified/tests/family-thor-profiles.py COMMON_LIB
 python3 tools/oem-migration/unified/tests/family-thor-seed.py SETTINGS_LIB
 python3 tools/oem-migration/unified/tests/family-thor-layout.py COMMON_LIB PREPARED_RUNTIME_ROOT ACTUAL_PROVIDER
+python3 tools/oem-migration/unified/tests/family-thor-forward.py COMMON_LIB PREPARED_RUNTIME_ROOT ACTUAL_PROVIDER IMAGE BDF SETTINGS_LIB
+python3 tools/oem-migration/unified/tests/family-thor-restore.py COMMON_LIB PREPARED_RUNTIME_ROOT ACTUAL_PROVIDER OEM_KERNEL OEM_ROOT
+python3 tools/oem-migration/unified/tests/family-thor-handoff.py
 ```

@@ -1,0 +1,424 @@
+#!/bin/sh
+# Install the Wi-Fi board data files (BDFs) that this Cambium access point's
+# own stock firmware uses. The files are read from the retained OEM firmware
+# slot; nothing on the OEM slot or the ART partition is modified.
+# Per-device calibration continues to come from 0:ART via firmware hotplug.
+#
+# A/B families that keep a device-data vault (Jaguar) have a small
+# cambium_device_data UBI volume in each firmware bank holding this unit's
+# board files and a manifest bound to its board, SKU and ART. The vault is
+# preferred at boot, survives sysupgrade -n and factory reset, and is the
+# only source once the OEM slot has been converted. It is filled once, from
+# the OEM slot, while that slot still exists.
+#
+# Usage: cambium-board-data [--check-vault]
+#   --check-vault  exit 0 only if the running bank's vault is valid for this
+#                  unit (checked before an A/B upgrade or conversion)
+
+. "${CAMBIUM_FUNCTIONS:-/lib/functions.sh}"
+. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}"
+AB_LIB=${CAMBIUM_AB_LIB:-/lib/functions/cambium-ab.sh}
+[ -f "$AB_LIB" ] && . "$AB_LIB"
+
+TAG=cambium-board-data
+FW_DIR=${CAMBIUM_BDF_FW_DIR:-/lib/firmware}
+WORK=${CAMBIUM_BDF_WORK:-/tmp/$TAG}
+MNT=$WORK.mnt
+STATUS=${CAMBIUM_BDF_STATUS:-/tmp/$TAG.status}
+VAULT_NAME=cambium_device_data
+VAULT_FORMAT=1
+
+log() {
+	logger -t "$TAG" "$*" 2>/dev/null
+	echo "$TAG: $*" >&2
+}
+
+# One line per file: OEM path, expected size, destination(s) under $FW_DIR.
+# Sources mirror the OEM setup_bdf_wifi6 selection for each board SKU.
+board_files() {
+	case "$(board_name)" in
+	cambiumnetworks,xv3-8)
+		echo "lib/firmware/IPQ8074/WIFI_FW/bdwlan.b215.accton 131072 ath11k/IPQ8074/hw2.0/board.bin IPQ8074/board.bin"
+		;;
+	cambiumnetworks,xv2-21x)
+		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-ocelot 131072 ath11k/IPQ5018/hw1.0/board.bin"
+		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b60-ocelot 131072 ath11k/QCN6122/hw1.0/board.bin"
+		;;
+	cambiumnetworks,xv2-22h)
+		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-cheetah 131072 ath11k/IPQ5018/hw1.0/board.bin"
+		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b50-cheetah 131072 ath11k/QCN6122/hw1.0/board.bin"
+		;;
+	cambiumnetworks,xv2-23t)
+		echo "lib/firmware/IPQ5018/WIFI_FW/bdwlan.b24-lynx 131072 ath11k/IPQ5018/hw1.0/board.bin"
+		echo "lib/firmware/IPQ5018/WIFI_FW/qcn6122/bdwlan.b60.stock 131072 ath11k/QCN6122/hw1.0/board.bin"
+		;;
+	cambiumnetworks,xv2-2|\
+	cambiumnetworks,xv2-2t0|\
+	cambiumnetworks,xv2-2t1)
+		echo "lib/firmware/IPQ6018/WIFI_FW/bdwlan.b13.stock 65536 ath11k/IPQ6018/hw1.0/board.bin"
+		;;
+	cambiumnetworks,xe3-4)
+		echo "lib/firmware/IPQ6018/WIFI_FW/bdwlan.b10-puma 65536 ath11k/IPQ6018/hw1.0/board.bin"
+		echo "lib/firmware/qcn9000/WIFI_FW/bdwlan.bab-puma 131072 ath11k/QCN9074/hw1.0/board.bin"
+		;;
+	esac
+}
+
+# ath11k prefers a matching API-2 entry over board.bin. The upstream XE3-4
+# entry limits the PCI radio's boot capability to 5920 MHz; this unit's own
+# OEM Puma BDF also advertises 6 GHz. Wrap the already validated/imported
+# OEM data without editing it, rather than bypassing driver/regulatory checks.
+# The key is the XE3-4 PCI identity used by its stock device-tree variant.
+bdf_le32() {
+	local value="$1"
+	printf '%b' "\\0$(printf '%03o' $((value & 255)))\\0$(printf '%03o' $(((value >> 8) & 255)))\\0$(printf '%03o' $(((value >> 16) & 255)))\\0$(printf '%03o' $(((value >> 24) & 255)))"
+}
+
+xe34_pci_api2() {
+	[ "$(board_name)" = cambiumnetworks,xe3-4 ] || return 0
+	local dir="$FW_DIR/ath11k/QCN9074/hw1.0" source target tmp key size key_size padded body
+	source="$dir/board.bin"
+	target="$dir/board-2.bin"
+	tmp="$target.tmp.$$"
+	[ ! -d "$target" ] || return 1
+	key='bus=pci,qmi-chip-id=0,qmi-board-id=255,variant=CambiumNetworks-XE34'
+	[ -f "$source" ] && size=$(wc -c < "$source") && [ "$size" -eq 131072 ] || {
+		log "XE3-4 PCI API-2 generation requires the complete imported OEM Puma BDF"
+		return 1
+	}
+	key_size=${#key}
+	padded=$(((key_size + 3) & ~3))
+	body=$((8 + padded + 8 + size))
+	# QCA-ATH11K-BOARD, terminating NUL, and zero alignment padding; outer
+	# BOARD IE containing NAME and DATA IEs. No calibration bytes are edited.
+	{
+		printf 'QCA-ATH11K-BOARD\000\000\000\000'
+		bdf_le32 0 && bdf_le32 "$body" &&
+		bdf_le32 0 && bdf_le32 "$key_size" && printf '%s' "$key" &&
+		dd if=/dev/zero bs=1 count=$((padded - key_size)) 2>/dev/null &&
+		bdf_le32 1 && bdf_le32 "$size" && cat "$source"
+	} > "$tmp" || { rm -f "$tmp"; return 1; }
+	[ "$(wc -c < "$tmp")" -eq $((20 + 8 + body)) ] || {
+		rm -f "$tmp"
+		return 1
+	}
+	if cmp -s "$tmp" "$target"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	chmod 0644 "$tmp" && mv "$tmp" "$target" || { rm -f "$tmp"; return 1; }
+	log "installed XE3-4 PCI API-2 entry from imported OEM Puma BDF (sha256 $(sha256 "$source"))"
+}
+
+missing_files() {
+	local src size dst
+	board_files | while read -r src size dst; do
+		for dst in $dst; do
+			[ -s "$FW_DIR/$dst" ] || { echo "$src"; break; }
+		done
+	done
+}
+
+# Board files not yet staged under $1 (by OEM path).
+unstaged_files() {
+	local src size dst
+	board_files | while read -r src size dst; do
+		[ -f "$1/$src" ] || echo "$src"
+	done
+}
+
+sha256() {
+	sha256sum "$1" | cut -d' ' -f1
+}
+
+ubi_dev_for_mtd() {
+	local dev
+	for dev in "${AB_UBI_SYS:-/sys/class/ubi}"/ubi[0-9]*; do
+		[ -f "$dev/mtd_num" ] || continue
+		[ "$(cat "$dev/mtd_num")" = "$1" ] && { echo "${dev##*/}"; return 0; }
+	done
+	return 1
+}
+
+mtd_writeable() {
+	# MTD_WRITEABLE is 0x400 in the MTD flags word.
+	[ $(( $(cat "${AB_MTD_SYS:-/sys/class/mtd}/mtd$1/flags") & 0x400 )) -ne 0 ]
+}
+
+running_part() {
+	sed -n 's/.*ubi\.mtd=\([^ ]*\).*/\1/p' "${AB_CMDLINE:-/proc/cmdline}"
+}
+
+# Candidate OEM slots: the rootfs partition which is not running OpenWrt.
+oem_mtds() {
+	local running name idx
+	running=$(running_part)
+	for name in rootfs_1 rootfs; do
+		[ "$name" = "$running" ] && continue
+		idx=$(find_mtd_index "$name")
+		[ -n "$idx" ] && echo "$idx"
+	done
+}
+
+cleanup() {
+	grep -q " $MNT " /proc/mounts 2>/dev/null && umount "$MNT"
+	[ -n "$BLOCK" ] && ubiblock --remove "/dev/$BLOCK_VOL" >/dev/null 2>&1
+	if [ -n "$ATTACHED" ]; then
+		ubidetach -m "$ATTACHED" >/dev/null 2>&1 || :
+		# Ignore a false-negative exit only after sysfs confirms detachment.
+		ubi_dev_for_mtd "$ATTACHED" >/dev/null && log "cleanup: mtd$ATTACHED remains attached"
+	fi
+	rmdir "$MNT" 2>/dev/null
+	BLOCK=; BLOCK_VOL=; ATTACHED=
+}
+
+# Copy each expected board file found under $1 (by OEM path) into $FW_DIR.
+install_from_dir() {
+	local root="$1" origin="$2" src size dst tmp actual hash
+	board_files | while read -r src size dst; do
+		[ -f "$root/$src" ] || { log "$origin lacks $src"; continue; }
+		actual=$(wc -c < "$root/$src")
+		[ "$actual" -eq "$size" ] || {
+			log "unexpected size $actual for $src (expected $size)"
+			continue
+		}
+		hash=$(sha256 "$root/$src")
+		for dst in $dst; do
+			[ -s "$FW_DIR/$dst" ] && cmp -s "$root/$src" "$FW_DIR/$dst" && continue
+			mkdir -p "$(dirname "$FW_DIR/$dst")"
+			tmp="$FW_DIR/$dst.tmp.$$"
+			cp "$root/$src" "$tmp" && mv "$tmp" "$FW_DIR/$dst" || {
+				rm -f "$tmp"
+				log "failed to install $dst"
+				continue
+			}
+			log "installed $dst from $origin $src (sha256 $hash)"
+		done
+	done
+}
+
+# Mount the OEM root filesystem of MTD $1 on $MNT. With $2=allow-writable a
+# A/B image, whose device tree must leave both banks writable, may
+# attach the OEM bank; it does so only to fill an empty vault.
+mount_oem_mtd() {
+	local mtd="$1" ubi vol
+
+	if mtd_writeable "$mtd" && [ "$2" != allow-writable ]; then
+		log "mtd$mtd is writable; refusing to attach it"
+		return 1
+	fi
+
+	ubi=$(ubi_dev_for_mtd "$mtd")
+	if [ -z "$ubi" ]; then
+		ubiattach -m "$mtd" >/dev/null 2>&1 || {
+			log "cannot attach mtd$mtd"
+			return 1
+		}
+		ATTACHED=$mtd
+		ubi=$(ubi_dev_for_mtd "$mtd") || return 1
+	fi
+
+	for vol in "${AB_UBI_SYS:-/sys/class/ubi}/$ubi"_*; do
+		[ "$(cat "$vol/name" 2>/dev/null)" = ubi_rootfs ] || continue
+		BLOCK_VOL=${vol##*/}
+	done
+	[ -n "$BLOCK_VOL" ] || { log "no OEM ubi_rootfs volume on mtd$mtd"; return 1; }
+
+	if [ ! -b "/dev/ubiblock${BLOCK_VOL#ubi}" ]; then
+		ubiblock --create "/dev/$BLOCK_VOL" >/dev/null 2>&1 || {
+			log "cannot create a block device for $BLOCK_VOL"
+			return 1
+		}
+		BLOCK=1
+	fi
+
+	mkdir -p "$MNT"
+	mount -t squashfs -o ro "/dev/ubiblock${BLOCK_VOL#ubi}" "$MNT" || {
+		log "cannot mount the OEM root filesystem on mtd$mtd"
+		return 1
+	}
+}
+
+# --- A/B device-data vault ----------------------------------------------------
+
+# Set VAULT_DEV to the running bank's vault volume, if this image has one.
+vault_locate() {
+	local mtd ubi vol
+	VAULT_DEV=
+	command -v ab_family >/dev/null 2>&1 && ab_family && [ "$AB_VAULT" = 1 ] || return 1
+	mtd=$(find_mtd_index "$(running_part)")
+	[ -n "$mtd" ] || return 1
+	ubi=$(ubi_dev_for_mtd "$mtd") || return 1
+	vol=$(ab_ubi_volume "$ubi" "$VAULT_NAME") || return 1
+	VAULT_DEV=${AB_DEV:-/dev}/$vol
+}
+
+art_hash() {
+	local idx
+	idx=$(find_mtd_index 0:ART)
+	[ -n "$idx" ] || return 1
+	sha256 "${AB_DEV:-/dev}/mtd$idx"
+}
+
+nvram_hash() {
+	local idx
+	idx=$(find_mtd_index NVRAM)
+	[ -n "$idx" ] && sha256 "${AB_DEV:-/dev}/mtd$idx" || echo unknown
+}
+
+# Unpack the vault into $1. Returns 1 when it holds no archive.
+vault_read() {
+	rm -rf "$1" && mkdir -p "$1"
+	tar -xf "$VAULT_DEV" -C "$1" 2>/dev/null
+	[ -f "$1/MANIFEST" ]
+}
+
+manifest_value() {
+	sed -n "s/^$2 //p" "$1/MANIFEST" | head -n 1
+}
+
+# Check the unpacked vault in $1 against this unit: 0 valid, 1 missing or
+# corrupt, 2 made for another board, SKU or calibration (ART).
+vault_check() {
+	local dir="$1" src size dst entry art rc=0
+	[ -f "$dir/MANIFEST" ] || return 1
+	[ "$(manifest_value "$dir" format)" = "$VAULT_FORMAT" ] || return 1
+	[ "$(manifest_value "$dir" board)" = "$(board_name)" ] || return 2
+	[ "$(manifest_value "$dir" sku)" = "$(ab_dt_sku)" ] || return 2
+	art=$(art_hash) || return 1
+	[ "$(manifest_value "$dir" art_sha256)" = "$art" ] || return 2
+	board_files > "$dir.expected"
+	while read -r src size dst; do
+		entry=$(grep "^file $src " "$dir/MANIFEST") || { rc=1; break; }
+		set -- $entry
+		[ "$3" = "$size" ] && [ -f "$dir/files/$src" ] &&
+			[ "$(wc -c < "$dir/files/$src")" -eq "$size" ] &&
+			[ "$(sha256 "$dir/files/$src")" = "$4" ] || { rc=1; break; }
+	done < "$dir.expected"
+	rm -f "$dir.expected"
+	return "$rc"
+}
+
+# Write a vault from board files staged under $1/files (by OEM path), then
+# read it back and check it.
+vault_write() {
+	local stage="$1" origin="$2" src size dst archive=$WORK/vault.tar
+	mkdir -p "$stage/files"
+	{
+		echo "format $VAULT_FORMAT"
+		echo "board $(board_name)"
+		echo "sku $(ab_dt_sku)"
+		echo "art_sha256 $(art_hash)"
+		echo "nvram_sha256_at_capture $(nvram_hash)"
+		echo "source $origin"
+		echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+		board_files | while read -r src size dst; do
+			echo "file $src $size $(sha256 "$stage/files/$src")"
+		done
+	} > "$stage/MANIFEST" || return 1
+	(cd "$stage" && tar -cf "$archive" MANIFEST files) || return 1
+	ubiupdatevol "$VAULT_DEV" "$archive" || { rm -f "$archive"; return 1; }
+	rm -f "$archive"
+	vault_read "$WORK/readback" && vault_check "$WORK/readback"
+}
+
+# Fill an empty vault from the OEM slot. Models without board files (the
+# XE3-4TN) get a manifest-only vault and never touch the OEM slot.
+vault_fill_from_oem() {
+	local mtd src size dst stage=$WORK/stage
+	rm -rf "$stage" && mkdir -p "$stage/files"
+	if [ -n "$(unstaged_files "$stage/files")" ]; then
+		for mtd in $(oem_mtds); do
+			BLOCK=; BLOCK_VOL=; ATTACHED=
+			if mount_oem_mtd "$mtd" allow-writable; then
+				log "filling the device-data vault from the OEM slot on mtd$mtd"
+				board_files | while read -r src size dst; do
+					[ -f "$MNT/$src" ] && [ "$(wc -c < "$MNT/$src")" -eq "$size" ] || continue
+					mkdir -p "$(dirname "$stage/files/$src")"
+					cp "$MNT/$src" "$stage/files/$src"
+				done
+			fi
+			cleanup
+			[ -z "$(unstaged_files "$stage/files")" ] && break
+		done
+		[ -z "$(unstaged_files "$stage/files")" ] || {
+			log "no OEM slot holds every board file"
+			return 1
+		}
+	fi
+	vault_write "$stage" "oem-slot" || { log "vault write or readback failed"; return 1; }
+	log "device-data vault written and verified"
+}
+
+vault_main() {
+	local rc
+	if vault_read "$WORK/vault"; then
+		vault_check "$WORK/vault"; rc=$?
+	else
+		rc=1
+	fi
+	case "$rc" in
+	0) ;;
+	2)
+		# Never overwrite another unit's data; the operator must look.
+		log "the device-data vault belongs to another board, SKU or ART; not using it"
+		echo vault-mismatch > "$STATUS"
+		return 1
+		;;
+	*)
+		if ! vault_fill_from_oem || ! vault_read "$WORK/vault"; then
+			if [ -n "$(missing_files)" ]; then
+				echo missing > "$STATUS"
+				log "board data unavailable; affected radios will stay down"
+				return 1
+			fi
+			echo present > "$STATUS"
+			return 0
+		fi
+		;;
+	esac
+	install_from_dir "$WORK/vault/files" vault
+	[ -z "$(missing_files)" ] || { echo missing > "$STATUS"; return 1; }
+	echo vault > "$STATUS"
+}
+
+legacy_main() {
+	local mtd writable=
+	[ -z "$(missing_files)" ] && { echo present > "$STATUS"; return 0; }
+
+	# An A/B image's device tree leaves both banks writable. Without a vault
+	# (e.g. a single-bank install upgraded in place to an A/B image) the
+	# stock bank is still the only source, and is only read, mounted
+	# read-only.
+	command -v ab_family >/dev/null 2>&1 && ab_family && writable=allow-writable
+	for mtd in $(oem_mtds); do
+		BLOCK=; BLOCK_VOL=; ATTACHED=
+		mount_oem_mtd "$mtd" $writable && install_from_dir "$MNT" OEM
+		cleanup
+		[ -z "$(missing_files)" ] && break
+	done
+
+	if [ -n "$(missing_files)" ]; then
+		echo missing > "$STATUS"
+		log "board data unavailable; affected radios will stay down"
+		return 1
+	fi
+	echo imported > "$STATUS"
+}
+
+main() {
+	mkdir -p "$WORK"
+	if [ "$1" = --check-vault ]; then
+		vault_locate && vault_read "$WORK/check" && vault_check "$WORK/check"
+		return
+	fi
+	if vault_locate; then
+		vault_main || return
+	else
+		[ -n "$(board_files)" ] || return 0
+		legacy_main || return
+	fi
+	xe34_pci_api2
+}
+
+main "$@"

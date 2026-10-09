@@ -58,11 +58,13 @@ resolved. The Thor preparation wrapper reuses the existing allocator and the
 FORMAT2 wrapper reuses the existing stager; focused fixture results and their
 limits are recorded in `../../tests/family-thor-writer-fields.md`.
 
-Remaining integration includes the real reusable radio/vault map and own
-vault readback, safe attachment/resume handling, complete phase composition,
-and native mixed-bank confirmation/first-normal-sysupgrade handling. Restore
-needs the converted layout transition and specific nonunique default-reset
-recipe. No full adapter readiness is claimed.
+The real reusable BDF map, own-vault binding/readback, full forward phase
+composition, native mixed-bank confirmation and converted-to-OEM writer are
+now implemented and fixture-tested. Exact local member names and result scope
+are in `../../tests/family-thor-release-interface.md`. Unknown/resumed targets
+remain refused. Physical qualification, first-normal-sysupgrade integration
+and an explicit OEM defaults/reset step remain separate; no AP readiness is
+claimed.
 
 The common owner fixed the named BOOTCONFIG allowance to accept the actual
 131072-byte records. Use the updated shared helper with the exact source

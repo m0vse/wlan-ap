@@ -1,0 +1,212 @@
+#!/bin/sh
+
+check_certificates() {
+	[ -f /certificates/cert.pem -a -f /certificates/key.pem ] || return 1
+	[ -n "$1" ] && [ ! -f /certificates/operational.pem ] && return 1
+	exit 0
+}
+
+# Read the currently-active cert partition. store_certs writes to the
+# alternate partition and then advances cert_part to point at it, so the
+# reader must return that same partition and must NOT flip cert_part
+# (flipping here made a factory-reset boot read the stale/empty slot).
+# fw_printenv needs /etc/fw_env.config, but the uboot-envtools uci-default
+# only generates it at S95done - long after this runs at S09early_boot. On
+# a factory-reset boot the config is gone, so cert_part reads empty and we
+# would pick the wrong (stale/empty) partition. Generate it now if missing.
+tar_part_lookup() {
+	[ -s /etc/fw_env.config ] || {
+		for _ube in /etc/uci-defaults/30_uboot-envtools /rom/etc/uci-defaults/30_uboot-envtools; do
+			[ -f "$_ube" ] && { (. "$_ube") >/dev/null 2>&1; break; }
+		done
+	}
+	part="$(fw_printenv -n cert_part)"
+	if [ "$part" = "1" ]; then
+		echo "$2"
+	else
+		echo "$1"
+	fi
+}
+
+. /lib/functions.sh
+mkdir -p /certificates /etc/ucentral/
+# Cambium OpenWiFi banks must never read the other bank's stale identity.
+# Bind the mount to the core's validated active MTD/UBI mapping, not ubi0/ubi1.
+if [ -f /lib/functions/cambium-ab.sh ]; then
+	. /lib/functions/cambium-ab.sh
+	if ab_family && { [ "${AB_CERTIFICATE_LEBS:-0}" = 20 ] || [ "$AB_LAYOUT" = pair ]; }; then
+		ab_identity || exit 1
+		cert_volume=$(ab_ubi_volume "$AB_ACTIVE_UBI" certificates) || exit 1
+		if awk '$2=="/certificates" { found=1 } END { exit !found }' /proc/mounts; then
+			awk -v dev="/dev/$cert_volume" -v named="$AB_ACTIVE_UBI:certificates" \
+				'$2=="/certificates" && ($1==dev || $1==named) { good=1 } END { exit !good }' /proc/mounts || exit 1
+		else
+			mount -t ubifs "/dev/$cert_volume" /certificates || exit 1
+		fi
+		# Initial native enrollment needs a proven mounted empty store.
+		# This exception is confined to the active pending installer trial.
+		if [ "${1:-}" = --installer-empty ]; then
+			awk -v dev="/dev/$cert_volume" -v named="$AB_ACTIVE_UBI:certificates" '
+			 $2=="/certificates" {count++; if (($1==dev || $1==named) && $3=="ubifs" && ("," $4 ",") ~ /,rw,/) good++}
+			 index($2,"/certificates/")==1 {child++}
+			 END {exit !(count==1 && good==1 && !child)}' /proc/mounts || exit 1
+			[ "$(ab_getenv "${AB_ENV}_installer_target")" = "$AB_ACTIVE" ] || exit 1
+			for _value in "$(ab_getenv "${AB_ENV}_installer_job")" "$(ab_getenv "${AB_ENV}_installer_image")"; do
+				case "$_value" in ''|*[!0-9a-f]*) exit 1 ;; esac
+				[ "${#_value}" = 64 ] || exit 1
+			done
+			exit 0
+		fi
+		check_certificates
+		exit 1
+	fi
+fi
+check_certificates 1
+case "$(board_name)" in
+cig,wf660a)
+	mmc_dev=$(echo $(find_mmc_part "0:ETHPHYFW") | sed 's/^.\{5\}//')
+	[ -n "$mmc_dev" ] && mount -t ext4 /dev/$mmc_dev /certificates
+	;;
+cig,wf672b|\
+cig,wf672|\
+cig,wf197)
+	mmc_dev=$(echo $(find_mmc_part "cert") | sed 's/^.\{5\}//')
+	[ -n "$mmc_dev" ] && mount -t ext4 /dev/$mmc_dev /certificates
+	;;
+sonicfi,rap7110c-341x)
+	mmc_dev=$(echo $(find_mmc_part "certificates") | sed 's/^.\{5\}//')
+	[ -n "$mmc_dev" ] && mount -t ext4 /dev/$mmc_dev /certificates
+	;;
+sonicfi,rap6*)
+	mtd=$(find_mtd_index certificates)
+	if [ "$(head -c 4 /dev/mtd$mtd)" == "hsqs" ]; then
+		mount -t squashfs /dev/mtdblock$mtd /mnt
+		cp /mnt/* /certificates
+		umount /mnt
+	fi
+		mtd=$(find_mtd_index devinfo)
+		[ -n "$mtd" ] && tar xf /dev/mtdblock$mtd -C /certificates
+	;;
+udaya,a5-id2|\
+yuncore,ax820)
+	mtd=$(find_mtd_index certificates)
+	if [ "$(head -c 4 /dev/mtd$mtd)" == "hsqs" ]; then
+		mount -t squashfs /dev/mtdblock$mtd /mnt
+		cp /mnt/* /certificates
+		umount /mnt
+	fi
+	part=$(tar_part_lookup "insta1" "insta2")
+	if [ -n "$part" ]; then
+		mtd=$(find_mtd_index $part)
+		[ -n "$mtd" ] && tar xf /dev/mtdblock$mtd -C /certificates
+	fi
+	;;
+*)
+	mtd=$(find_mtd_index certificates)
+
+	if [ "$(head -c 4 /dev/mtd$mtd)" == "hsqs" ]; then
+		mount -t squashfs /dev/mtdblock$mtd /certificates
+	else
+		[ -n "$mtd" -a -f /sys/class/mtd/mtd$mtd/oobsize ] && ubiattach -p /dev/mtd$mtd
+		if [ -n "$(ubinfo -a | grep certificates)" ]; then
+			[ -e /dev/ubi0 ] && mount -t ubifs ubi0:certificates /certificates
+			[ -e /dev/ubi1 ] && mount -t ubifs ubi1:certificates /certificates
+		fi
+	fi
+esac
+
+check_certificates 1
+
+# if we get here no valid operational certificates were found
+
+PART_NAME=
+
+case "$(board_name)" in
+actiontec,web7200)
+	if grep -q bootselect=0 /proc/cmdline; then
+		PART_NAME=firmware2
+	else
+		PART_NAME=firmware1
+	fi
+	;;
+edgecore,ecw5211|\
+edgecore,eap101|\
+edgecore,eap102|\
+edgecore,eap104|\
+edgecore,eap105|\
+edgecore,eap111|\
+edgecore,eap112|\
+edgecore,oap101|\
+edgecore,oap101e|\
+edgecore,oap103)
+	if grep -q rootfs1 /proc/cmdline; then
+		PART_NAME=rootfs2
+	else
+		PART_NAME=rootfs1
+	fi	
+	;;
+hfcl,ion4xi|\
+hfcl,ion4xi_w|\
+hfcl,ion4x_w|\
+hfcl,ion4xi_HMR|\
+hfcl,ion4x|\
+hfcl,ion4x_2|\
+hfcl,ion4xi_wp|\
+hfcl,ion4xe|\
+udaya,a6-id2|\
+udaya,a6-od2)
+	if grep -q rootfs_1 /proc/cmdline; then
+		PART_NAME=rootfs
+	else
+		PART_NAME=rootfs_1
+	fi	
+	;;
+cig,wf186w|\
+cig,wf189|\
+cig,wf189w|\
+cig,wf189h|\
+cig,wf186h|\
+cig,wf196|\
+cig,wf188n|\
+emplus,wap380c|\
+emplus,wap385c|\
+emplus,wap386v2|\
+emplus,wap581|\
+asterfusion,AP7330|\
+yuncore,ax840|\
+yuncore,fap655)
+	PART_NAME=rootfs_1
+	;;
+senao,iap2300m|\
+senao,iap4300m|\
+senao,jeap6500)
+	PART_NAME=ubi
+	;;
+emplus,wap7636m|\
+emplus,wap588m)
+	tmp_active_fw=$(fw_printenv | grep active_fw | awk -F= {'print $2'})
+	if [ $tmp_active_fw == "0" ]; then
+		 PART_NAME=ubi
+	else
+		 PART_NAME=ubi_1
+	fi
+	;;
+*)
+	check_certificates
+	return 1
+	;;
+esac
+
+MTD=$(find_mtd_index $PART_NAME)
+
+[ -z "$MTD" ] && return 1
+
+ubiattach -m $MTD -d 3
+if [ -e /dev/ubi3 ] ; then
+	if mount -t ubifs ubi3:certificates /certificates; then
+		check_certificates || {
+			umount /certificates
+			check_certificates
+		}
+	fi
+fi
