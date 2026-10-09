@@ -95,7 +95,7 @@ for the forward installer; do not change that selector manually.
 For a clean test on an AP that previously enrolled in OpenWiFi, factory reset
 also leaves the shared native certificate store intact. The forward installer
 deliberately rejects that existing store. After healthy OEM confirmation, use
-the reviewed operator procedure to back up and retire only the named old
+the reviewed operator procedure to retire only the named old
 identity store, then the existing offline enrollment-reset tool and a fresh
 approved enrollment batch. Neither `--confirm` nor the vendor reset scripts
 perform that retirement. Until the exact store cleanup has been reviewed and

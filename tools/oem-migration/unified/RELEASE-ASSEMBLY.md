@@ -99,11 +99,19 @@ confirmation itself must not run a rebooting vendor reset script.
 Keep the previous OpenWiFi identity through the unconfirmed OEM trial. After
 healthy OEM confirmation and the separate factory reset, the shared Sage
 `certificates` volume still exists. A fresh forward install must refuse it.
-The operator must first complete the reviewed own-device identity backup and
-named-store retirement procedure; do not erase the parent UBI device or use
+The operator must first complete the reviewed named-store retirement procedure;
+do not erase the parent UBI device or use
 another AP's identity. The exact store cleanup is a separate action, requiring
 the matching live parent/name/volume, mount/alias checks and explicit consent.
 The current generic confirmation command does not authorize or perform it.
+
+Routine critical backups remain ART/MFG/ENV and indispensable boot-selection
+records. Replaceable issued certificates and private keys are not a routine
+backup prerequisite and must never go through the ordinary HTTP backup relay.
+Keep their existing store intact until healthy OEM confirmation; explicit
+retirement may then clear the named unused OpenWiFi store. An optional AP-key
+recovery copy needs a separately approved encrypted/private destination. This
+does not replace the reset tool's existing private server-state backup.
 
 Then use the already-delivered `/app/reset_native_enrollment.py` inside the
 existing PKI service's Root operator shell. Obtain this AP's exact serial and
