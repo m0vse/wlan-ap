@@ -3,7 +3,8 @@
 from pathlib import Path
 import hashlib, json, os, re, shutil, stat, subprocess, tempfile
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(os.environ.get('NATIVE_MODE_TEST_REPO',Path(__file__).resolve().parents[2]))
+RECIPES = Path(os.environ.get('NATIVE_MODE_RECIPE_ROOT',REPO))
 PACKAGES = ('feeds/tip/certificates', 'feeds/tip/cloud_discovery',
             'feeds/ucentral/ucentral-client', 'feeds/ucentral/ucentral-schema')
 checks = 0
@@ -41,26 +42,41 @@ with tempfile.TemporaryDirectory(prefix='native-copy-modes-') as temporary:
         secret = private/'key'
         secret.write_bytes(b'isolated synthetic fixture, never a real key')
         secret.chmod(0o600)
-        # Execute exactly the reviewed make recipe fragment, translating only
-        # the normal OpenWrt install macros and make's dollar escaping.
-        recipe = (REPO/package/'Makefile').read_text()
-        fragment = re.search(r'(?ms)^\tfind ./files -type d.*?^\tdone\n\tfind ./files -type f.*?^\tdone\n',recipe)
+        # Use the actual BuildPackage eval/call ordering from OpenWrt's
+        # include/package-pack.mk. Never emulate make's dollar escaping.
+        recipe = (RECIPES/package/'Makefile').read_text()
+        fragment = re.search(r'(?ms)^\tfind ./files -mindepth 1 -type d.*?^\tdone\n\tfind ./files -type f.*?^\tdone\n',recipe)
         assert fragment,package
-        script = fragment.group().replace('$(INSTALL_DIR)','install -d -m0755')
-        script = script.replace('$(INSTALL_BIN)','install -m0755')
-        script = script.replace('$(INSTALL_DATA)','install -m0644')
-        script = script.replace('$(1)',str(stage)).replace('$$','$')
+        makefile = '''INSTALL_DIR:=install -d -m0755
+INSTALL_BIN:=install -m0755
+INSTALL_DATA:=install -m0644
+IDIR_fixture:='''+str(stage)+'''
+define Package/fixture/install
+\tcp -fpR ./files/* $(1)
+'''+fragment.group()+'''endef
+define BuildPackage
+.PHONY: $(1)
+$(1):
+\t$(call Package/$(1)/install,$$(IDIR_$(1)))
+endef
+$(eval $(call BuildPackage,fixture))
+'''
+        (base/'Makefile').write_text(makefile)
         copy = 'cp -fpR ./files/* "'+str(stage)+'"\n'
         subprocess.run(['sh','-ec',copy],cwd=base,check=True)
         assert any(stat.S_IMODE((stage/path).stat().st_mode)!=mode for path,mode in expected.items())
         checks += 1  # Original recursive-copy negative control.
-        subprocess.run(['sh','-ec',script],cwd=base,check=True)
+        result = subprocess.run(['make','--no-print-directory','fixture'],cwd=base,capture_output=True,text=True)
+        assert result.returncode==0,(package,result.stdout,result.stderr)
+        assert '${path#./files/}' in result.stdout and '$path' in result.stdout, result.stdout
+        assert not (stage/'files').exists(),package
+        checks += 1
         for path, mode in expected.items():
             installed = stage/path
             assert stat.S_IMODE(installed.stat().st_mode)==mode,(package,path)
             assert installed.read_bytes()==(files/path).read_bytes(),(package,path)
             checks += 2
-        for path in [files,*files.rglob('*')]:
+        for path in files.rglob('*'):
             if path.is_dir():
                 assert stat.S_IMODE((stage/path.relative_to(files)).stat().st_mode)==0o755
                 checks += 1
@@ -72,7 +88,8 @@ with tempfile.TemporaryDirectory(prefix='native-copy-modes-') as temporary:
         assert stat.S_IMODE(secret.stat().st_mode)==0o600
         assert secret.read_bytes()==b'isolated synthetic fixture, never a real key'
         checks += 3
-        failure = subprocess.run(['sh','-ec',script.replace('install -m0755','false')],cwd=base)
+        (base/'Makefile').write_text(makefile.replace('INSTALL_BIN:=install -m0755','INSTALL_BIN:=false'))
+        failure = subprocess.run(['make','--no-print-directory','fixture'],cwd=base,capture_output=True,text=True)
         assert failure.returncode!=0,package
         checks += 1
         reports.append(dict(package=package,tracked_files=len(expected),
@@ -80,4 +97,4 @@ with tempfile.TemporaryDirectory(prefix='native-copy-modes-') as temporary:
 print(json.dumps(dict(status='PASS',checks=checks,packages=reports,
                      source_modes='0775 executables,0664 data,0775 package-owned directories',
                      outputs='0755 executables/directories,0644 data; unrelated0700/0600 private fixture untouched',
-                     scope='Actual recipe fragments and tracked file manifests; private staging only, no AP or firmware build.')))
+                     scope='Actual recipe fragments through GNU make eval/call and tracked file manifests; private staging only, no AP or firmware build.')))
