@@ -1,0 +1,58 @@
+--- a/ucentral-state
++++ b/ucentral-state
+@@ -24,6 +24,8 @@
+ let leds_off = false;
+ let blink_timer;
+ let factory_reset_timer;
++let dfs_led_cac = false;
++let dfs_led_sampled = 0;
+ let managed_status_led = system('/usr/libexec/ucentral-led.sh managed') == 0;
+ 
+ function controller_connected(status) {
+@@ -45,7 +47,8 @@
+ 	}
+ 	if (led_pattern_active()) return;
+ 	let connected = controller_connected(ubus.call('ucentral', 'status'));
+-	system('/usr/libexec/ucentral-led.sh ' + (restore ? 'restore-' : '') + (connected ? 'on' : 'off'));
++	let fresh_cac = dfs_led_cac && time() >= dfs_led_sampled && time() - dfs_led_sampled <= 15;
++	system('/usr/libexec/ucentral-led.sh ' + (restore ? 'restore-' : '') + (fresh_cac ? 'dfs-' : '') + (connected ? 'on' : 'off'));
+ }
+ 
+ function status_phase_active() {
+@@ -167,6 +170,36 @@
+ 		healthcheck.pid = uloop.process('/usr/share/ucentral/health.uc', [], {}, healthcheck.complete);
+ 	},
+ };
++
++// CAC probing runs separately: bounded hostapd queries never block state/LED timers.
++let dfs_led_pid;
++let dfs_led_started = 0;
++function dfs_led_complete(exitcode) {
++ dfs_led_pid = null;
++ dfs_led_cac = false;
++ try {
++  let result = exitcode == 0 ? json(fs.readfile('/tmp/ucentral-dfs-led/sample.json')) : null;
++  if (type(result?.sampled) == 'int' && type(result?.pending) == 'bool' &&
++      result.sampled >= dfs_led_started && result.sampled <= time() && time() - result.sampled <= 15) {
++   dfs_led_cac = result.pending;
++   dfs_led_sampled = result.sampled;
++  }
++ } catch(e) {}
++ controller_led_update();
++}
++function dfs_led_refresh() {
++ if (!managed_status_led || dfs_led_pid) return;
++ dfs_led_started = time();
++ dfs_led_pid = uloop.process('/usr/libexec/ucentral-dfs-led', [], {}, dfs_led_complete);
++ if (!dfs_led_pid) { dfs_led_cac = false; controller_led_update(); }
++}
++let dfs_led_poll = uloop.interval(10000, dfs_led_refresh);
++let dfs_led_expiry = uloop.interval(1000, function() {
++ if (dfs_led_cac && (time() < dfs_led_sampled || time() - dfs_led_sampled > 15)) {
++  dfs_led_cac = false;
++  controller_led_update();
++ }
++});
+ 
+ let state;
+ state = {
