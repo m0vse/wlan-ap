@@ -8,7 +8,7 @@ work=pathlib.Path(tempfile.mkdtemp(prefix='discovery-renewal-regressions.'))
 policy=package/'files/usr/share/ucentral/discovery_policy.uc'
 body=daemon[daemon.index('const DISCOVER ='):daemon.index('\ndetect_certificate_type();')]
 body=body.replace('system(', 'test_system(').replace('time()', 'test_time()')
-setup='''import { select_controller } from POLICY;
+setup='''import { select_controller, default_policy } from POLICY;
 let files={}; let commands=[]; let writes=[]; let connected=true;
 let enroll_status=0; let reenroll_status=0; let expiry_status=0; let parse_status=0; let clock=1000; let write_failure=false;
 let fs={readfile:(p)=>files[p]??null,stat:(p)=>exists(files,p)?{type:'file'}:null,writefile:(p,v)=>{if(write_failure)return null;files[p]=type(v)=='string'?v:sprintf('%J',v);push(writes,p);return length(files[p]);},unlink:(p)=>{delete files[p];return true;},popen:()=>({read:()=> 'issuer=OpenLAN Birth Issuing CA',close:()=>0}),mkdir:()=>true};
