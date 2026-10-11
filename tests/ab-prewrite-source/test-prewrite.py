@@ -8,12 +8,12 @@ from pathlib import Path
 import argparse,json,os,subprocess,tempfile
 
 repo=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser();p.add_argument('--core',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--core',type=Path);p.add_argument('--prepared-core',type=Path,help='Actual generated upgrade helper with patch0184 already applied');a=p.parse_args()
 
 def reconstruct_upgrade(root):
  """Replay only this file's real repository hunks; no SDK/private input."""
  relative='package/cambium/cambium-ab/files/cambium-ab-upgrade.sh'
- created=next((repo/'patches-25.12').glob('0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch'))
+ created=repo/'patches-25.12/0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch'
  section=created.read_text().split('+++ b/'+relative+'\n',1)[1].split('\ndiff --git ',1)[0]
  target=root/relative;target.parent.mkdir(parents=True)
  target.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
@@ -22,25 +22,28 @@ def reconstruct_upgrade(root):
   if not created.name<path.name<'0184-':continue
   text=path.read_text()
   if marker not in text:continue
-  fragment=marker+text.split(marker,1)[1]
-  fragment=fragment.split('\ndiff --git ',1)[0].split('\n--- a/',1)[0].split('\n--- /dev/null',1)[0]
-  patch=root/'component.patch';patch.write_text(fragment.rstrip()+'\n')
-  subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(patch)],cwd=root,check=True,capture_output=True)
+  subprocess.run(['git','apply','--include='+relative,str(path)],cwd=root,check=True,capture_output=True)
  subprocess.run(['sh','-n',str(target)],check=True)
  return target.read_text()
 
 with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
  root=Path(td);files=root/'package/cambium/cambium-ab/files';files.mkdir(parents=True)
- original=a.core.read_text() if a.core else reconstruct_upgrade(root/'repository-source')
+ original=a.prepared_core.read_text() if a.prepared_core else (a.core.read_text() if a.core else reconstruct_upgrade(root/'repository-source'))
  core=files/'cambium-ab-upgrade.sh';core.write_text(original)
  recipe=files.parent/'Makefile'
  recipe.write_text('include $(TOPDIR)/rules.mk\n\nPKG_NAME:=cambium-ab\nPKG_RELEASE:=18\nPKG_LICENSE:=GPL-2.0-only\nPKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>\n\n')
- subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0184-cambium-ab-preserve-working-source-before-write.patch')],cwd=root,check=True,capture_output=True)
- assert 'PKG_RELEASE:=19\n' in recipe.read_text()
+ if not a.prepared_core:
+  subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0184-cambium-ab-preserve-working-source-before-write.patch')],cwd=root,check=True,capture_output=True)
+  assert 'PKG_RELEASE:=19\n' in recipe.read_text()
  (root/'empty').write_text('')
  modules={}
  for family,prefix in [('jaguar','0124-'),('cheetah','0125a-'),('thor','0141-'),('gambit','0140-')]:
-  patch=next((repo/'patches-25.12').glob((prefix+'qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch') if family=='jaguar' else prefix+'*.patch')).read_text()
+  if a.prepared_core:
+   source=a.prepared_core.resolve().parents[2]/('cambium-'+family+'-support')/'files'/('cambium-ab-'+family+'.sh')
+   if source.is_file():
+    modules[family]=source
+    continue
+  patch=next((repo/'patches-25.12').glob(prefix+'*.patch')).read_text()
   marker=f'+++ b/package/cambium/cambium-{family}-support/files/cambium-ab-{family}.sh\n'
   section=patch.split(marker,1)[1].split('\ndiff --git ',1)[0]
   source=root/(family+'.sh');source.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
@@ -149,7 +152,7 @@ cambium_ab_do_upgrade "$LOCAL_IMAGE"
     count+=1
  # Negative control: the actual old writer reaches target without prior-only
  # persistence and is rejected by the target boundary assertion.
- old=root/'old-upgrade.sh';old.write_text(original)
+ old=root/'old-upgrade.sh';old.write_text(reconstruct_upgrade(root/'negative-control-source') if a.prepared_core else original)
  r,trace,_=execute(old,'jaguar',0,'actual source command','')
  assert r.returncode!=0 and 'target' in trace and 'set:bootcmd' not in trace
  print(f'PASS: {count} ordered source-preservation fault/trace cases with actual family boot renderers; old writer negative control rejected')
