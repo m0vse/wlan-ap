@@ -4,7 +4,7 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=qca-nss-ppe
 PKG_SOURCE_PROTO:=git
 PKG_BRANCH:=master
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-ppe
 PKG_MIRROR_HASH:=8546d17c60978d56d30f21cd4a21f1d1936be348d0f92119802691688402edc1
 PKG_SOURCE_VERSION:=d53eff24bf257a8bb1b2f68beb3aa06332bfd567
@@ -103,7 +103,9 @@ define files_profile
 	fi
 endef
 
+ifneq ($(strip $(TARGET_PROFILE)),)
 Hooks/Prepare/Post += patch_profile
 Hooks/Prepare/Post += files_profile
+endif
 
 $(eval $(call KernelPackage,qca-nss-ppe))

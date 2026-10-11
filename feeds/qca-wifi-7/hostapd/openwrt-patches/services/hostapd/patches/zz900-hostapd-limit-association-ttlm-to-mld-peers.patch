@@ -1,0 +1,24 @@
+Subject: [PATCH] hostapd: limit association TTLM mapping to MLD peers
+
+The SDK enables TTLM by default. A newly allocated station also has a
+zero-initialized TTLM response status, which equals WLAN_STATUS_SUCCESS.
+Consequently a normal single-link association enters the TTLM mapping
+helper. That helper iterates hapd->mld->links and crashes when the AP is
+an independent EHT BSS without an MLD.
+
+Require an MLD AP and an MLD station before applying negotiated link
+mapping. Keep the existing enabled/status checks and explicit MLD path.
+This is shared SDK behavior and does not depend on the device family.
+
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5834,7 +5834,8 @@
+ 		p = hostapd_eid_channel_usage(hapd, p, buf + buflen - p);
+ 	}
+ 
+-	if (hapd->conf->ttlm_enable && sta &&
++	if (hapd->conf->mld_ap && hapd->conf->ttlm_enable && sta &&
++	    sta->mld_info.mld_sta &&
+ 	    sta->mld_info.tid_map_info.ttlm_ongoing_negotiation_info.ttlm_resp_type ==
+ 	    WLAN_STATUS_SUCCESS)
+ 		hostapd_apply_ttlm_mapping_to_driver(hapd, sta);

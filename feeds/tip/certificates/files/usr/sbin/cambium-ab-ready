@@ -1,0 +1,16 @@
+#!/bin/sh
+# Read-only normal sysupgrade readiness, never a conversion or upgrade command.
+set -e
+case "${1:-}" in --help) echo 'Usage: cambium-ab-ready';exit 0;; '') [ "$#" = 0 ] || exit 2;; *) exit 2;; esac
+[ -r /lib/functions/system.sh ] && [ -r /lib/functions/cambium-ab.sh ] || exit 1
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+ab_family && ab_identity || exit 1
+AB_UPGRADE_READY=unsupported AB_UPGRADE_REASON=readiness-hook-unavailable
+if command -v ab_sysupgrade_readiness >/dev/null; then
+ ab_sysupgrade_readiness || exit 1
+fi
+case "$AB_UPGRADE_READY" in ready|onboarded|unsupported) ;; *) exit 1;; esac
+case "$AB_UPGRADE_REASON" in *[!A-Za-z0-9._:-]*) exit 1;; esac
+printf 'schema\t1\noperation\tsysupgrade-readiness\nfamily\t%s\nmodel\t%s\nrunning\t%s\nstatus\t%s\nreason\t%s\n' "$AB_FAMILY" "$AB_MODEL" "$AB_ACTIVE" "$AB_UPGRADE_READY" "$AB_UPGRADE_REASON"
+[ "$AB_UPGRADE_READY" = ready ]

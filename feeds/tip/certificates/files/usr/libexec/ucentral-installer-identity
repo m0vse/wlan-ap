@@ -474,10 +474,9 @@ function cleanup_confirmed(seed) {
     let state = object_file(JOURNAL + '/transaction.json', 2048);
     if (state.committed !== true || state.accepted !== true || context[3] != state.target_slot)
         fail('Native trial has not been accepted');
-    let command = '. /lib/functions/system.sh; . /lib/functions/cambium-ab.sh; ab_identity >/dev/null || exit 1; ' +
-        '[ "$(ab_getenv "${AB_ENV}_ab_confirmed")" = "$AB_ACTIVE" ] && ' +
-        '[ "$(ab_getenv "${AB_ENV}_ab_state")" = confirmed ] && ' +
-        '[ "$(ab_getenv bootcmd)" = "run ${AB_ENV}_stable$AB_ACTIVE" ]';
+    let command = '. /lib/functions/system.sh; . /lib/functions/cambium-ab.sh; ' +
+        '. /lib/functions/cambium-installer-health.sh; ab_identity >/dev/null || exit 1; ' +
+        'ab_installer_confirmed_context';
     if (system(command)) fail('Confirmed stable boot state has not been read back');
     let proof_path = JOURNAL + '/completion.json';
     let proof = fs.lstat(proof_path) ? object_file(proof_path, 4096) : null;

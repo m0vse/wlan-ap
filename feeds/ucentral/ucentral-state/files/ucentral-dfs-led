@@ -1,0 +1,13 @@
+#!/bin/sh
+# Read-only fresh CAC collector. The timeout bounds the whole scan, not each BSS.
+set -eu
+umask 077
+work=/tmp/ucentral-dfs-led
+[ ! -L "$work" ] || exit 1
+if [ ! -d "$work" ]; then mkdir -m 700 "$work" || exit 1; fi
+[ "$(stat -c %u "$work")" = "$(id -u)" ] && [ "$(stat -c %a "$work")" = 700 ] || exit 1
+rm -f "$work/sample.json" "$work/sample.new"
+trap 'rm -f "$work/sample.new"' EXIT
+/usr/libexec/timeout-coreutils -s KILL 5 /usr/bin/ucode /usr/share/ucentral/dfs_led.uc > "$work/sample.new"
+chmod 600 "$work/sample.new"
+mv "$work/sample.new" "$work/sample.json"

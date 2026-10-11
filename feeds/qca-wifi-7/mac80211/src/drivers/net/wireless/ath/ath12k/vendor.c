@@ -4202,9 +4202,11 @@ static int ath12k_vendor_wifi_config_handler(struct wiphy *wiphy,
 	}
 
 	if (!ath12k_ppe_ds_enabled) {
+		if (ppe_vp_type != PPE_VP_USER_TYPE_PASSIVE)
+			ath12k_dbg(NULL, ATH12K_DBG_PPE,
+				   "Using passive offload because DS is disabled\n");
 		type = "passive";
 		ppe_vp_type = 1;
-		pr_err("Overriding offload type to passive as DS isn't enabled\n");
 	}
 
 	if (wdev->ppe_vp_type != ppe_vp_type)

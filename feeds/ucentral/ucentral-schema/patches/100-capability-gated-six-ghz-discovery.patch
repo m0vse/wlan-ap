@@ -1,0 +1,78 @@
+--- a/command/cmd_wifiscan.uc
++++ b/command/cmd_wifiscan.uc
+@@ -1,4 +1,5 @@
+ let thor_scanner = false;
++let six_ghz_scan_failures = 0;
+ let verbose = args?.verbose == null ? true : args.verbose;
+ let active = args?.active ? true : false;
+ /* frequency_width is keyed by string, the UI sends a number */
+@@ -73,7 +74,7 @@
+ 	return;
+ }
+ 
+-function scan_trigger(wdev, frequency, width) {
++function scan_trigger(wdev, frequency, width, passive) {
+ 	let params = { dev: wdev, scan_flags: SCAN_FLAG_AP };
+ 
+ 	if (frequency && type(frequency) == 'array') {
+@@ -85,7 +86,7 @@
+ 		params.channel_width = frequency_width[width];
+ 	}
+ 
+-	if (active)
++	if (active && !passive)
+ 		params.scan_ssids = [ '' ];
+ 
+ 	//printf("%.J\n", params);
+@@ -108,7 +109,7 @@
+ 
+ 	else if (res.cmd == def.NL80211_CMD_SCAN_ABORTED)
+ 		warn("Scan aborted by kernel\n");
+-	return !thor_scanner || !!res && res.cmd == def.NL80211_CMD_NEW_SCAN_RESULTS;
++	return !(thor_scanner || passive) || !!res && res.cmd == def.NL80211_CMD_NEW_SCAN_RESULTS;
+ }
+ 
+ function trigger_scan_width(wdev, freqs, width) {
+@@ -277,6 +278,16 @@
+ 			}
+ 			if (trigger_scan_width(iface.dev, freqs_5g, ch_width) === false && thor_scanner)
+ 				return thor_scan_failed(iface, scan_iface);
++		}
++		// The generic handler must trigger 6 GHz discovery too, rather than
++		// return a stale/empty cache. Thor's dedicated scanner stays unchanged.
++		let freqs_6g = filter(freqs, freq => freq >= 5935 && freq <= 7115);
++		if (!thor_scanner && length(freqs_6g) &&
++		    scan_trigger(iface.dev, freqs_6g, null, true) === false) {
++			six_ghz_scan_failures++;
++			if (scan_iface)
++				nl.request(def.NL80211_CMD_DEL_INTERFACE, 0, { dev: iface.dev });
++			continue;
+ 		}
+ 		let res = nl.request(def.NL80211_CMD_GET_SCAN, def.NLM_F_DUMP, { dev: iface.dev });
+ 		for (let bss in res) {
+@@ -364,16 +375,21 @@
+ if (scan == null) return;
+ 
+ if (args.periodic) {
++	let params = { data: scan };
++	if (six_ghz_scan_failures) {
++		params.error = 1;
++		params.text = '6 GHz discovery scan failed';
++	}
+ 	ctx.call('ucentral', 'send', {
+ 		method: 'wifiscan',
+-		params: { data: scan }
++		params
+ 	});
+ 	return;
+ }
+ 
+ result_json({
+-	error: 0,
+-	text: "Success",
+-	resultCode: 1,
++	error: six_ghz_scan_failures ? 1 : 0,
++	text: six_ghz_scan_failures ? '6 GHz discovery scan failed' : 'Success',
++	resultCode: six_ghz_scan_failures ? 0 : 1,
+ 	scan,
+ });

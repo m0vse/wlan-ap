@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cloud_discovery
-PKG_RELEASE:=12
+PKG_RELEASE:=13
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -27,6 +27,7 @@ define Package/cloud_discovery/install
 	$(INSTALL_BIN) ./files/usr/bin/est_client $(1)/usr/bin/est_client
 	# Recursive copies preserve checkout directory modes; normalize last.
 	$(INSTALL_DIR) $(1)/etc/ucentral
+	$(INSTALL_DATA) ./files/etc/ucentral/discovery-policy.json $(1)/etc/ucentral/discovery-policy.json
 endef
 
 $(eval $(call BuildPackage,cloud_discovery))

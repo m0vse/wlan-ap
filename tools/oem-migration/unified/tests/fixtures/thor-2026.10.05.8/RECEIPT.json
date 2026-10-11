@@ -1,0 +1,17 @@
+{
+  "image_sha256": "ef1bbf0fcdc72252df64b3b6944462c7b01eca2d1973a0e1ef8daed00035aae9",
+  "source_commit": "f640ecb45fb2539f73ac1795197acafde2c63a3b",
+  "origin": "Exact public file bytes from verified released .8 filesystem, retained build-server artifact check",
+  "files": {
+    "lib/functions/cambium-ab.sh": "1fe1c8c74526a61bfe8a514ff286351300c5906aa69d22137f886cd6c1d794f7",
+    "lib/functions/cambium-ab-thor.sh": "4501a67fc910a79f8339c847e6e5470d6dbab51cc31ef84b830b13f241f3ffd3",
+    "lib/functions/cambium-installer-health.sh": "84c24614ee914427fa6543fe12ddacec4f7c53fae5650e77cf3ac5b356e31ec7",
+    "usr/sbin/cambium-ab-guard": "68d7365e6cd1a8222c5478fbbcabcd10a1bdc21af791395857281aca4215b0b5",
+    "usr/sbin/cambium-board-data": "1f8f29ce91310cdcacdb6077df1061637211207ee245041604376ea055428c43",
+    "lib/preinit/75_certificates": "3c27e4c08b4faacf389e2ede3562051d55553b0fd32a8f68afec973ab3ed0368",
+    "usr/libexec/ucentral-installer-firstboot": "60b4ee2e3a62bfd64390c7983ee033c4b910e0b27b28fffd9d45a7621ac9d321",
+    "usr/libexec/ucentral-installer-identity": "54651cd16550464842b15915344f8f28fdc16741adfc27bbd5b829bc75832a82",
+    "usr/libexec/ucentral-installer-boot": "61d68123f627528771704c6a1482b98c5ec8064c707c7a1a47b47fa991e93619",
+    "usr/bin/mount_certs": "9f171a5a28cc435a8b982079d43e043b219639cf35e3014a400ef056bb683696"
+  }
+}

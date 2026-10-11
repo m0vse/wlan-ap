@@ -1,3 +1,6 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] qualcommax: export Thor bank certificates before RAM upgrade
+
 --- a/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 +++ b/target/linux/qualcommax/ipq807x/base-files/lib/upgrade/platform.sh
 @@ -155,6 +155,12 @@

@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "family": "cheetah",
+  "models": [
+    {
+      "sku": "00000023",
+      "model": "XV2-21X",
+      "board": "cambiumnetworks,xv2-21x",
+      "fit": "config@mp03.3-ocelot",
+      "oem_sources_tested": [],
+      "converted_stock_reference": "2026.09.29.0",
+      "forward_ready": false,
+      "restore_ready": false,
+      "upgrade_boot_ready": false
+    },
+    {
+      "sku": "00000022",
+      "model": "XV2-22H",
+      "geometry": null,
+      "oem_sources_tested": [],
+      "forward_ready": false,
+      "restore_ready": false,
+      "upgrade_boot_ready": false
+    },
+    {
+      "sku": "00000024",
+      "model": "XV2-23T",
+      "geometry": null,
+      "oem_sources_tested": [],
+      "forward_ready": false,
+      "restore_ready": false,
+      "upgrade_boot_ready": false
+    }
+  ],
+  "native_reference": {
+    "scope": "Actual native Cheetah .7 FIT; not proof of OEM layout compatibility or permission to write",
+    "dtb_sha256": "a10bf5a9b62d6b7b3efad0453ec4f2b463db9bf40282459abd0e43a286d0c137",
+    "partitions": [
+      {
+        "label": "0:SBL1",
+        "node": "/soc@0/spi@78b5000/flash@0/partitions/partition@0",
+        "partition_parent": "/soc@0/spi@78b5000/flash@0",
+        "reg_cells": [
+          0,
+          196608
+        ],
+        "read_only": true
+      },
+      {
+        "label": "0:APPSBL",
+        "node": "/soc@0/spi@78b5000/flash@0/partitions/partition@1f0000",
+        "partition_parent": "/soc@0/spi@78b5000/flash@0",
+        "reg_cells": [
+          2031616,
+          655360
+        ],
+        "read_only": true
+      },
+      {
+        "label": "0:ART",
+        "node": "/soc@0/spi@78b5000/flash@0/partitions/partition@330000",
+        "partition_parent": "/soc@0/spi@78b5000/flash@0",
+        "reg_cells": [
+          3342336,
+          458752
+        ],
+        "read_only": true
+      },
+      {
+        "label": "0:APPSBLENV",
+        "node": "/soc@0/spi@78b5000/flash@0/partitions/partition@3b0000",
+        "partition_parent": "/soc@0/spi@78b5000/flash@0",
+        "reg_cells": [
+          3866624,
+          65536
+        ],
+        "read_only": false
+      },
+      {
+        "label": "0:TRAINING",
+        "node": "/soc@0/spi@79b0000/nand@0/partitions/partition@0",
+        "partition_parent": "/soc@0/spi@79b0000/nand@0",
+        "reg_cells": [
+          0,
+          524288
+        ],
+        "read_only": true
+      },
+      {
+        "label": "rootfs",
+        "node": "/soc@0/spi@79b0000/nand@0/partitions/partition@80000",
+        "partition_parent": "/soc@0/spi@79b0000/nand@0",
+        "reg_cells": [
+          524288,
+          100663296
+        ],
+        "read_only": false
+      },
+      {
+        "label": "rootfs_1",
+        "node": "/soc@0/spi@79b0000/nand@0/partitions/partition@6080000",
+        "partition_parent": "/soc@0/spi@79b0000/nand@0",
+        "reg_cells": [
+          101187584,
+          100663296
+        ],
+        "read_only": false
+      },
+      {
+        "label": "0:NVRAM",
+        "node": "/soc@0/spi@79b0000/nand@0/partitions/partition@c080000",
+        "partition_parent": "/soc@0/spi@79b0000/nand@0",
+        "reg_cells": [
+          201850880,
+          49807360
+        ],
+        "read_only": true
+      },
+      {
+        "label": "crashLog",
+        "node": "/soc@0/spi@79b0000/nand@0/partitions/partition@f000000",
+        "partition_parent": "/soc@0/spi@79b0000/nand@0",
+        "reg_cells": [
+          251658240,
+          16777216
+        ],
+        "read_only": true
+      }
+    ]
+  },
+  "protected_byte_roles": [
+    "own_ART",
+    "own_MFG",
+    "bootcode",
+    "boot_ENV",
+    "active_OEM",
+    "active_OpenWiFi",
+    "certificates",
+    "vault"
+  ],
+  "network_contract": "All payload/runtime/asset objects must be completely authenticated and cached locally with bounded timeouts before writes; no lazy HTTP during writes",
+  "writer_checkpoint_coverage": "Unreachable while no qualified OEM writer/restore/boot contract exists. No synthetic positive migration or physical power-loss claim.",
+  "readiness_gap": "Published ab_upgrade_preflight rejects one-OEM state unless ab_version=1, whose documented meaning is both banks already converted. Do not forge that marker to claim readiness. Existing trial command does not gate candidate load on successful saveenv. Watchdog hardware proof missing.",
+  "shared_harness_required": [
+    "actual FORMAT2 umask077/public upper0755/private root-seed0700/files0600",
+    "real OverlayFS UID81 capability-free service execution",
+    "per-supported-model actual writer/ENV power-checkpoint fault proof",
+    "per-object timeout/drop/truncation and cached-offline execution proof"
+  ]
+}

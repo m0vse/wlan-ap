@@ -1,0 +1,255 @@
+# One Cambium OEM migration interface
+
+These sources belong to OpenWiFi. **Use a release only when its exact model,
+OEM version and adapter are supported.** A recognized unsupported model is
+rejected before key input, backup, boot-environment changes or firmware writes.
+Source simulations are not hardware qualification. There is no force or trial bypass.
+
+## Choose the operation
+
+| Starting state | Operation | Command or route |
+|---|---|---|
+| Supported OEM source | Inspect, then migrate to OpenWiFi | `cambium-oem-install check`, then `cambium-oem-install` |
+| Existing OpenWrt | Convert using its reviewed model-specific path | [Stock migration guide](../../stock-migration/README.md); the OEM command refuses OpenWrt |
+| OpenWiFi with a retained OEM bank | Inspect a one-shot OEM return | `cambium-return-oem --check`; `--arm` requires installed safe support |
+| OpenWiFi with both banks converted | Reconstruct OEM in the inactive bank | `cambium-oem-restore-test --check`; `--restore` requires its own enabled release row |
+| Healthy restored OEM candidate | Confirm the OEM return | `cambium-oem-restore-test --confirm` requires a separate exact-model confirmation row |
+| Enrolled OpenWiFi | Inspect normal upgrade readiness | Installed `cambium-ab-ready`, or the separately authenticated release readiness command |
+
+OpenWrt-to-OpenWiFi remains a separate supported scope. An `upgrade-models.tsv`
+readiness row does not implement that conversion, and `sysupgrade` alone does
+not authorize a change from a stock layout. Keep the reviewed outgoing platform
+checks and migration route for each remaining OpenWrt device.
+
+## Quick start: OEM to OpenWiFi
+
+Obtain the reviewed installer release from your deployment operator and verify
+its published launcher hash. The release already contains the correct image
+mapping and operator controller/download/critical-backup URLs. Public source
+contains no site defaults or enrollment key.
+
+A metadata-first release contains the authenticated common launcher, helpers
+and exact-model data map. The same command detects the model and stages only
+its selected operation's pinned objects before key input or backup. You do not
+choose a family bundle or copy every family's firmware onto the AP. Verified
+local objects are rechecked before writes; a self-contained offline release
+continues to work without the data map.
+
+The published launcher hash and release ledger are separate checks. Verify the
+canonical launcher against its independently obtained `LAUNCHER-HASHES.txt`
+entry before running it; the launcher checks the pinned release ledger before
+sourcing helpers. A checksum file obtained only from the same untrusted download
+does not supply that independent pin.
+
+From an OEM root console, inside that verified release directory:
+
+```sh
+./cambium-oem-install check
+./cambium-oem-install
+```
+
+The second command detects the model, verifies its OEM version and storage,
+checks the image and protected write boundaries, and displays the retained OEM
+and target slots. Enter the approved onboarding key at the **hidden prompt**;
+it does not belong in a command, environment variable or log. Type `INSTALL`
+only after reviewing the summary. The installer verifies critical backup
+uploads before changing firmware, stages the image and protected enrollment
+settings, reads them back and arms one candidate attempt. It then asks whether
+you want to reboot. A refusal or failed check never requests automatic reboot.
+
+OpenWiFi performs its own key/CSR creation and native EST enrollment after
+networking and time are ready. A configured controller is a default; normal
+DHCP224 discovery retains priority. Enrollment and a freshly applied controller
+configuration are required before healthy boot confirmation. There is no
+source-side certificate request, imported AP key or new issuer workflow.
+
+After onboarding, use the installed read-only command:
+
+```sh
+cambium-ab-status
+cambium-ab-ready
+```
+
+`onboarded` is not `ready`. `cambium-ab-ready` returns success only when the
+installed model's normal A/B backend proves its upgrade prerequisites. A
+missing hook, unsupported version or unconverted layout returns nonzero. Only
+then may an operator choose a normal OpenWiFi `sysupgrade` using the reviewed
+image. The installer **never automatically overwrites the retained OEM slot**.
+New readiness/backend hooks require installation through a reviewed firmware
+release; this source change does not install them on existing APs.
+
+## Quick start: restore OEM for a clean test
+
+This is a separate operation for APs already running OpenWiFi on both slots.
+`cambium-return-oem` checks a retained OEM bank. Arming requires a reviewed
+one-shot return handler; releases with unsafe permanent-switch semantics must
+refuse before changing the device. It is not a full restoration alias. A missing
+command, handler or enabled release row means that operation is unsupported; do not substitute a manual
+selector change or a family sibling's restoration assets.
+
+Inside an independently verified restoration release:
+
+```sh
+./cambium-oem-restore-test --check
+./cambium-oem-restore-test --restore
+```
+
+The dry run must identify the current OpenWiFi slot, inactive target, verified
+OEM assets and model-specific nonunique factory-reset plan. The restore command
+requires the separate `RESTORE OEM` confirmation. It preserves the working
+OpenWiFi slot and critical identity, reads back the inactive OEM image and arms
+one attempt, then offers an explicit reboot choice. It does not reset server
+inventory, revoke certificates or wipe the source identity store implicitly.
+An unsupported converted layout refuses; do not delete A/B flags manually.
+After booting OEM, verify management access and the model's reported kernel,
+root and protected-data checks. Where that release provides a reviewed
+confirmation handler, use:
+
+```sh
+./cambium-oem-restore-test --confirm
+```
+
+This requires `CONFIRM OEM` and refuses on OpenWiFi or without that exact-model
+handler. It does not infer success merely because the kernel started. Only
+then follow the model's reviewed OEM-side factory-reset procedure. Shared
+configuration or identity needed by the previous OpenWiFi slot must not be
+cleared while the OEM attempt is still unconfirmed. A one-shot OEM boot whose
+saved selector still names the prior OpenWiFi slot is not a normal OEM source
+for the forward installer; do not change that selector manually.
+
+For a clean test on an AP that previously enrolled in OpenWiFi, factory reset
+also leaves the shared native certificate store intact. The forward installer
+deliberately rejects that existing store. After healthy OEM confirmation, use
+the reviewed operator procedure to retire only the named old
+identity store, then the existing offline enrollment-reset tool and a fresh
+approved enrollment batch. Neither `--confirm` nor the vendor reset scripts
+perform that retirement. Until the exact store cleanup has been reviewed and
+explicitly performed, the restore/reset sequence is not a complete clean-test
+workflow. See [the operator retirement steps](RELEASE-ASSEMBLY.md#retire-an-old-native-identity-for-a-clean-test).
+
+After a both-native Jaguar or Thor returns to OEM, the other bank still has
+its old OpenWiFi software, overlay and radio vault. Retiring its old certificate
+store does not restore the original two-volume OEM target layout. Jaguar's
+source now provides exact confirmed-return reuse: it preserves the own-ART-bound
+vault, checks its radio files against the incoming authenticated image assets,
+refuses remaining identity or unknown children, and reclaims only inactive
+software and nonunique configuration after consent and a saved source-only
+default. The old conversion flag is admitted only with the confirmed-return
+selector and slot tuple; it is not manually cleared. An unattached target is
+attached automatically after saving the source, before any target erase.
+This source implementation still needs its exact release assembly and operator
+hardware acceptance; it is not an automatically performed identity retirement.
+Thor's equivalent completed-release qualification remains separate. Do not
+clear flags or format a parent bank manually to bypass refusals, or claim a
+working hardware roundtrip from simulated confirmation/reset/retirement.
+
+Sage keeps the same named firmware pairs across conversion, so its reader can
+accept the existing inactive SquashFS pair and reviewed 67-LEB overlay. Its
+active OEM root, defaults, pending state, free space and absence of the shared
+certificate store still need the normal exact checks. This structural difference
+does not prove a completed reset or retirement procedure.
+
+The E410 pilot's nonempty NOR factory-config partition is read-only from
+OpenWiFi. Complete reset therefore needs a reviewed OEM-side procedure after
+healthy OEM confirmation, including refreshing the NOR config backup so stale
+settings cannot return. The existing OEM reset script alone does not prove
+that backup was refreshed. Until the exact-model handler and procedure are
+available, the clean-test reset remains unsupported.
+
+## Backups and shared radio data
+
+Routine per-AP backups contain only own ART/calibration, manufacturing identity,
+boot environment and indispensable boot-selection records such as Thor's
+BOOTCONFIG. A bounded, documented unique-data exception is explicit in the
+model plan. No kernel, rootfs, full bank/NAND, firmware dump, customer settings,
+logs, enrollment seed or certificate store is exported by this backup helper.
+
+Capture files and checksum receipts are root-private. The existing upload
+relay must confirm each chunk and complete file hash; missing confirmation
+stops before firmware writes. Files use a per-run identifier to avoid replacing
+an older device backup. The local receipt directory is retained on failure.
+Backups never authorize overwriting ART, manufacturing data or boot code.
+
+Existing exact-model/release BDF, firmware and regdb assets come from the
+reviewed image/provider. Shared assets are reusable per model/release; do not
+capture an OEM filesystem for every AP. An otherwise missing required unique
+calibration asset is treated separately, never replaced by another AP's data.
+
+## Failure and fallback
+
+All required network objects are authenticated in private local staging before
+any target write. Transfers have bounded attempts, budgets and maximum sizes.
+A missing or interrupted download/backup upload stops with the previous slot
+untouched. After staging, flash operations use local objects; losing the HTTP
+provider must not introduce a new post-erase fetch.
+
+The bootloader restores and saves the exact previous working slot **before**
+loading the candidate. Save failure cannot authorize candidate loading. On a
+reset or powercycle an unconfirmed candidate returns to that previous slot.
+Where no automatic early-hang watchdog has been proven, an early hang requires
+an operator powercycle; the script does not claim automatic hang recovery.
+Power loss or faulty flash can defeat hardware persistence and is not simulated
+hardware proof.
+
+After a destructive-phase failure, keep the journal and source slot. Do not
+clear pending flags, repeat a clean install, transplant calibration or reboot
+because an old command suggested it. Inspect the reported phase and use the
+reviewed recovery procedure. Wrong model/version, ambiguous aliases, overlapping
+protected ranges, busy targets, low space, corrupt volumes, failed checksums,
+unsafe seed modes and failed environment readbacks all refuse.
+
+If a transfer times out before writes, restore access to the existing provider
+or use the reviewed offline package, then repeat `check`. A verified complete
+local object can be reused; a partial or wrong-hash object cannot. If target
+writing has started, a timeout or lost provider is not permission to restart
+installation. Retain the journal and inspect the prior-slot recovery state.
+After an unconfirmed candidate fails to boot, reset or powercycle returns to the
+previous saved slot where the model's reviewed one-shot contract applies. Do
+not treat a failed enrollment or early hang as successful boot confirmation.
+
+## Commands and exit status
+
+| Operation | Common command | Existing compatibility |
+|---|---|---|
+| OEM migration inspection/install | `cambium-oem-install check` / `cambium-oem-install` | `installer.sh` in generated releases |
+| Full OEM restoration test | `cambium-oem-restore-test --check` / `--restore` | `oem-restore-test.sh` |
+| Normal A/B state | `cambium-ab-status`; new releases also accept `--format tsv` | Legacy no-argument output unchanged |
+| Normal-upgrade readiness | `cambium-ab-ready` | Release `check-sysupgrade-ready.sh`; installed backend hook required |
+| Retained OEM boot only | `cambium-return-oem --check` / `--arm` | Arming requires safe one-shot support; otherwise refuses |
+| Normal firmware upgrade | `sysupgrade` | Existing family platform backend; never implicit |
+
+The new commands use exit 0 for successful checks/actions and exit 1 for refusal/failure,
+with exit 2 for invalid usage. Legacy no-argument `cambium-ab-status` keeps its existing `mode=none`, exit-0 query behavior; the new versioned TSV form reports unsupported with exit 1. A preflight pass is not a completed installation or
+hardware upgrade acceptance. The new scripts do not rename existing boot
+markers, certificate paths or image formats.
+
+## Models, releases and tests
+
+[models.tsv](models.tsv) lists all recognized exact SKUs. A generated release's
+`models.tsv`, `restore-models.tsv` and `upgrade-models.tsv` separately bind exact
+model, adapter and supported source version. Models absent from the relevant
+release, or explicitly disabled, refuse before key input and device backup.
+Gambit and unimplemented sibling models remain recognized but unsupported until an
+actual safe adapter exists. Do not infer a family's support from one sibling.
+
+Sage E410/E410B has existing bounded writer/boot/reset source; Jaguar, Cheetah
+and Thor adapters reuse their exact model profiles. Miami X7-35X reuses its
+reviewed generated storage/FORMAT2 backend. Release readiness additionally
+requires the actual model/source profile, payload pins and safe one-shot
+contract; these are not fabricated by `prepare-release.py`. Current adapters
+and limitations are recorded in [the test coverage guide](tests/COVERAGE.md).
+The [release assembly guide](RELEASE-ASSEMBLY.md) records exact-model gaps and
+how to package existing assets without a firmware build.
+
+Run the source harness with:
+
+```sh
+python3 tools/oem-migration/unified/tests/run.py
+```
+
+The harness uses temporary regular files and explicit fake devices, synthetic
+credentials and isolated service/network boundaries. Exact-model recognition
+coverage is checked against the registry. Actual existing family writer and
+one-shot regressions are included where implemented. Linux-only private
+OverlayFS/UID81 tests are reported separately when unavailable; no hardware
+power-loss, first upgrade or actual radio/controller acceptance is inferred.

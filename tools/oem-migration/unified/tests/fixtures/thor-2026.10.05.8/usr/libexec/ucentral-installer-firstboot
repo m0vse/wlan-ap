@@ -1,0 +1,14 @@
+#!/bin/sh
+# Native EST runs only in OpenWiFi after networking and clock readiness.
+set -eu
+umask 077
+while /usr/libexec/ucentral-installer-boot pending; do
+ if [ -e /tmp/ucentral-network.ready ] && [ -e /tmp/ntp.set ] &&
+    /usr/libexec/ucentral-installer-identity enroll-settings /root/.cambium-installer-settings; then
+  /etc/init.d/ucentral restart || true
+  # Restart switches procd from this worker to normal cloud discovery.
+  (sleep 1; /etc/init.d/cloud_discover restart) >/dev/null 2>&1 &
+  exit 0
+ fi
+ sleep 5
+done

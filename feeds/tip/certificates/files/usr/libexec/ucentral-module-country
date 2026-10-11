@@ -1,0 +1,33 @@
+#!/bin/sh
+# Update country without discarding explicit driver settings in modules.conf.
+case "$1" in
+	[A-Z][A-Z]|00) country="$1" ;;
+	*) echo "invalid module country" >&2; exit 1 ;;
+esac
+conf=${UCENTRAL_MODULE_CONF:-/etc/modules.conf}
+lock=${UCENTRAL_MODULE_LOCK:-/var/lock/ucentral-modules.lock}
+exec 9>"$lock" || exit 1
+flock -x 9 || exit 1
+tmp=$(mktemp "${conf}.XXXXXX") || exit 1
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+[ -f "$conf" ] || : > "$conf"
+# Keep existing ownership and permissions, including locally restricted files.
+cp -p "$conf" "$tmp" || exit 1
+awk -v country="$country" '
+$1 == "options" && $2 == "cfg80211" {
+	line = "options cfg80211"; comment = ""
+	for (i = 3; i <= NF; i++) {
+		if ($i ~ /^#/) {
+			for (; i <= NF; i++) comment = comment " " $i
+			break
+		}
+		if ($i !~ /^ieee80211_regdom=/) line = line " " $i
+	}
+	if (!seen++) line = line " ieee80211_regdom=" country
+	print line comment
+	next
+}
+{ print }
+END { if (!seen) print "options cfg80211 ieee80211_regdom=" country }
+' "$conf" > "$tmp" || exit 1
+mv -f "$tmp" "$conf"

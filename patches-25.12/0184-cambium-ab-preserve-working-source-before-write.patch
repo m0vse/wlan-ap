@@ -1,0 +1,56 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-ab: persist source-only boot before inactive-bank writes
+
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=18
++PKG_RELEASE:=19
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
+--- a/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
++++ b/package/cambium/cambium-ab/files/cambium-ab-upgrade.sh
+@@ -133,6 +133,30 @@
+ 	ab_setenv_batch "$batch" >/dev/null 2>&1
+ 	rm -f "$batch"
+ 	ab_fail "$msg"
++}
++
++# Preserve the exact working source before any inactive-bank write. Validate
++# existing boot variables against the running source, never rewrite them from
++# incoming-image parameters. Failed persistence/readback means zero target writes.
++ab_persist_prior_boot() {
++	local expected stored prior
++	expected=$(ab_boot_command "$AB_ACTIVE") || return 1
++	stored=$(ab_getenv "${AB_ENV}_boot$AB_ACTIVE") || return 1
++	[ -n "$expected" ] && [ -n "$stored" ] ||
++		{ ab_fail 'working source boot command is missing'; return 1; }
++	if [ "$stored" != "$expected" ]; then
++		# Only a reviewed family callback may recognize an exact qualified
++		# legacy source spelling. It must never accept arbitrary commands.
++		ab_hook prior_boot_valid && "ab_${AB_FAMILY}_prior_boot_valid" "$stored" "$expected" ||
++			{ ab_fail 'working source boot command changed'; return 1; }
++	fi
++	prior="run ${AB_ENV}_boot$AB_ACTIVE"
++	ab_setenv bootcmd "$prior" && ab_setenv image "$AB_ACTIVE" && sync ||
++		{ ab_fail 'cannot persist working source; no target was written'; return 1; }
++	[ "$(ab_getenv bootcmd)" = "$prior" ] &&
++		[ "$(ab_getenv image)" = "$AB_ACTIVE" ] &&
++		[ "$(ab_getenv "${AB_ENV}_boot$AB_ACTIVE")" = "$stored" ] ||
++		{ ab_fail 'working source readback changed; no target was written'; return 1; }
+ }
+ 
+ # Readback: the first $3 bytes of volume $1 must hash like file $2.
+@@ -224,6 +248,8 @@
+ 			{ ab_fail 'RAM-stage certificate snapshot validation failed; no bank was written'; return 1; }
+ 	fi
+ 
++	ab_persist_prior_boot || return 1
++
+ 	# Record the write before touching the bank. bootcmd still boots the
+ 	# running bank first, so an interrupted write never loses it.
+ 	printf "${AB_ENV}_ab_state writing\n${AB_ENV}_ab_target %s\n" "$AB_TARGET" > "$batch"

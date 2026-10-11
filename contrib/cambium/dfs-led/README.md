@@ -1,0 +1,11 @@
+# LED-only compatibility overlay
+
+Normal future firmware uses the shared state/client packages introduced by commit `968d99774a7bc138fa55c4069a2fe1e7e0c69cce`. This patch is a temporary compatibility overlay for the older shared state runtime; it does not introduce a separate family implementation.
+
+Apply only when the installed `ucentral-state` SHA256 is `ca0a03ea30e6da20379f68c8ec8333a0329dd03f30e7aecd89d50bc299e8e9e0`, also available in public commit `964dea9653ec0ad1bc3eb485ace1974d9d6a368b`. Apply `older-runtime-led-only.patch` with `patch -p1 --fuzz=0` in a directory containing that file. The result must hash to `a7a1a721f6ff38806b02e67e9960b19aeda5fa4ec4ac325c1b5c3ca4b17f89d0`. The three edits add DFS variables, fresh normal-LED selection and the same bounded asynchronous collector/expiry block. Every other original state byte remains unchanged.
+
+Use the shared `ucentral-led.sh`, `ucentral-dfs-led` and `dfs_led.uc` from commit `968d9977`. Retain the installed ordinary `dfs_cac.uc` with SHA256 `6d4d981de384270fe9acca222ea01160105a5d1e03fb65f2ec25a3debe7427d4` and its existing timeout helper. No fault-monitor module, storage probe, MLO detector, health or telemetry replacement is required for this compatibility overlay. A different source baseline requires separate qualification or a normal firmware/package update.
+
+Deployment requires exact model/unit identity and source guards, private original backups, atomic verified file replacements and automatic rollback. Restart only the state service after the four files are installed. Check fresh detector progress, management/client continuity, health, wireless interface indices and unchanged health/CAC sources before confirming. Do not change channels, scan, disconnect the client or restart radio/network services for this indication. Preserve global-off, identify/reset, boot/recovery/upgrade and fault pattern priority.
+
+The configuration is 1900 ms lit and 100 ms dark in the existing controller colour during positively active CAC. Physical cadence was measured in an LED-only simulation; ordinary/MLO classification and timeout/priority were separately tested. A genuine on-air CAC event was not forced for rollout qualification. No live unit identifiers, credentials, site settings or rollout artifacts belong in this source directory.

@@ -1,0 +1,13 @@
+{
+  "revision": "TIP-sage-2026.10.07.1-b3fe180b",
+  "image_sha256": "eb99ec172a0e430d9397ce05855bff859be1d6242735405bbcf72d5ea5117824",
+  "root_sha256": "d183e0f9b5ab638707797cb9a6452486a406ceb7b8e09b2c1889f2c3e191d135",
+  "root_path": "cnbeacon:/home/phil/openwifi-sage-build/build-receipts/sage-2026.10.07.1/image-audit/sysupgrade-cambium_e410/root",
+  "source_files": {
+    "lib/preinit/75_certificates": "3c27e4c08b4faacf389e2ede3562051d55553b0fd32a8f68afec973ab3ed0368",
+    "lib/functions/cambium-ab-sage.sh": "ef900bf87427b09bb2ba741c2f0b8d46220fcab9babbe0698e153f35768e9094"
+  },
+  "method": "Host unsquashfs4 -cat actual preserved qualified root; actual named preinit/normal-upgrade functions replayed under host shell with inert UBI/ENV/mount boundaries",
+  "result": "Fresh OEM namespace has only the newly staged active OpenWiFi overlay: certificates auto-allocate ID 5/6; actual first normal upgrade creates the missing opposite overlay at ID7 by name and preserves certificates. Legacy two-overlay controls allocate certificates ID7 and reuse opposite overlay by name.",
+  "limits": "Four layout/slot cases, not hardware/init/flash/ENV durability or complete end-to-end sysupgrade acceptance. No reservation change, firmware build or AP operation. Never hardcode Sage certificate ID7 for cleanup."
+}

@@ -1,0 +1,113 @@
+--- a/command/cmd_wifiscan7.uc
++++ b/command/cmd_wifiscan7.uc
+@@ -7,7 +7,9 @@
+ import * as libubus from 'ubus';
+ import * as nl from 'nl80211';
+ let def = nl.const;
+-let scan =  [];
++let scan = [];
++let scan_failures = [];
++let scan_radios = 0;
+
+ if (!args)
+ 	args = {
+@@ -65,15 +67,35 @@
+ }
+
+ function trigger_scan() {
++	let scanned_phys = {};
+ 	for (let obj in ubus.list()) {
+ 		let dev = hostapd_dev(obj);
+ 		if (!dev)
+ 			continue;
+-		system(`iw dev ${dev} scan ap-force ${args.active ? "ssid ''" : "passive"}`);
+-		printf('scan complete\n');
++		let iface = nl.request(def.NL80211_CMD_GET_INTERFACE, 0, { dev });
++		if (!iface || iface.wiphy == null) {
++			push(scan_failures, dev + ': interface lookup failed');
++			continue;
++		}
++		let phy = '' + iface.wiphy;
++		if (scanned_phys[phy])
++			continue;
++		scanned_phys[phy] = true;
++		scan_radios++;
++		// Broadcast active probing can miss 6 GHz neighbours. Listen for
++		// beacons on configured 6 GHz radios without changing their channel.
++		let passive = !args.active || (iface.wiphy_freq >= 5935 && iface.wiphy_freq <= 7115);
++		if (system(`iw dev ${dev} scan ap-force ${passive ? "passive" : "ssid ''"} >/dev/null`) != 0) {
++			push(scan_failures, dev + ': scan command failed');
++			continue;
++		}
+
+-		let res = nl.request(def.NL80211_CMD_GET_SCAN, def.NLM_F_DUMP, { dev  });
+-		for (let bss in res) {
++		let res = nl.request(def.NL80211_CMD_GET_SCAN, def.NLM_F_DUMP, { dev });
++		if (res === false) {
++			push(scan_failures, dev + ': scan result lookup failed');
++			continue;
++		}
++		for (let bss in res || []) {
+ 			bss = bss.bss;
+ 			let res = {
+ 				bssid: bss.bssid,
+@@ -99,15 +121,15 @@
+ 					res.ch_util = ord(ie.data, 2);                          
+ 					break;   
+ 				case 114:
+-					if (verbose)
++					if (args.verbose)
+ 						res.meshid = ie.data;
+ 					break;
+ 				case 0x3d:
+-					if (verbose)
++					if (args.verbose)
+ 						res.ht_oper = b64enc(ie.data);
+ 					break;
+ 				case 0xc0:
+-					if (verbose)
++					if (args.verbose)
+ 						res.vht_oper = b64enc(ie.data);
+ 					break;
+ 				case 0xdd:
+@@ -145,24 +167,32 @@
+ 				delete res.ies;
+ 			push(scan, res);
+ 		}
+-		return;
+ 	}
+ }
+
+ override_dfs();
+ trigger_scan();
+
++let failed = length(scan_failures) > 0 || !scan_radios;
++let text = !failed ? 'Success' : length(scan_failures)
++	? 'Wi-Fi scan incomplete: ' + join(', ', scan_failures)
++	: 'No active AP radios available for scanning';
++if (failed)
++	warn(text + '\n');
++
+ if (args.periodic) {
+-	ctx.call('ucentral', 'send', {
+-		method: 'wifiscan',
+-		params: { data: scan }
+-	});
++	let params = { data: scan };
++	if (failed) {
++		params.error = 1;
++		params.text = text;
++	}
++	ctx.call('ucentral', 'send', { method: 'wifiscan', params });
+ 	return;
+ }
+
+ result_json({
+-	error: 0,
+-	text: "Success",
+-	resultCode: 1,
++	error: failed ? 1 : 0,
++	text,
++	resultCode: failed ? 0 : 1,
+ 	scan,
+ });

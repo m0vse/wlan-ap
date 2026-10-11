@@ -1,0 +1,158 @@
+{
+  "cambiumnetworks,x7-35x": [
+    {
+      "name": "rootfs",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 786432
+    },
+    {
+      "name": "rootfs_1",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250,251,407",
+      "write": 2048,
+      "offset": 101449728
+    }
+  ],
+  "cambium,e410": [
+    {
+      "name": "fs",
+      "size": 134217728,
+      "erase": 131072,
+      "samples": "0,1,249,250,511,767",
+      "write": 2048,
+      "offset": 0
+    }
+  ],
+  "cambiumnetworks,e410": [
+    {
+      "name": "fs",
+      "size": 134217728,
+      "erase": 131072,
+      "samples": "0,1,249,250,511,767",
+      "write": 2048,
+      "offset": 0
+    }
+  ],
+  "cambiumnetworks,e410b": [
+    {
+      "name": "fs",
+      "size": 134217728,
+      "erase": 131072,
+      "samples": "0,1,249,250,511,767",
+      "write": 2048,
+      "offset": 0
+    }
+  ],
+  "cambiumnetworks,xv2-2": [
+    {
+      "name": "rootfs",
+      "size": 54525952,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 0
+    },
+    {
+      "name": "rootfs_1",
+      "size": 54525952,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 54525952
+    }
+  ],
+  "cambiumnetworks,xv2-2t1": [
+    {
+      "name": "rootfs",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 0
+    },
+    {
+      "name": "rootfs_1",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 100663296
+    }
+  ],
+  "cambiumnetworks,xe3-4": [
+    {
+      "name": "rootfs",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 0
+    },
+    {
+      "name": "rootfs_1",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250",
+      "write": 2048,
+      "offset": 100663296
+    }
+  ],
+  "cambiumnetworks,xv2-21x": [
+    {
+      "name": "rootfs",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250,251,767",
+      "write": 2048,
+      "offset": 524288
+    },
+    {
+      "name": "rootfs_1",
+      "size": 100663296,
+      "erase": 131072,
+      "samples": "0,1,249,250,251,767",
+      "write": 2048,
+      "offset": 101187584
+    }
+  ],
+  "cambiumnetworks,xv3-8": [
+    {
+      "name": "rootfs",
+      "size": 100663296,
+      "erase": 131072,
+      "write": 2048,
+      "offset": 0,
+      "samples": "0,1,249,250"
+    },
+    {
+      "name": "rootfs_1",
+      "size": 100663296,
+      "erase": 131072,
+      "write": 2048,
+      "offset": 100663296,
+      "samples": "0,1,249,250"
+    }
+  ],
+  "cambiumnetworks,e400": [
+    {
+      "name": "rootfs0",
+      "size": 46137344,
+      "erase": 131072,
+      "write": 2048,
+      "offset": 4194304,
+      "samples": "0,1,127,255"
+    },
+    {
+      "name": "rootfs1",
+      "size": 46137344,
+      "erase": 131072,
+      "write": 2048,
+      "offset": 54525952,
+      "samples": "0,1,127,255"
+    }
+  ]
+}
