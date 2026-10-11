@@ -13,5 +13,15 @@ cases=[('sage','E410','sage','1','1','confirmed','run sage_stable1','1',0),('sag
 for family,model,namespace,active,confirmed,state,bootcmd,version,want in cases:
  env={**os.environ,'CORE':str(core),'HEALTH':str(health),'AB_FAMILY':family,'AB_MODEL':model,'AB_ENV':namespace,'AB_ACTIVE':active,'CONFIRMED':confirmed,'STATE':state,'BOOTCMD':bootcmd,'VERSION':version}
  p=subprocess.run(['sh','-c',script],env=env,capture_output=True)
- assert p.returncode==want,(family,p.returncode,p.stderr)
+ if want == 0:
+  assert p.returncode==0,(family,p.returncode,p.stderr)
+ elif family == 'miami' and version == '':
+  # An absent command-v hook returns 1 on some shells, 127 on others.
+  # Prove that exact boundary, rather than accepting an unrelated failure.
+  hook_script='. "$CORE"; ab_hook installer_confirmed_context'
+  hook=subprocess.run(['sh','-c',hook_script],env=env,capture_output=True)
+  assert hook.returncode in (1,127) and not hook.stderr,(hook.returncode,hook.stderr)
+  assert p.returncode==hook.returncode and not p.stderr,(family,p.returncode,p.stderr)
+ else:
+  assert p.returncode==want,(family,p.returncode,p.stderr)
 print('PASS: main core API linkage; converted Sage/Jaguar acceptance; invalid state and absent Miami adapter fail closed')

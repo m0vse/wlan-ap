@@ -5,6 +5,7 @@ base=pathlib.Path(os.environ['OW_DFS_SOURCE'])
 ucode=shlex.split(os.environ['OW_TEST_UCODE_CMD']) if 'OW_TEST_UCODE_CMD' in os.environ else [os.environ['OW_TEST_UCODE']]
 work=pathlib.Path(tempfile.mkdtemp(prefix='cac-health-healing.'))
 (work/'dfs_cac.uc').write_bytes((base/'system/dfs_cac.uc').read_bytes())
+(work/'mlo_health.uc').write_bytes((base/'system/mlo_health.uc').read_bytes())
 health=(base/'system/health.uc').read_text();daemon=(base/'ucentral-state').read_text()
 functions=[]
 for name in ('find_ssid','find_ssid_on_phy','iface_in_band','find_ssid_by_prefix','find_ssid_on_phy_band','find_ssid_for_radio','get_radio_match_info','iface_section_enabled','check_radio_health','check_wifi_health'):
@@ -14,7 +15,7 @@ healer=re.search(r'(?ms)^function self_healing\(\).*?^\}',daemon).group()
 healer=healer.replace("require('dfs_cac')",'test_cac_module').replace('time()','test_time()').replace('system(', 'test_system(')
 driver=work/'test.uc'
 setup='''REQUIRE_SEARCH_PATH=[ARGV[0]+'/*.uc',...REQUIRE_SEARCH_PATH];
-let cac=require('dfs_cac'); let count=0;
+let cac=require('dfs_cac'); let mlo_health=require('mlo_health'); let count=0;
 function check(name,result){if(!result)die('FAIL '+name+'\\n');count++;}
 let config={radio0:{'.name':'radio0','.type':'wifi-device',path:'platform/soc/wifi+0'},radio1:{'.name':'radio1','.type':'wifi-device',path:'platform/soc/wifi+1'},bss0:{'.name':'bss0','.type':'wifi-iface',device:'radio0',mode:'ap',ssid:'Shine Systems',network:'up0v0'},bss1:{'.name':'bss1','.type':'wifi-iface',device:'radio1',mode:'ap',ssid:'Shine Systems',network:'up0v0'}};
 let runtime={radio0:{interfaces:[{section:'bss0',ifname:'wlan0',config:{ssid:'Shine Systems'}}]},radio1:{interfaces:[{section:'bss1',ifname:'wlan1',config:{ssid:'Shine Systems'}}]}};

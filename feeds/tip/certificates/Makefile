@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=certificates
-PKG_RELEASE:=20
+PKG_RELEASE:=21
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
@@ -26,6 +26,17 @@ Build/Compile = $(Build/Compile/Default)
 
 define Package/certificates/install
 	$(CP) ./files/* $(1)
+	# Normalize only copied package-owned paths, never private runtime stores.
+	find ./files -mindepth 1 -type d | while IFS= read -r path; do \
+		$(INSTALL_DIR) "$(1)/$$$${path#./files/}" || exit 1; \
+	done
+	find ./files -type f | while IFS= read -r path; do \
+		if [ -x "$$$$path" ]; then \
+			$(INSTALL_BIN) "$$$$path" "$(1)/$$$${path#./files/}" || exit 1; \
+		else \
+			$(INSTALL_DATA) "$$$$path" "$(1)/$$$${path#./files/}" || exit 1; \
+		fi; \
+	done
 	# Git tracks executability, not exact modes under a group-write umask.
 	$(INSTALL_BIN) ./files/usr/libexec/ucentral-secure-runtime $(1)/usr/libexec/ucentral-secure-runtime
 	$(INSTALL_BIN) ./files/usr/libexec/ucentral-module-country $(1)/usr/libexec/ucentral-module-country

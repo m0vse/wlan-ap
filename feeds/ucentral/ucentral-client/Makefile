@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-client
-PKG_RELEASE:=17
+PKG_RELEASE:=18
 
 PKG_SOURCE_URL=https://github.com/m0vse/wlan-ucentral-client.git
 PKG_MIRROR_HASH:=537453c59f515013c2eb5fb6b106ab086700f5ea3b85d051aa79e25b76128150
@@ -28,6 +28,17 @@ define Package/ucentral-client/install
 	$(INSTALL_DIR) $(1)/usr/sbin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ucentral $(1)/usr/sbin/
 	$(CP) ./files/* $(1)
+	# Normalize only copied package-owned paths, never private runtime stores.
+	find ./files -mindepth 1 -type d | while IFS= read -r path; do \
+		$(INSTALL_DIR) "$(1)/$$$${path#./files/}" || exit 1; \
+	done
+	find ./files -type f | while IFS= read -r path; do \
+		if [ -x "$$$$path" ]; then \
+			$(INSTALL_BIN) "$$$$path" "$(1)/$$$${path#./files/}" || exit 1; \
+		else \
+			$(INSTALL_DATA) "$$$$path" "$(1)/$$$${path#./files/}" || exit 1; \
+		fi; \
+	done
 	# Recursive copies preserve checkout directory modes; normalize last.
 	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
