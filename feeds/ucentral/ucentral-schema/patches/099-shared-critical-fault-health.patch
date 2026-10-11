@@ -1,0 +1,14 @@
+--- a/system/health.uc
++++ b/system/health.uc
+@@ -546,6 +546,11 @@
+ 	// Load configurations
+ 	let configs = load_configs();
+ 	try {
++		state.faults = require('faults').snapshot();
++	} catch (e) {
++		state.faults = { active: [], monitoring: { storage: 'unavailable', reason: 'collector_missing' } };
++	}
++	try {
+ 		cac_pending = dfs_cac.collect(configs.wifi_config, ubus.call('network.wireless', 'status'));
+ 	} catch (e) {
+ 		// Unavailable runtime evidence must retain normal failure detection.

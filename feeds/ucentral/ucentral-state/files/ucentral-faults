@@ -1,0 +1,106 @@
+#!/usr/bin/ucode
+'use strict';
+REQUIRE_SEARCH_PATH = [ '/usr/share/ucentral/*.uc', ...REQUIRE_SEARCH_PATH ];
+import * as fs from 'fs';
+import * as libuci from 'uci';
+import * as libubus from 'ubus';
+import { ulog_open, ulog, ULOG_SYSLOG, LOG_DAEMON, LOG_WARNING, LOG_INFO } from 'log';
+ulog_open(ULOG_SYSLOG, LOG_DAEMON, 'ucentral-faults');
+let faults = require('faults');
+let evaluate = faults.evaluate, radio_facts = faults.radio_facts, select_banks = faults.select_banks;
+let dir = '/tmp/ucentral-faults';
+let st = fs.lstat(dir);
+if (!st) { fs.mkdir(dir, 0700); st = fs.lstat(dir); }
+if (st?.type != 'directory' || (st.mode & 0777) != 0700 || st.uid != 0) exit(1);
+let previous;
+try { previous = json(fs.readfile(dir + '/status.json')); } catch(e) {}
+let args = [];
+// Adapter chooses only known, formatted physical banks. Unknown hardware remains
+// monitored for passive storage faults; it never receives speculative raw reads.
+let board = trim(fs.readfile('/tmp/sysinfo/board_name') || '');
+let profiles = json(fs.readfile('/etc/ucentral/storage-canary.json') || '{}');
+let records = [];
+for (let path in fs.glob('/sys/class/mtd/mtd[0-9]*')) {
+ if (!match(path, /\/mtd[0-9]+$/)) continue;
+ let index = int(replace(path, /^.*mtd/, ''));
+ let paired = false, parents = 0;
+ for (let ubi in fs.glob('/sys/class/ubi/ubi[0-9]*')) {
+  if (!match(ubi, /\/ubi[0-9]+$/) || int(fs.readfile(ubi + '/mtd_num')) != index) continue;
+  parents++;
+  let names = [];
+  for (let vol in fs.glob(ubi + '_*')) push(names, trim(fs.readfile(vol + '/name') || ''));
+  paired = length(names) >= 4 && length(filter(['linux0','rootfs0','linux1','rootfs1'], n => length(filter(names, item => item == n)) == 1)) == 4;
+ }
+ let offset = fs.readfile(path + '/offset');
+ push(records, { index, name: trim(fs.readfile(path + '/name') || ''),
+  type: trim(fs.readfile(path + '/type') || ''), size: int(fs.readfile(path + '/size')),
+  erase: int(fs.readfile(path + '/erasesize')), write: int(fs.readfile(path + '/writesize')),
+  offset: offset == null ? null : int(offset), paired_ubi: paired && parents == 1 });
+}
+let selected = select_banks(profiles, board, records);
+let banks = selected.banks;
+if (length(banks) > 0 && length(banks) <= 2) {
+ for (let bank in banks) {
+  if (!match(bank.samples || '', /^[0-9]+(,[0-9]+){0,7}$/)) { args = []; break; }
+  push(args, sprintf('%d %d %d %s', bank.index, bank.size, bank.erase, bank.samples));
+ }
+}
+let p = fs.popen('timeout 10 /usr/libexec/ucentral-storage-probe ' + join(' ', args), 'r');
+let text = p?.read('all'), rc = p?.close(), facts;
+try { if (rc == 0) facts = json(text); } catch(e) {}
+if (facts) {
+ facts.adapter = { status: selected.status, reason: selected.reason };
+ try {
+  let uci = libuci.cursor(); uci.load('wireless');
+  let config = uci.get_all('wireless') || {};
+  let live = libubus.connect().call('network.wireless', 'status');
+  let cac = require('dfs_cac').collect(config, live);
+  let uptime = int(fs.readfile('/proc/uptime'));
+  // Boot and active configuration rendering are legitimate transitions.
+  if (uptime > 180 && !fs.stat('/tmp/ucentral-network.lock') && live != null)
+   {
+    let kernel_interfaces;
+    try {
+     let nl = require('nl80211');
+     // Same read-only GET_INTERFACE dump used by the native wifi.iface provider.
+     let raw = nl.request(nl.const.NL80211_CMD_GET_INTERFACE, nl.const.NLM_F_DUMP);
+     if (type(raw) == 'array') {
+      kernel_interfaces = {};
+      for (let iface in raw) {
+       let link = iface.mlo_links?.[0] || iface;
+       kernel_interfaces[iface.ifname] = { ssid: iface.ssid, mode: iface.iftype == 3 ? 'ap' : null,
+        phy: link.wiphy ?? iface.wiphy, has_channel: !!link.wiphy_freq };
+      }
+     }
+    } catch(e) {}
+    facts.radios = radio_facts(config, live, cac, kernel_interfaces);
+    facts.radio_monitoring = kernel_interfaces != null ? 'available' : 'framework_only';
+    if (kernel_interfaces == null) facts.radio_reason = 'nl80211_get_interface_unavailable';
+   }
+ } catch(e) { facts.radio_monitoring = 'unavailable'; }
+}
+if (facts) {
+ let total = match(fs.readfile('/proc/meminfo') || '', /MemTotal:\s+([0-9]+)/);
+ let available = match(fs.readfile('/proc/meminfo') || '', /MemAvailable:\s+([0-9]+)/);
+ if (total && available) facts.memory = { total_kb: int(total[1]), available_kb: int(available[1]) };
+ let uptime = int(fs.readfile('/proc/uptime'));
+ let p = fs.popen('timeout 5 dmesg | tail -n 80', 'r');
+ let log = p?.read('all'); p?.close();
+ facts.io = []; facts.driver_crash = false;
+ for (let line in split(log || '', '\n')) {
+  let stamp = match(line, /^\[\s*([0-9]+)\.[0-9]+\]/);
+  if (!stamp || uptime - int(stamp[1]) > 120) continue;
+  if (match(line, /(ath1[12]k.*(firmware crashed|failed to recover))/)) facts.driver_crash = true;
+  if (match(line, /(SQUASHFS error|UBIFS.*error|I\/O error, dev ubi)/))
+   push(facts.io, { resource: 'persistent_storage', reason: 'kernel_io_error' });
+ }
+}
+let next = evaluate(facts, previous, time());
+if (sprintf('%J', previous?.active || []) != sprintf('%J', next.active)) {
+ ulog(length(next.active) ? LOG_WARNING : LOG_INFO, 'Critical fault status: %J\n', next.active);
+}
+// Do not persist injected tests. A trial's fixture belongs to its separate runner.
+if (fs.lstat(dir + '/status.new')?.type == 'link') exit(1);
+let out = fs.open(dir + '/status.new', 'w', 0600);
+if (!out || !out.write(sprintf('%J', next)) || !out.close()) exit(1);
+if (!fs.rename(dir + '/status.new', dir + '/status.json')) exit(1);

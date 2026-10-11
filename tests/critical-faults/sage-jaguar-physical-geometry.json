@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "offset_semantics": "Physical byte offsets within the NAND chip, independently decoded from partition reg properties; not computed from A/B slot offsets.",
+  "provenance": {
+    "sage": {
+      "source_kind": "Qualified OpenWiFi DTS source, independently matched to the existing Sage build source",
+      "public_repository": "m0vse/wlan-ap-legacy-targets",
+      "source_path": "ipq40xx/files/arch/arm/boot/dts/qcom-ipq4019-cambium-sage.dtsi",
+      "source_sha256": "79fd704218f0dd80afa251bfd7b1dc8f1f58ae1cc2624f50ed281b15a9e1148b",
+      "partition_node": "blsp1_spi1/flash@1/partitions/partition@0",
+      "reg_hex": ["0x00000000", "0x08000000"]
+    },
+    "jaguar": {
+      "source_kind": "Independent read-only partition-reg decode of retained qualified running device trees, separately for XV2-2, XV2-2T1 and XE3-4",
+      "scope": "Direct NAND partition children: rootfs at partition@0; rootfs_1 at partition@3400000 or partition@6000000. No leading reserved NAND prefix in these model-specific captures.",
+      "privacy": "Only geometry is retained here; private capture files, locations, hashes and device identities are excluded. This is not new hardware qualification."
+    }
+  },
+  "references": {
+    "sage": {
+      "mtd_type": "nand",
+      "banks": [{"name": "fs", "offset": 0, "size": 134217728, "erase": 131072, "write": 2048}]
+    },
+    "xv2-2": {
+      "mtd_type": "nand",
+      "banks": [
+        {"name": "rootfs", "offset": 0, "size": 54525952, "erase": 131072, "write": 2048},
+        {"name": "rootfs_1", "offset": 54525952, "size": 54525952, "erase": 131072, "write": 2048}
+      ]
+    },
+    "xv2-2t1": {
+      "mtd_type": "nand",
+      "banks": [
+        {"name": "rootfs", "offset": 0, "size": 100663296, "erase": 131072, "write": 2048},
+        {"name": "rootfs_1", "offset": 100663296, "size": 100663296, "erase": 131072, "write": 2048}
+      ]
+    },
+    "xe3-4": {
+      "mtd_type": "nand",
+      "banks": [
+        {"name": "rootfs", "offset": 0, "size": 100663296, "erase": 131072, "write": 2048},
+        {"name": "rootfs_1", "offset": 100663296, "size": 100663296, "erase": 131072, "write": 2048}
+      ]
+    }
+  },
+  "board_references": {
+    "cambium,e410": "sage",
+    "cambiumnetworks,e410": "sage",
+    "cambiumnetworks,e410b": "sage",
+    "cambiumnetworks,xv2-2": "xv2-2",
+    "cambiumnetworks,xv2-2t1": "xv2-2t1",
+    "cambiumnetworks,xe3-4": "xe3-4"
+  }
+}

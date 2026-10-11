@@ -1,0 +1,185 @@
+--- a/system/health.uc
++++ b/system/health.uc
+@@ -9,6 +9,8 @@
+ 
+ import * as fs from 'fs';
+ let dfs_cac = require('dfs_cac');
++let mlo_health = require('mlo_health');
++let mlo_report = { sections: {} };
+ let cac_pending = { sections: {}, radios: {} };
+ 
+ // State object
+@@ -277,7 +279,7 @@
+ 				continue;
+ 			if (!iface_section.ssid)
+ 				continue;
+-			push(expected_ssids, iface_section.ssid);
++			push(expected_ssids, { ssid: iface_section.ssid, section: j });
+ 		}
+ 
+ 		if (!length(expected_ssids))
+@@ -286,8 +288,10 @@
+ 		radios_checked++;
+ 
+ 		let failed_ssids = {};
+-		for (let ssid in expected_ssids) {
+-			let result = find_ssid_for_radio(ssid, match_info, wifi_state);
++		for (let expected in expected_ssids) {
++			let ssid = expected.ssid;
++			let result = wifi_config[expected.section].mld ? (mlo_report.sections[expected.section] ?? 1) :
++				find_ssid_for_radio(ssid, match_info, wifi_state);
+ 			if (result != 0)
+ 				failed_ssids[ssid] = (result == -1) ? 'no_channel' : 'missing';
+ 		}
+@@ -415,7 +419,7 @@
+ 			continue;
+ 
+ 		// Check SSID availability
+-		if (find_ssid(wifi_iface.ssid, wifi_state) && !cac_pending.sections[k])
++		if ((wifi_iface.mld ? (mlo_report.sections[k] ?? 1) != 0 : find_ssid(wifi_iface.ssid, wifi_state)) && !cac_pending.sections[k])
+ 			ssid[wifi_iface.ssid] = false;
+ 			
+ 		// Check RADIUS connectivity
+@@ -545,13 +549,14 @@
+ function main() {
+ 	// Load configurations
+ 	let configs = load_configs();
++	try { mlo_report = mlo_health.collect(configs.wifi_config); } catch(e) {}
+ 	try {
+ 		state.faults = require('faults').snapshot();
+ 	} catch (e) {
+ 		state.faults = { active: [], monitoring: { storage: 'unavailable', reason: 'collector_missing' } };
+ 	}
+ 	try {
+-		cac_pending = dfs_cac.collect(configs.wifi_config, ubus.call('network.wireless', 'status'));
++		cac_pending = dfs_cac.collect(configs.wifi_config, ubus.call('network.wireless', 'status'), null, null, mlo_report);
+ 	} catch (e) {
+ 		// Unavailable runtime evidence must retain normal failure detection.
+ 		cac_pending = { sections: {}, radios: {} };
+--- a/system/dfs_cac.uc
++++ b/system/dfs_cac.uc
+@@ -1,5 +1,6 @@
+ // Fresh, read-only hostapd CAC evidence. Never infer CAC from channel numbers.
+ import * as fs from 'fs';
++let mlo_health = require('mlo_health');
+ 
+ function parse_status(text) {
+ 	if (type(text) != 'string' || length(text) > 16384)
+@@ -13,7 +14,7 @@
+ 			return null;
+ 		fields[kv[1]] = kv[2];
+ 	}
+-	if (fields.state != 'DFS' || !match(fields.phy || '', /^phy[0-9]+$/) ||
++	if (fields.state != 'DFS' || !match(fields.phy || '', /^phy[0-9]+(\.[0-9]+)?$/) ||
+ 	    !match(fields.cac_time_seconds || '', /^[0-9]+$/) ||
+ 	    !match(fields.cac_time_left_seconds || '', /^[0-9]+$/))
+ 		return null;
+@@ -26,7 +27,8 @@
+ 	if (length(fields.cac_time_seconds) > 10 || duration > 4294967295 ||
+ 	    duration <= 0 || remaining <= 0 || remaining > duration)
+ 		return null;
+-	return { fields, duration, remaining, phy: fields.phy };
++	let phy = match(fields.phy, /^(phy[0-9]+)(\.([0-9]+))?$/);
++	return { fields, duration, remaining, phy: phy[1], radio_index: phy[3] != null ? int(phy[3]) : null };
+ }
+ 
+ function query_status(ifname) {
+@@ -74,8 +76,8 @@
+ 		radio?.['.type'] == 'wifi-device' && radio.disabled != '1';
+ }
+ 
+-function collect(config, runtime, query, phy_lookup) {
+-	let pending = { sections: {}, radios: {} };
++function collect(config, runtime, query, phy_lookup, mlo_report) {
++	let pending = (mlo_report || mlo_health.collect(config)).pending || { sections: {}, radios: {} };
+ 	query ??= query_status;
+ 	phy_lookup ??= interface_phy;
+ 	for (let radio_name, radio in runtime || {}) {
+@@ -84,14 +86,15 @@
+ 		let candidates = [];
+ 		for (let iface in radio.interfaces || []) {
+ 			let section = config[iface.section];
+-			if (!enabled(section, config) || section.device != radio_name ||
++			if (!enabled(section, config) || section.mld || section.device != radio_name ||
+ 			    iface.config?.ssid != section.ssid ||
+ 			    !match(iface.ifname || '', /^[A-Za-z0-9_.:-]{1,15}$/))
+ 				continue;
+ 			radio_status ??= query(iface.ifname);
+ 			let status = radio_status;
+ 			let iface_phy = phy_lookup(iface.ifname);
+-			if (!status || (iface_phy && status.phy != iface_phy))
++			if (!status || (iface_phy && status.phy != iface_phy) ||
++			    (status.radio_index != null && (!match('' + config[radio_name]?.radio, /^[0-9]+$/) || status.radio_index != +config[radio_name].radio)))
+ 				continue;
+ 			let matched = false;
+ 			for (let key, value in status.fields) {
+--- /dev/null
++++ b/system/mlo_health.uc
+@@ -0,0 +1,67 @@
++// Read-only per-BSS MLO health. No peer inference or radio remediation.
++import * as fs from 'fs';
++function fields(text) {
++ if(type(text)!='string'||length(text)>16384)return null;
++ let out={};for(let line in split(text,'\n')){let kv=match(line,/^([^=]+)=(.*)$/);if(!kv)continue;if(exists(out,kv[1]))return null;out[kv[1]]=kv[2];}return out;
++}
++function encoded_ssid(ssid) {
++ if(type(ssid)!='string'||!length(ssid)||length(ssid)>32)return null;
++ let result='';for(let i=0;i<length(ssid);i++){let b=ord(ssid,i);
++ if(b==34)result+='\\"';else if(b==92)result+='\\\\';else if(b==27)result+='\\e';else if(b==10)result+='\\n';else if(b==13)result+='\\r';else if(b==9)result+='\\t';else if(b>=32&&b<=126)result+=substr(ssid,i,1);else result+=sprintf('\\x%02x',b);}return result;
++}
++function mac(value){return type(value)=='string'&&match(value,/^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$/)?lc(value):null;}
++function number(value){return type(value)=='string'&&match(value,/^[0-9]{1,10}$/)&&+value<=4294967295?+value:null;}
++function query(ifname,id){
++ if(!match(ifname||'',/^[A-Za-z0-9_.:-]{1,15}$/)||type(id)!='int'||id<0||id>15)return null;
++ let p=fs.popen('/usr/libexec/timeout-coreutils -s KILL 2 /usr/sbin/hostapd_cli -p /var/run/hostapd -i '+ifname+'_link'+id+' status 2>/dev/null','r');
++ if(!p)return null;let text=p.read(16385),rc=p.close();return rc==0?fields(text):null;
++}
++function phy_index(name){let text=fs.readfile('/sys/class/ieee80211/'+name+'/index');return text!=null?number(trim(text)):null;}
++function radio_phy(radio){
++ let path=replace(radio.path||'',/\+[0-9]+$/,'');if(!path)return null;
++ let names=fs.glob('/sys/devices/'+path+'/ieee80211/phy*');
++ if(!length(names))names=fs.glob('/sys/devices/platform/'+path+'/ieee80211/phy*');
++ if(length(names)!=1)return null;return phy_index(fs.basename(names[0]));
++}
++function frequency_in_band(freq,band){
++ let ranges={'s1g':[700,1000],'2g':[2400,2500],'5g':[5150,5900],'5g-lower':[5150,5350],'5g-upper':[5470,5900],'6g':[5925,7200]};
++ let range=ranges[lc(band||'')];return range&&freq>=range[0]&&freq<=range[1];
++}
++function enabled(s,c){let r=c[s?.device];return s?.['.type']=='wifi-iface'&&s.mld&&s.disabled!='1'&&(!s.mode||s.mode=='ap')&&s.ssid&&r?.['.type']=='wifi-device'&&r.disabled!='1';}
++function collect(config,read_status,interfaces,resolve_phy,resolve_radio){
++ let report={sections:{},pending:{sections:{},radios:{}},links:{}};
++ let expected=filter(keys(config||{}),name=>enabled(config[name],config));if(!length(expected))return report;
++ read_status??=query;resolve_phy??=phy_index;resolve_radio??=radio_phy;
++ if(interfaces==null){try{let nl=require('nl80211');interfaces=nl.request(nl.const.NL80211_CMD_GET_INTERFACE,nl.const.NLM_F_DUMP);}catch(e){}}
++ let statuses={};
++ for(let name in expected){
++  report.sections[name]=1;let s=config[name],r=config[s.device],group=config[s.mld];
++  if(group?.['.type']!='wifi-mld'||group.ifname!=s.ifname||group.ssid!=s.ssid||s.mld!=s.ifname)continue;
++  let roots=filter(interfaces||[],i=>i.ifname==s.ifname&&i.iftype==3&&i.ssid==s.ssid);
++  if(length(roots)!=1)continue;let root=roots[0],expected_phy=resolve_radio(r),radio=number(''+r.radio);
++  if(expected_phy==null||root.wiphy!=expected_phy||radio==null||!mac(root.mac)||!length(root.mlo_links)||length(root.mlo_links)>16)continue;
++  let seen={},matches=[];
++  for(let link in root.mlo_links){
++   if(type(link.link_id)!='int'||link.link_id<0||link.link_id>15||!mac(link.mac)||exists(seen,''+link.link_id)){matches=[];break;}
++   seen[''+link.link_id]=true;let cache=s.ifname+':'+link.link_id;
++   if(!exists(statuses,cache))statuses[cache]=read_status(s.ifname,link.link_id);
++   let f=statuses[cache],phy=match(f?.phy||'',/^(phy[0-9]+)\.([0-9]+)$/);
++   if(!f||!phy||number(phy[2])!=radio||resolve_phy(phy[1])!=root.wiphy)continue;
++   let identity=false;
++   for(let key,value in f){let b=match(key,/^bss\[([0-9]+)\]$/);if(!b)continue;let n=b[1];
++    if(value==s.ifname&&f['ssid['+n+']']==encoded_ssid(s.ssid)&&mac(f['bssid['+n+']'])==mac(link.mac)&&
++       mac(f['mld_addr['+n+']'])==mac(root.mac)&&number(f['mld_link_id['+n+']'])==link.link_id)identity=true;
++   }
++   if(!identity)continue;
++   let freq=number(f.freq);if(freq==null||!frequency_in_band(freq,r.band)||(link.wiphy_freq&&link.wiphy_freq!=freq))continue;
++   let ready=f.state=='ENABLED'&&!!link.wiphy_freq&&link.mlo_link_disabled!==true;
++   let duration=number(f.cac_time_seconds),remaining=number(f.cac_time_left_seconds);
++   let cac=link.mlo_link_disabled!==true&&f.state=='DFS'&&duration!=null&&remaining!=null&&duration>0&&remaining>0&&remaining<=duration;
++   push(matches,{ifname:s.ifname,link_id:link.link_id,bssid:mac(link.mac),phy:phy[1],radio_index:radio,frequency:freq,ready,cac,duration,remaining});
++  }
++  if(length(matches)!=1)continue;let view=matches[0];report.links[name]=view;report.sections[name]=view.ready?0:-1;
++  if(view.cac){report.pending.sections[name]=true;report.pending.radios[s.device]??={};report.pending.radios[s.device][s.ssid]={phy:view.phy,link_id:view.link_id,remaining:view.remaining,duration:view.duration};}
++ }
++ return report;
++}
++return {collect,fields,encoded_ssid};

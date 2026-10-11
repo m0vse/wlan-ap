@@ -24,6 +24,13 @@ let online = false;
 let leds_off = false;
 let blink_timer;
 let factory_reset_timer;
+let dfs_led_cac = false;
+let dfs_led_sampled = 0;
+let fault_active = false;
+let fault_colour = false;
+let fault_pid;
+let fault_report_signature = '[]';
+let fault_led_supported = system('/usr/libexec/ucentral-led.sh fault-supported') == 0;
 let managed_status_led = system('/usr/libexec/ucentral-led.sh managed') == 0;
 
 function controller_connected(status) {
@@ -44,8 +51,14 @@ function controller_led_update(restore) {
 		return;
 	}
 	if (led_pattern_active()) return;
+	if (fault_active && fault_led_supported && !leds_off) {
+		system('/usr/libexec/ucentral-led.sh ' + (fault_colour ? 'fault-blue' : 'fault-orange'));
+		return;
+	}
+	system('/usr/libexec/ucentral-led.sh fault-clear');
 	let connected = controller_connected(ubus.call('ucentral', 'status'));
-	system('/usr/libexec/ucentral-led.sh ' + (restore ? 'restore-' : '') + (connected ? 'on' : 'off'));
+	let fresh_cac = dfs_led_cac && time() >= dfs_led_sampled && time() - dfs_led_sampled <= 15;
+	system('/usr/libexec/ucentral-led.sh ' + (restore ? 'restore-' : '') + (fresh_cac ? 'dfs-' : '') + (connected ? 'on' : 'off'));
 }
 
 function status_phase_active() {
@@ -159,14 +172,68 @@ healthcheck = {
 	},
 
 	complete: function() {
+		healthcheck.pid = null;
 		self_healing();
 	},
 
 	spawn: function() {
+		if (healthcheck.pid) return;
 		ulog(LOG_INFO, 'healthcheck execute\n');
 		healthcheck.pid = uloop.process('/usr/share/ucentral/health.uc', [], {}, healthcheck.complete);
 	},
 };
+
+// CAC probing runs separately: bounded hostapd queries never block state/LED timers.
+let dfs_led_pid;
+let dfs_led_started = 0;
+function dfs_led_complete(exitcode) {
+ dfs_led_pid = null;
+ dfs_led_cac = false;
+ try {
+  let result = exitcode == 0 ? json(fs.readfile('/tmp/ucentral-dfs-led/sample.json')) : null;
+  if (type(result?.sampled) == 'int' && type(result?.pending) == 'bool' &&
+      result.sampled >= dfs_led_started && result.sampled <= time() && time() - result.sampled <= 15) {
+   dfs_led_cac = result.pending;
+   dfs_led_sampled = result.sampled;
+  }
+ } catch(e) {}
+ controller_led_update();
+}
+function dfs_led_refresh() {
+ if (!managed_status_led || dfs_led_pid) return;
+ dfs_led_started = time();
+ dfs_led_pid = uloop.process('/usr/libexec/ucentral-dfs-led', [], {}, dfs_led_complete);
+ if (!dfs_led_pid) { dfs_led_cac = false; controller_led_update(); }
+}
+let dfs_led_poll = uloop.interval(10000, dfs_led_refresh);
+let dfs_led_expiry = uloop.interval(1000, function() {
+ if (dfs_led_cac && (time() < dfs_led_sampled || time() - dfs_led_sampled > 15)) {
+  dfs_led_cac = false;
+  controller_led_update();
+ }
+});
+
+// Independent of controller-selected health intervals. One collector at a time.
+let fault_poll = uloop.interval(60000, function() {
+ if (fault_pid) return;
+ fault_pid = uloop.process('/usr/libexec/ucentral-faults', [], {}, function() {
+  fault_pid = null;
+  let report;
+  try { report = require('faults').snapshot(); } catch(e) {}
+  fault_active = length(report?.active || []) > 0;
+  let signature = sprintf('%J', map(report?.active || [], f => [f.code,f.resource,f.reason,f.simulated]));
+  if (signature != fault_report_signature) {
+   fault_report_signature = signature;
+   healthcheck.spawn();
+  }
+  controller_led_update(true);
+ });
+});
+let fault_blink = uloop.interval(500, function() {
+ if (!fault_active) return;
+ fault_colour = !fault_colour;
+ controller_led_update();
+});
 
 let state;
 state = {
