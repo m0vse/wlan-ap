@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ucentral-schema
-PKG_RELEASE:=33
+PKG_RELEASE:=34
 
 PKG_SOURCE_URL=https://github.com/Telecominfraproject/wlan-ucentral-schema.git
 PKG_MIRROR_HASH:=89821bce0ed6a0d9cb7a21b704a8a38a4c0f26c84145b3fa5e33bac83fc0870e
@@ -50,6 +50,17 @@ define Package/ucentral-schema/install
 	$(LN) /usr/share/ucentral/schemareader.uc $(1)/usr/share/ucode
 	$(LN) /usr/share/ucentral/ucentral.uc $(1)/usr/bin/ucentral_apply
 	$(CP) ./files/* $(1)
+	# Normalize only copied package-owned paths, never private runtime stores.
+	find ./files -type d | while IFS= read -r path; do \
+		$(INSTALL_DIR) "$(1)/$${path#./files/}" || exit 1; \
+	done
+	find ./files -type f | while IFS= read -r path; do \
+		if [ -x "$$path" ]; then \
+			$(INSTALL_BIN) "$$path" "$(1)/$${path#./files/}" || exit 1; \
+		else \
+			$(INSTALL_DATA) "$$path" "$(1)/$${path#./files/}" || exit 1; \
+		fi; \
+	done
 	# Recursive copies preserve checkout directory modes; normalize last.
 	$(INSTALL_DIR) $(1)/etc/ucentral
 endef
