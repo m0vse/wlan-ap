@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
  (root/'empty').write_text('')
  modules={}
  for family,prefix in [('jaguar','0124-'),('cheetah','0125a-'),('thor','0141-'),('gambit','0140-')]:
-  patch=next((repo/'patches-25.12').glob(prefix+'*.patch')).read_text()
+  patch=next((repo/'patches-25.12').glob((prefix+'qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch') if family=='jaguar' else prefix+'*.patch')).read_text()
   marker=f'+++ b/package/cambium/cambium-{family}-support/files/cambium-ab-{family}.sh\n'
   section=patch.split(marker,1)[1].split('\ndiff --git ',1)[0]
   source=root/(family+'.sh');source.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))

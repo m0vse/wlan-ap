@@ -112,7 +112,7 @@ def main():
             pass
         else:
             raise AssertionError('negative control did not detect unsafe original armer')
-        subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(REPO/'patches-25.12/0179-cambium-ab-persist-prior-before-trial.patch')], cwd=root, check=True, capture_output=True)
+        subprocess.run(['git', 'apply', str(REPO/'patches-25.12/0179-cambium-ab-persist-prior-before-trial.patch')], cwd=root, check=True, capture_output=True)
         assert 'PKG_RELEASE:=18\n' in recipe.read_text()
         sources = [core] + ([args.core.resolve()] if args.core else [])
         for source in sources:
