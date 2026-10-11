@@ -24,12 +24,16 @@ def prepare_recipe(root):
     initial = (REPO/'patches-25.12/0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch').read_text().split('+++ b/'+relative+'\n',1)[1].split('\ndiff --git ',1)[0]
     recipe = root/relative
     recipe.write_text(''.join(x[1:]+'\n' for x in initial.splitlines() if x.startswith('+')))
-    for prefix in ('0126-','0127-','0128-','0129-','0130-','0142-'):
-        path = next((REPO/'patches-25.12').glob(prefix+'*.patch'))
-        body = path.read_text().split('--- a/'+relative+'\n',1)[1]
-        body = body.split('\ndiff --git ',1)[0].split('\n--- a/',1)[0]
-        patch = root/'recipe.patch'; patch.write_text('--- a/'+relative+'\n'+body)
-        subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(patch)],cwd=root,check=True,capture_output=True)
+    # Replay all prerequisites for both files, preserving complete hunks and
+    # their terminal newlines instead of hand-picking release-counter edits.
+    core_relative = 'package/cambium/cambium-ab/files/cambium-ab.sh'
+    for path in sorted((REPO/'patches-25.12').glob('*.patch')):
+        number = int(path.name[:4])
+        if not 124 < number < 179:
+            continue
+        subprocess.run(['git', 'apply', '--include='+relative,
+                        '--include='+core_relative, str(path)],
+                       cwd=root, check=True, capture_output=True)
     assert 'PKG_RELEASE:=17\n' in recipe.read_text()
     return recipe
 
