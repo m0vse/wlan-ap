@@ -13,7 +13,7 @@ p=argparse.ArgumentParser();p.add_argument('--core',type=Path);a=p.parse_args()
 def reconstruct_upgrade(root):
  """Replay only this file's real repository hunks; no SDK/private input."""
  relative='package/cambium/cambium-ab/files/cambium-ab-upgrade.sh'
- created=next((repo/'patches-25.12').glob('0124-*.patch'))
+ created=next((repo/'patches-25.12').glob('0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch'))
  section=created.read_text().split('+++ b/'+relative+'\n',1)[1].split('\ndiff --git ',1)[0]
  target=root/relative;target.parent.mkdir(parents=True)
  target.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
