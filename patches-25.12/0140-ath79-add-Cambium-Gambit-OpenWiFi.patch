@@ -178,7 +178,7 @@ diff --git a/package/cambium/cambium-gambit-support/files/cambium-ab-gambit.sh b
 new file mode 100644
 --- /dev/null
 +++ b/package/cambium/cambium-gambit-support/files/cambium-ab-gambit.sh
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,223 @@
 +#!/bin/sh
 +# E400: raw nboot uImage kernels and independent UBI root/overlay banks.
 +# Shared cambium-ab owns the trial, health checks, rollback and confirmation.
@@ -360,7 +360,11 @@ new file mode 100644
 +
 +# Matching Gambit nboot switches banks and OEM bootargs at count eight/nine.
 +ab_gambit_reset_bootcount() {
-+	[ "$(ab_getenv bootcount)" = 0 ] || ab_setenv bootcount 0
++	local count
++	count=$(ab_getenv bootcount) || return 1
++	[ "$count" = 0 ] || ab_setenv bootcount 0 || return 1
++	count=$(ab_getenv bootcount) || return 1
++	[ "$count" = 0 ]
 +}
 +
 +# Keep the healthy-boot reset; it alone cannot protect pre-init failures.

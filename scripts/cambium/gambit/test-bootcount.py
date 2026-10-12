@@ -39,7 +39,7 @@ ab_gambit_guarded_command {1-oem}''')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, '')
 
-    def writer(self, count, failure=0, valid=True):
+    def writer(self, count, failure=0, valid=True, before_read_rc=0, after_read_rc=0):
         with tempfile.TemporaryDirectory(prefix='gambit-counter-test-') as directory:
             root = Path(directory) / 'root'
             root.write_bytes(b'hsqs')
@@ -52,8 +52,10 @@ ab_gambit_check_kernel() {{ return {0 if valid else 1}; }}
 ab_gambit_image_fits() {{ return 0; }}
 ab_mtd_writable() {{ return 0; }}
 ab_ubi_for_mtd() {{ return 1; }}
-ab_getenv() {{ printf '%s\\n' {shlex.quote(count)}; }}
-ab_setenv() {{ echo "env:$1=$2"; return {failure}; }}
+mock_counter={shlex.quote(count)}
+after=0
+ab_getenv() {{ printf "%s\\n" "$mock_counter"; if [ "$after" = 1 ]; then return {after_read_rc}; else return {before_read_rc}; fi; }}
+ab_setenv() {{ echo "env:$1=$2"; [ {failure} = 0 ] || return {failure}; mock_counter=$2; after=1; }}
 ab_step() {{ echo "step:$1"; return 1; }}
 ab_gambit_write_target_inner''')
 
@@ -77,7 +79,7 @@ ab_gambit_write_target_inner''')
         self.assertEqual(result.stdout.splitlines(), ['step:erase linux1'])
 
     def test_healthy_boot_still_clears_counter(self):
-        result = self.run_module('ab_getenv() { echo 9; }; ab_setenv() { echo "$1=$2"; }; ab_gambit_healthy_boot')
+        result = self.run_module("mock_counter=9; ab_getenv() { echo $mock_counter; }; ab_setenv() { mock_counter=$2; echo $1=$2; }; ab_gambit_healthy_boot")
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), 'bootcount=0')
 
@@ -146,6 +148,18 @@ reset() {{ echo RESET; }}
             self.assertNotIn('RESET', result.stdout)
             expected = 'DURABLE:0:OEM0' if guarded and failed_stage == 5 else 'DURABLE:9:OEM0'
             self.assertEqual(result.stdout.strip(), expected)
+
+
+    def test_failed_initial_getter_with_expected_stdout_prevents_every_write(self):
+        for printed in ('0', '9'):
+            result = self.writer(printed, before_read_rc=1)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+
+    def test_failed_final_getter_printing_zero_prevents_flash(self):
+        result = self.writer('9', after_read_rc=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.splitlines(), ['env:bootcount=0'])
 
 
 if __name__ == '__main__':
