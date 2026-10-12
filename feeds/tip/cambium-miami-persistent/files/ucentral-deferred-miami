@@ -1,0 +1,32 @@
+#!/bin/sh
+# Hardware adapter only. The shared dispatcher owns country allowlists,
+# accepted identity, pending documents, defaults, module settings and boot jobs.
+set -eu
+LC_ALL=C
+export LC_ALL
+[ "$#" = 2 ] || exit 2
+mode=$1 country=$2
+case "$mode" in validate|readback) ;; *) exit 2 ;; esac
+case "$country" in [A-Z][A-Z]) ;; *) exit 1 ;; esac
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+ab_identity >/dev/null || exit 1
+[ "$AB_FAMILY:$AB_MODEL:$AB_CERTIFICATE_LEBS" = miami:X7-35X:64 ] || exit 1
+ab_miami_storage_context || exit 1
+ab_miami_certificate_mount || exit 1
+expected=$(/usr/sbin/miami-board-data --validate-country "$country") || exit 1
+case "$expected" in ''|*[!0-9a-f]*) exit 1 ;; esac
+[ "${#expected}" = 64 ] || exit 1
+[ "$mode" = readback ] || exit 0
+# A staged country is not effective merely because a pending file exists.
+[ "$(cat /tmp/cambium-board-data.status)" = vault ] || exit 1
+[ "$(cat /tmp/miami-firmware/board-country)" = "$country" ] || exit 1
+[ "$(sha256sum /tmp/miami-firmware/ath12k/QCN92XX/hw1.0/board.bin | cut -d ' ' -f1)" = "$expected" ] || exit 1
+[ "$(tr 'a-z' 'A-Z' < /sys/module/cfg80211/parameters/ieee80211_regdom)" = "$country" ] || exit 1
+# Keep pending until the clean first probe has produced all serving radios.
+count=0
+for phy in /sys/class/ieee80211/*; do
+	[ ! -d "$phy" ] || count=$((count+1))
+done
+[ "$count" -ge 3 ] || exit 1
+/usr/libexec/miami-radio-ready

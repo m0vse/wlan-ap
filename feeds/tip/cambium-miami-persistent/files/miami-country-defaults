@@ -1,0 +1,20 @@
+#!/bin/sh
+# Read-only deployment country for the unenrolled persistent storage pilot.
+# Country files never establish a certificate or enrollment identity.
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+ab_identity >/dev/null || exit 1
+[ "$AB_FAMILY:$AB_MODEL:$AB_CERTIFICATE_LEBS" = miami:X7-35X:64 ] || exit 1
+ab_miami_storage_context || exit 1
+ab_miami_certificate_mount || exit 1
+country=$(cat /etc/ucentral/country 2>/dev/null | tr 'a-z' 'A-Z')
+case "$country" in [A-Z][A-Z]) ;; *) exit 1 ;; esac
+[ "$country" != ZZ ] || exit 1
+for file in /etc/ucentral/ucentral.defaults /certificates/ucentral.defaults; do
+	[ ! -e "$file" ] && [ ! -L "$file" ] && continue
+	[ -f "$file" ] && [ ! -L "$file" ] || exit 1
+	[ "$(wc -c < "$file")" -le 2048 ] || exit 1
+	value=$(jsonfilter -i "$file" -e '@.country' 2>/dev/null) || exit 1
+	[ "$value" = "$country" ] || { echo 'Miami deployment/durable country policy conflict' >&2; exit 1; }
+done
+printf '%s\n' "$country"
