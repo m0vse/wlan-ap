@@ -24,3 +24,12 @@ network self-healing after the usual five-minute gap. The new collector recogniz
 both real links without disabling recovery for genuine failures. Runtime trials
 must keep source fixtures private in RAM and bind only the health entrypoint;
 no firmware, UCI, certificates, host keys or radio configuration needs changing.
+# Actual generated configuration regression
+
+`generated-miami-config.json` retains the identity fields from Miami's generated
+UCI observed on 12 October 2026. PSKs and private site/device values are excluded;
+SSID/MAC identities in the test are synthetic. Crucially, the named `wifi-mld`
+section has no `ifname` option. The collector must use its section name in that
+case, while rejecting any explicitly conflicting `ifname`. The normal test runner
+also checks this fixture, genuine missing links and ordinary non-MLO clients.
+

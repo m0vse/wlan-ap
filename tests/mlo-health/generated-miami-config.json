@@ -1,0 +1,8 @@
+{
+  "radio0": {".type":"wifi-device","path":"platform/soc@0/c000000.wifi","band":"2g"},
+  "radio1_band0": {".type":"wifi-device","path":"soc@0/18000000.pcie/pci0001:00/0001:00:00.0/0001:01:00.0","radio":"0","band":"5g"},
+  "radio1_band1": {".type":"wifi-device","path":"soc@0/18000000.pcie/pci0001:00/0001:00:00.0/0001:01:00.0","radio":"1","band":"6g"},
+  "ml0_0": {".type":"wifi-mld","ssid":"Generated fixture"},
+  "up0v0_1_1_1": {".type":"wifi-iface","device":"radio1_band0","mld":"ml0_0","ifname":"ml0_0","ssid":"Generated fixture"},
+  "up0v0_1_2_1": {".type":"wifi-iface","device":"radio1_band1","mld":"ml0_0","ifname":"ml0_0","ssid":"Generated fixture"}
+}
