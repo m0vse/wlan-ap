@@ -87,7 +87,7 @@ oem_restore_confirm_inspect && oem_restore_confirm_preflight && oem_restore_conf
     fixture=self.fixture(model,source);root=fixture[0][0];before={p:p.read_bytes() for p in (root/'dev').iterdir()}
     result=self.invoke(fixture);self.assertEqual(result.returncode,0,result.stderr)
     self.assertEqual(before,{p:p.read_bytes() for p in before})
-    state=json.loads((root/'env.json').read_text());self.assertEqual(state['bootcmd'],'bootipq');self.assertEqual(state['image'],str(1-source))
+    state=json.loads((root/'env.json').read_text());self.assertEqual(state['bootcmd'],'setenv bootcount 0 && bootipq');self.assertEqual(state['image'],str(1-source));self.assertEqual(state['bootcount'],'0')
     self.assertEqual(state['jaguar_oem_restore_state'],'confirmed');self.assertEqual(state[f'jaguar_boot{source}'],fixture[1][f'jaguar_boot{source}'])
     self.assertEqual((root/'confirm-events').read_text(),'CONFIRM\n');self.assertIn('No reboot, vendor factory reset or identity retirement',result.stdout)
  def test_backup_upload_batch_and_readback_failures_keep_source_default(self):

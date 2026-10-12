@@ -66,7 +66,7 @@ def main():
             (root/'tmp').mkdir();(root/'tmp/fw_env.config').write_text(f'/dev/mtd{envindex} 0x0 0x10000 0x10000 1\n')
             proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text(('ubi.mtd=rootfs' if slot==0 else 'ubi.mtd=rootfs_1')+' root=ubi6:ubi_rootfs');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
             (dev/'urandom').write_bytes(bytes(range(64)))
-            (root/'environment.json').write_text(json.dumps({'image':str(slot),'bootcmd':'aq_load_fw&&bootipq','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}))
+            (root/'environment.json').write_text(json.dumps({'bootcount':'9','image':str(slot),'bootcmd':'aq_load_fw&&bootipq','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}))
             tools=root/'bin';tools.mkdir()
             actor=tools/'actor'
             actor.write_text(r'''#!/usr/bin/env python3
@@ -85,6 +85,7 @@ if cmd=='fw_printenv':
   key=a[a.index('-n')+1]
   if key not in data:sys.exit(1)
   print(data[key])
+  if os.environ['DRIFT']=='counter-read-error' and key=='bootcount' and data[key]=='0':sys.exit(1)
  else:
   for k,v in data.items():print(k+'='+v)
  sys.exit(0)
@@ -92,6 +93,9 @@ state=root/'counter';n=int(state.read_text())+1 if state.exists() else 1;state.w
 cmd=Path(sys.argv[0]).name;a=sys.argv[1:]
 with (root/'trace').open('a') as f:f.write(cmd+' '+' '.join(a)+'\n')
 if n==int(os.environ['FAIL_OPERATION']):sys.exit(1)
+if cmd in ('ubiformat','ubimkvol','ubirmvol','ubiupdatevol'):
+ data=json.loads((root/'environment.json').read_text())
+ assert data['bootcount']=='0' and data['image']==os.environ['SLOT'] and data['bootcmd']=='setenv bootcount 0 && aq_load_fw && bootipq','unsafe source selector before flash'
 ubi=root/'sys/class/ubi';dev=root/'dev'
 def put(p,v):p.parent.mkdir(parents=True,exist_ok=True);p.write_text(str(v))
 if cmd=='ubidetach':
@@ -116,6 +120,7 @@ elif cmd=='fw_setenv':
   if v:data[k]=v
   else:data.pop(k,None)
  if file.name=='thor-source.tsv':
+  if os.environ['DRIFT']=='counter-readback':data['bootcount']='9'
   if os.environ['DRIFT']=='env-punctuation-changed':data['factory.region']='external-drift'
   elif os.environ['DRIFT']=='env-punctuation-removed':data.pop('serial#')
  (root/'environment.json').write_text(json.dumps(data))
@@ -161,7 +166,8 @@ oem_adapter_migrate 'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
         assert 'handoff=one-shot-armed' in r.stdout
         data=__import__('json').loads((root/'environment.json').read_text())
         assert 'thor_ab_version' not in data and data['thor_installer_target']==str(1-a.source_slot)
-        assert data['factory_keep']=='untouched' and f'saveenv && run thor_boot{1-a.source_slot}' in data['bootcmd']
+        assert data['factory_keep']=='untouched' and f'saveenv; then run thor_boot{1-a.source_slot}' in data['bootcmd']
+        assert data['bootcount']=='0' and data['image']==str(a.source_slot)
         assert {k:data[k] for k in ('serial#','factory.region','vendor-option')}=={'serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}
         # Check this newly constructed vault with the unchanged shipped .8
         # consumer. Only its final command invocation and hardware readers are
@@ -202,9 +208,9 @@ vault_check "$VAULT_CHECK"
         assert sum(v.startswith('ubiupdatevol') for v in trace)==3
         operations=int((root/'counter').read_text())
         print('Thor forward positive path passed',flush=True)
-        for drift in ('env-punctuation-changed','env-punctuation-removed'):
+        for drift in ('env-punctuation-changed','env-punctuation-removed','counter-readback','counter-read-error'):
             root,env,names=fixture(drift=drift);run(root,env,False)
-            assert json.loads((root/'environment.json').read_text())['bootcmd']=='aq_load_fw&&bootipq'
+            assert json.loads((root/'environment.json').read_text())['bootcmd'] in ('aq_load_fw&&bootipq','setenv bootcount 0 && aq_load_fw && bootipq')
             assert not any(v.startswith('ubiformat') for v in (root/'trace').read_text().splitlines())
         if a.env_only:
             print('PASS: forward unchanged punctuation keys and changed/removed refusal, slot',a.source_slot)
@@ -218,7 +224,7 @@ vault_check "$VAULT_CHECK"
             try:
                 r=run(root,env,False)
                 data=json.loads((root/'environment.json').read_text())
-                assert data['bootcmd']=='aq_load_fw&&bootipq',(fail,data['bootcmd'])
+                assert data["bootcmd"] in ("aq_load_fw&&bootipq", "setenv bootcount 0 && aq_load_fw && bootipq"),(fail,data['bootcmd'])
                 assert data['factory_keep']=='untouched'
                 assert 'T'*64 not in r.stdout+r.stderr+((root/'trace').read_text() if (root/'trace').exists() else '')
             finally:shutil.rmtree(root)
@@ -228,7 +234,7 @@ vault_check "$VAULT_CHECK"
         assert sum(v.startswith('ubiattach') for v in trace)==2
         root,env,names=fixture(unattached=True,cert=True);run(root,env,False)
         assert not any(v.startswith('ubiformat') for v in (root/'trace').read_text().splitlines())
-        assert json.loads((root/'environment.json').read_text())['bootcmd']=='aq_load_fw&&bootipq'
+        assert json.loads((root/'environment.json').read_text())['bootcmd'] in ('aq_load_fw&&bootipq','setenv bootcount 0 && aq_load_fw && bootipq')
         print(f'PASS: {count} whole forward cases, failures at all {operations} persistent/process steps; no premature arm')
         print('Scope: actual image/parts/BDF pins, settings producer/stager, physical/source/ENV checks and allocator; device/mount/fwtools are actors. No AP, EST, build or boot action.')
 

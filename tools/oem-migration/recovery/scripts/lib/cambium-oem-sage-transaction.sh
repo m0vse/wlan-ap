@@ -36,7 +36,7 @@ cos_install() (
     local image=$1 kernel=$2 root=$3 settings=$4 mountpoint= volume= node count=0
     [ "$#" = 4 ] || exit 2
     # Callbacks come from the authenticated runner, never from staged settings.
-    for node in cos_admit cos_authenticate cos_source_check cos_refuse_pending cos_recovery cos_boot_preflight cos_arm; do
+    for node in cos_admit cos_authenticate cos_source_check cos_refuse_pending cos_recovery cos_boot_preflight cos_persist_source cos_arm; do
         command -v "$node" >/dev/null 2>&1 || exit 1
     done
     cos_admit "$image" || exit 1
@@ -62,6 +62,10 @@ cos_install() (
     # Recheck mutable source/pending state immediately before the writer. A
     # qualified runner must hold exclusive execution for the full transaction.
     cos_source_check && cos_refuse_pending || exit 1
+    # Both the standalone sealed installer and unified caller must save the
+    # actual source selector and neutral counter before any target operation.
+    cos_persist_source "install:$OW_EXPECT_SOURCE:$OW_EXPECT_TARGET:$OW_IMAGE:$OW_EXPECT_JOB" || exit 1
+    cos_source_check && cos_boot_preflight || exit 1
     csp_stage_pair "$kernel" "$root" 285 squashfs || exit 1
     # Keep the already reviewed incoming preinit producer's 20-LEB capacity.
     cos_certificate_capacity after || exit 1

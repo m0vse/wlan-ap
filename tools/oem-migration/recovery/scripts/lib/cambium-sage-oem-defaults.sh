@@ -7,7 +7,7 @@
 csr_render_oem_defaults() {
     [ "${CSR_MODEL:-}" = E410 ] && [ "${CSR_OEM_DEFAULTS_QUALIFIED:-}" = qualified ] || return 1
     case "${CSR_OEM_SLOT:-}" in 0|1) ;; *) return 1 ;; esac
-    printf 'bootcmd bootipq\nbootdelay 2\nbaudrate 115200\nipaddr 192.168.1.11\nserverip 192.168.1.120\nimage %s\nbootcount 0\n' "$CSR_OEM_SLOT"
+    printf 'bootcount 0\nbootcmd setenv bootcount 0 && bootipq\nbootdelay 2\nbaudrate 115200\nipaddr 192.168.1.11\nserverip 192.168.1.120\nimage %s\n' "$CSR_OEM_SLOT"
     # These are reviewed migration overrides, absent from compiled defaults.
     # Never remove arbitrary unknown keys or rewrite a donor whole environment.
     printf '%s\n' bootargs mtdids mtdparts sage_boot0 sage_boot1 sage_stable0 sage_stable1 \
