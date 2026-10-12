@@ -45,11 +45,12 @@ reset(){ echo reset >> "$TRACE";exit 0; }
                 calls=trace.read_text().splitlines()
                 if failure in ('image','bootcount','bootcmd','changing_bootcmd','save'):
                     assert 'nand' not in calls and 'candidate' not in calls and not saved.exists(),calls
+                    assert 'reset' not in calls,calls
                 else:
                     assert saved.read_text().splitlines()==['bootipq',str(1-target),'0']
                     assert calls.index('save')<calls.index('nand'),calls
                     if failure in ('nand','read'):assert 'candidate' not in calls,calls
-                if failure:assert calls[-1]=='reset',calls
+                if failure in ('nand','read','bootm'):assert calls[-1]=='reset',calls
                 total+=1
 print(f'PASS: {total} exact-model/slot first-OEM-boot script cases')
 print('Scope: actual renderer, mocked shell/load/durable ENV; not real U-Boot or watchdog proof')

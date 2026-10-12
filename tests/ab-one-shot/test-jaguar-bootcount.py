@@ -38,7 +38,7 @@ saveenv(){ [ "$FAIL" != saveenv ] || return 1;[ "$image:$bootcount" = "$SOURCE:0
 nand(){ echo NAND; };ubi(){ :; };bootm(){ echo BOOT;exit 0; };reset(){ echo RESET;exit 0; }
 '''
             r=run(harness+renderer.stdout,{**env,'FAIL':fail});assert r.returncode==0,r.stderr
-            if fail: assert 'NAND' not in r.stdout and 'BOOT' not in r.stdout and 'RESET' in r.stdout,r.stdout
+            if fail: assert 'NAND' not in r.stdout and 'BOOT' not in r.stdout and 'RESET' not in r.stdout,r.stdout
             else: assert r.stdout.index('SAVE:')<r.stdout.index('NAND'),r.stdout
             count+=1
         for healthy in ('0','1'):
