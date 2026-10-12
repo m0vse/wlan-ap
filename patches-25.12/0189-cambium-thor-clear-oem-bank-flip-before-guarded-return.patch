@@ -1,0 +1,52 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-thor: clear OEM bank-flip sentinel before guarded return
+
+The matching Thor 7.2-r1 bootloader flips image at counter8/9. Preserve
+the opposite OEM bank explicitly and gate all loads on saving count0.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
++++ b/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
+@@ -67,7 +67,29 @@
+ 	boot=$(ab_thor_boot_command "$1") || return 1
+ 	# This hook is only the one-OEM/one-OpenWiFi entry path.
+ 	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] && ! ab_converted || return 1
+-	echo "setenv bootcmd \"aq_load_fw&&bootipq\" && setenv changing_bootcmd && saveenv && $boot; aq_load_fw && bootipq"
++	# The intended OpenWiFi slot is $1; its opposite retains OEM firmware.
++	# Native Thor bootipq consumes bootcount=8/9 by flipping image, so an
++	# explicit OEM selector and cleared counter must be saved before loading.
++	case "$1" in 0|1) ;; *) return 1 ;; esac
++	local oem image
++	oem=$((1 - $1))
++	image=$(ab_getenv image) || return 1
++	[ "$image" = "$oem" ] || return 1
++	echo "if setenv bootcount 0 && setenv image $oem && setenv bootcmd \"aq_load_fw&&bootipq\" && setenv changing_bootcmd && saveenv; then $boot; aq_load_fw && bootipq; fi"
++}
++
++# Legacy one-OEM/one-OpenWiFi only: do not rewrite a mismatched selector.
++# Shared guard calls this before rearming and before a failed-start reboot.
++ab_thor_prepare_oem_return() {
++	local slot="$1" image counter
++	case "$slot" in 0|1) ;; *) return 1 ;; esac
++	image=$(ab_getenv image) || return 1
++	[ "$image" = "$((1 - slot))" ] || return 1
++	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || return 1
++	ab_setenv bootcount 0 && sync || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	[ "$counter" = 0 ] && [ "$(ab_getenv image)" = "$image" ] &&
++		[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ]
+ }
+ 
+ # Validate supported previous-bank defaults before any Thor upgrade write.
+--- a/package/cambium/cambium-thor-support/Makefile
++++ b/package/cambium/cambium-thor-support/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-thor-support
+-PKG_RELEASE:=13
++PKG_RELEASE:=14
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
