@@ -22,8 +22,10 @@ assert not any(key in value for value in [*a,*os.environ.values()]),'credential 
 if cmd=='ls':
  s=Path(a[-1]).lstat();print(stat.filemode(s.st_mode),s.st_nlink,0,0,s.st_size,'Jan 1 00:00',a[-1]);sys.exit(0)
 ef=p/'env.json';e=json.loads(ef.read_text())
+if cmd in ('ubirmvol','ubimkvol','ubiupdatevol'):
+ assert e['bootcount']=='0' and e['image']==os.environ['SOURCE'] and e['bootcmd']=='run jaguar_boot'+e['image'],'unsafe source selector/counter before target write'
 if cmd=='fw_printenv':
- print(''.join(k+'='+v+'\n' for k,v in e.items()),end='');sys.exit(0)
+ print(''.join(k+'='+v+'\n' for k,v in e.items()),end='');sys.exit(1 if fault=='initial-read-error' or (fault=='counter-read-error' and e.get('bootcount')=='0') else 0)
 if cmd=='fw_setenv':
  args=a[2:];label='SOURCE' if args[0]=='-s' and 'jaguar-source.' in args[1] else ('ARM' if args[0]=='-s' else 'SELECTOR')
 else:label=cmd
@@ -40,6 +42,7 @@ if cmd=='fw_setenv':
    if len(v)==1:e.pop(v[0],None)
    else:e[v[0]]=v[1]
   if fault=='source-readback' and label=='SOURCE':e['jaguar_storage_pending']='wrong'
+  if fault=='counter-readback' and label=='SOURCE':e['bootcount']='9'
   if fault=='arm-readback' and label=='ARM':e['jaguar_ab_target']='wrong'
   if fault.startswith('metadata-') and label=='ARM':e['jaguar_installer_'+fault.removeprefix('metadata-')]='wrong'
  else:
@@ -86,7 +89,7 @@ class ForwardTests(unittest.TestCase):
   def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
   put('key','z'*64+'\n',0o600);put('dev/urandom',bytes(range(32)));put('etc/version','PRODUCT=jaguar\nVERSION=7.2-r1\n')
   put('etc/fw_env.config','/dev/mtd2 0x0 0x10000 0x10000 1\n')
-  put('env.json',json.dumps(dict(image=str(slot),bootcmd='bootipq',factory_mac='bca993000002')))
+  put('env.json',json.dumps(dict(bootcount='9',image=str(slot),bootcmd='bootipq',factory_mac='bca993000002')))
   put('proc/cmdline',f'ubi.mtd='+('rootfs' if slot==0 else 'rootfs_1')+' root=/dev/ubiblock0_1 rootfstype=squashfs\n')
   put('proc/mounts','/dev/ubiblock0_1 / squashfs ro 0 0\n');put('proc/self/mountinfo','')
   rows=[];mtd=[]
@@ -145,7 +148,8 @@ class ForwardTests(unittest.TestCase):
   return root,bundle,work,bin,model,sku
  def invoke(self,case,fault=''):
   root,bundle,work,bin,model,sku=case
-  env=dict(os.environ,PATH=str(bin)+':'+os.environ['PATH'],LC_ALL='C',FIXTURE=str(root),HERE=str(HERE),OEM_SYS_ROOT=str(root),OEM_BUNDLE=str(bundle),OEM_WORK=str(work),OEM_RECOVERY_DIR=str(work/'critical'),OEM_FAMILY='jaguar',OEM_MODEL=model,OEM_SKU=sku,OEM_SUPPORTED_RELEASE='7.2-r1',OEM_CONTROLLER='controller.invalid',FAULT=fault)
+  os_source=json.loads((root/'env.json').read_text())['image']
+  env=dict(os.environ,PATH=str(bin)+':'+os.environ['PATH'],LC_ALL='C',FIXTURE=str(root),HERE=str(HERE),OEM_SYS_ROOT=str(root),OEM_BUNDLE=str(bundle),OEM_WORK=str(work),OEM_RECOVERY_DIR=str(work/'critical'),OEM_FAMILY='jaguar',OEM_MODEL=model,OEM_SKU=sku,OEM_SUPPORTED_RELEASE='7.2-r1',OEM_CONTROLLER='controller.invalid',FAULT=fault,SOURCE=os_source)
   script='. "$HERE/lib/common.sh"; . "$HERE/lib/protection.sh"; . "$HERE/lib/critical-backup.sh"; . "$HERE/adapters/jaguar.sh"; IFS= read -r input < "$FIXTURE/key";oem_adapter_migrate "$input"'
   return subprocess.run(['sh','-c',script],env=env,capture_output=True,text=True)
  def test_all_models_slots_real_stager_f2_vault_and_boot(self):
@@ -156,7 +160,7 @@ class ForwardTests(unittest.TestCase):
      result=self.invoke(case);events=(root/'events').read_text() if (root/'events').exists() else ''
      self.assertEqual(result.returncode,0,result.stderr+'\nevents='+events)
      self.assertEqual(protected,{p:p.read_bytes() for p in protected});self.assertLess(events.index('SOURCE '),events.index('ubirmvol '));self.assertLess(events.index('umount '),events.index('ARM '))
-     values=json.loads((root/'env.json').read_text());self.assertIn(f'saveenv && run jaguar_boot{1-slot}; run jaguar_boot{slot}',values['bootcmd'])
+     values=json.loads((root/'env.json').read_text());self.assertIn(f'saveenv; then run jaguar_boot{1-slot}; run jaguar_boot{slot}; fi',values['bootcmd'])
      binding=dict(row.split('\t',1) for row in (root/'staged-upper/root/.cambium-installer-settings/binding.tsv').read_text().splitlines())
      self.assertEqual(values['jaguar_installer_target'],str(1-slot));self.assertEqual(values['jaguar_installer_job'],binding['job_id']);self.assertEqual(values['jaguar_installer_image'],binding['image_sha256'])
      spec=importlib.util.spec_from_file_location('incoming_consumers',HERE/'tests/test-jaguar-consumers.py');consumer=importlib.util.module_from_spec(spec);spec.loader.exec_module(consumer)
@@ -165,10 +169,16 @@ class ForwardTests(unittest.TestCase):
      self.assertTrue((root/'staged-upper/root/.cambium-installer-settings/est-bootstrap.conf').exists())
      self.assertNotIn('z'*64,events+result.stdout+result.stderr)
  def test_faults_never_activate_or_touch_source(self):
-  for fault in ('SOURCE','source-readback','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback','metadata-target','metadata-job','metadata-image'):
+  for fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback','metadata-target','metadata-job','metadata-image'):
    case=self.fixture();root=case[0];source=(root/'dev/ubi0_0').read_bytes()
    result=self.invoke(case,fault);self.assertNotEqual(result.returncode,0)
    self.assertEqual(source,(root/'dev/ubi0_0').read_bytes());self.assertIn(json.loads((root/'env.json').read_text())['bootcmd'],('bootipq','run jaguar_boot0'))
+   if fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync'):
+    events=(root/'events').read_text()
+    for operation in ('ubirmvol ','ubimkvol ','ubiupdatevol '):self.assertNotIn(operation,events)
+ def test_error_returning_reader_with_correct_output_never_saves_source(self):
+  case=self.fixture();root=case[0];result=self.invoke(case,'initial-read-error')
+  self.assertNotEqual(result.returncode,0);self.assertFalse((root/'events').exists())
  def test_existing_inactive_identity_is_never_erased(self):
   case=self.fixture();root=case[0];p=root/'sys/class/ubi/ubi1_4';p.mkdir();(p/'name').write_text('certificates');(root/'dev/ubi1_4').write_bytes(b'own retained private identity')
   result=self.invoke(case);self.assertNotEqual(result.returncode,0);self.assertEqual((root/'dev/ubi1_4').read_bytes(),b'own retained private identity')

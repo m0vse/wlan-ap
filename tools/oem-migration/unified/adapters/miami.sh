@@ -103,8 +103,8 @@ oem_adapter_boot_preflight() {
  core=$(oem_miami_core) || return 1
  # Independently pinned provider + actual OEM tool/config/source checks.
  # These exact commands were fixture-tested and used by the hardware pilot.
- grep -F "restore='setenv bootcmd bootipq && setenv changing_bootcmd && saveenv'" "$core" >/dev/null &&
- grep -F "put bootcmd 'run miami_persistent_restore && run miami_persistent_load || bootipq'" "$core" >/dev/null || return 1
+ grep -F "restore='setenv bootcount 0 && setenv bootcmd bootipq && setenv changing_bootcmd && saveenv'" "$core" >/dev/null &&
+ grep -F "put bootcmd 'if run miami_persistent_restore; then run miami_persistent_load; bootipq; fi'" "$core" >/dev/null || return 1
  [ "$(fw_printenv bootcmd)" = bootcmd=bootipq ] && [ "$(fw_printenv image)" = "image=$OEM_SOURCE_SLOT" ] || return 1
  OEM_BOOT_PRIOR_SLOT=$OEM_SOURCE_SLOT OEM_BOOT_TARGET_SLOT=$OEM_TARGET_SLOT
  OEM_BOOT_MODE=persist-prior-before-load

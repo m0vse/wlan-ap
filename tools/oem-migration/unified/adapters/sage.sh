@@ -136,7 +136,7 @@ oem_sage_context() {
  OW_EXPECT_OPERATION=production-oem-migration OW_EXPECT_RELEASE=$OEM_SOURCE_RELEASE
  OW_EXPECT_CONTRACT=$OEM_SAGE_CONTRACT OW_EXPECT_SOURCE=$OEM_SOURCE_SLOT OW_EXPECT_TARGET=$OEM_TARGET_SLOT
  CSP_ACTIVE=$OEM_SOURCE_SLOT
- COS_OEM_BOOT_COMMAND="setenv image $OEM_SOURCE_SLOT; bootipq"
+ COS_OEM_BOOT_COMMAND="setenv bootcount 0 && setenv image $OEM_SOURCE_SLOT && bootipq"
  COS_BOOT_QUALIFIED=qualified
 }
 oem_adapter_preflight() {
@@ -192,6 +192,7 @@ oem_adapter_boot_preflight() {
 # additional live parent/name/health and exact plan proof immediately before it.
 oem_sage_write_check() (
  local operation=$1 child=$2 name=$3 create=${4:-0} file
+ cos_source_check || exit 1
  file=$(oem_sage_member mtd.tsv) || return 1
  oem_physical_inventory "$file" "$OEM_SYS_ROOT/sys/class/mtd" "$OEM_PROTECTED_RANGES" && oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" || return 1
  awk -F '\t' -v op="$operation" -v parent="$CSP_FS_MTD" -v id="$child" -v name="$name" \
@@ -245,7 +246,7 @@ oem_adapter_migrate() (
  oem_adapter_inspect && oem_adapter_preflight && oem_adapter_boot_preflight || exit 1
  oem_sage_environment > "$OEM_WORK/env-before" || exit 1
  oem_sage_protected_snapshot > "$OEM_WORK/protected-before" || exit 1
- printf '%s\n' bootcmd image sage_storage_pending sage_boot0 sage_boot1 sage_stable0 sage_stable1 sage_ab_version sage_ab_confirmed sage_ab_target sage_ab_state sage_installer_target sage_installer_job sage_installer_image > "$OEM_WORK/env-allowed" || exit 1
+ printf '%s\n' bootcount bootcmd image sage_storage_pending sage_boot0 sage_boot1 sage_stable0 sage_stable1 sage_ab_version sage_ab_confirmed sage_ab_target sage_ab_state sage_installer_target sage_installer_job sage_installer_image > "$OEM_WORK/env-allowed" || exit 1
  job=$(od -An -tx1 -N32 "$OEM_SYS_ROOT/dev/urandom" | tr -d ' \n') || exit 1
  oem_hex64 "$job" || exit 1
  OW_EXPECT_JOB=$job
@@ -269,10 +270,11 @@ oem_adapter_migrate() (
  cos_admit() { OW_STAGE_ADMISSION=qualified; }
  cos_authenticate() { [ "$(oem_sha "$1")" = "$COS_IMAGE_PIN" ] && [ "$(oem_sha "$2")" = "$COS_KERNEL_PIN" ] && [ "$(oem_sha "$3")" = "$COS_ROOT_PIN" ]; }
  cos_source_check() {
-  cos_boot_preflight
+  cos_boot_preflight && [ "$(cos_env_value bootcount)" = 0 ] &&
+   [ "$(cos_env_value bootcmd)" = "run sage_boot$OEM_SOURCE_SLOT" ]
  }
  cos_refuse_pending() {
-  [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n sage_storage_pending)" = "$OEM_SAGE_JOURNAL" ] || return 1
+  [ "$(cos_env_value sage_storage_pending)" = "$OEM_SAGE_JOURNAL" ] || return 1
   oem_sage_environment | awk -F= '$1~/^sage_installer_(target|job|image)$/ && length($2) {bad=1} END{exit bad}'
  }
  cos_recovery() { oem_sage_critical_check; }
@@ -295,7 +297,8 @@ oem_adapter_migrate() (
   oem_sage_critical_check && cos_boot_preflight && ow_settings_context "$1" || return 1
   local target trial work key value
   target=$(cos_native_target_command) || return 1
-  trial="setenv bootcmd run sage_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv sage_ab_state trial-started && saveenv && run sage_boot$OEM_TARGET_SLOT; run sage_boot$OEM_SOURCE_SLOT"
+  [ "$(cos_env_value bootcount 2>/dev/null)" = 0 ] || return 1
+  trial="if setenv bootcount 0 && setenv bootcmd run sage_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv sage_ab_state trial-started && saveenv; then run sage_boot$OEM_TARGET_SLOT; run sage_boot$OEM_SOURCE_SLOT; fi"
   work=$OEM_WORK/arm-metadata
   {
    printf 'sage_boot%s %s\nsage_boot%s %s\n' "$OEM_SOURCE_SLOT" "$COS_OEM_BOOT_COMMAND" "$OEM_TARGET_SLOT" "$target"
@@ -305,14 +308,14 @@ oem_adapter_migrate() (
    printf 'sage_installer_target %s\nsage_installer_job %s\nsage_installer_image %s\n' "$OEM_TARGET_SLOT" "$OW_EXPECT_JOB" "$COS_IMAGE_PIN"
   } > "$work" || return 1
   fw_setenv -c "$COS_ENV_CONFIG" -s "$work" && sync || return 1
-  while read -r key value; do [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "$key")" = "$value" ] || return 1; done < "$work"
+  while read -r key value; do [ "$(cos_env_value "$key")" = "$value" ] || return 1; done < "$work"
   oem_sage_critical_check || return 1
   fw_setenv -c "$COS_ENV_CONFIG" bootcmd "$trial" && sync || return 1
-  [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n bootcmd)" = "$trial" ]
+  [ "$(cos_env_value bootcmd)" = "$trial" ]
  }
  cos_install "$COS_IMAGE" "$COS_KERNEL" "$COS_ROOT" "$OEM_WORK/seed" || exit 1
  oem_sage_critical_check || exit 1
  fw_setenv -c "$COS_ENV_CONFIG" sage_storage_pending && sync || exit 1
- ! fw_printenv -c "$COS_ENV_CONFIG" -n sage_storage_pending >/dev/null 2>&1 || exit 1
+ ! cos_env_value sage_storage_pending >/dev/null 2>&1 || exit 1
  printf 'handoff=one-shot-armed\nonboarded=not-yet-verified\nsysupgrade_ready=not-yet-verified\n'
 )

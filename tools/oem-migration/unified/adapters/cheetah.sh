@@ -59,9 +59,22 @@ oem_cheetah_tuple() {
 }
 oem_cheetah_fail() { printf '%s\n' "Cheetah: $*" >&2; return 1; }
 oem_cheetah_env() {
+ local value
  [ -n "${OEM_CHEETAH_ENV_CONFIG:-}" ] && [ -f "$OEM_CHEETAH_ENV_CONFIG" ] || return 1
- fw_printenv -c "$OEM_CHEETAH_ENV_CONFIG" -n "$1"
+ value=$(fw_printenv -c "$OEM_CHEETAH_ENV_CONFIG" -n "$1") || return 1
+ printf '%s\n' "$value"
 }
+oem_cheetah_persist_source() (
+ local work key value
+ [ "$(oem_cheetah_env image)" = "$OEM_SOURCE_SLOT" ] &&
+  [ "$(oem_cheetah_env bootcmd)" = bootipq ] || exit 1
+ umask 077
+ work=$(mktemp -d /tmp/cambium-cheetah-source.XXXXXX) || exit 1
+ trap 'rm -f "$work/environment"; rmdir "$work"' EXIT
+ printf 'bootcount 0\nimage %s\nbootcmd bootipq\n' "$OEM_SOURCE_SLOT" > "$work/environment" || exit 1
+ fw_setenv -c "$OEM_CHEETAH_ENV_CONFIG" -s "$work/environment" && sync || exit 1
+ while read -r key value; do [ "$(oem_cheetah_env "$key")" = "$value" ] || exit 1; done < "$work/environment"
+)
 oem_cheetah_inspect_oem() {
  local sys dev mfg envnode serial release slot idx arg value count=0 erase bank
  OEM_SERIAL= OEM_SOURCE_RELEASE= OEM_SOURCE_SLOT= OEM_TARGET_SLOT=
@@ -142,6 +155,7 @@ oem_cheetah_update_local_child() {
   actual=$(LC_ALL=C ls -ln "$path" | awk '$1~/^c/ && $3==0 {gsub(/,/,"",$5); print $5 ":" $6}') || return 1
   [ "$actual" = "$(cat "$sys/${device}_$child/dev")" ] || return 1
  fi
+ oem_cheetah_persist_source || return 1
  (umask 077;printf 'local-update-start\t%s\t%s\n' "$child" "$name" >> "$OEM_WORK/cheetah-update.journal") || return 1
  ubiupdatevol "$path" "$payload" || return 1
  sum=$(head -c "$size" "$path" | sha256sum | awk '{print $1}') || return 1
@@ -165,7 +179,7 @@ oem_cheetah_trial_command() {
  oem_cheetah_tuple || return 1
  case "$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" in 0:1|1:0) ;; *) return 1;; esac
  case "${OEM_CHEETAH_PRIOR_MARKER:-}" in ''|0|1) ;; *) return 1;; esac
- printf 'setenv bootcmd bootipq && setenv image %s && setenv changing_bootcmd %s && saveenv && run cheetah_boot%s; bootipq\n' "$OEM_SOURCE_SLOT" "${OEM_CHEETAH_PRIOR_MARKER:-}" "$OEM_TARGET_SLOT"
+ printf 'if setenv bootcount 0 && setenv bootcmd bootipq && setenv image %s && setenv changing_bootcmd %s && saveenv; then run cheetah_boot%s; bootipq; fi\n' "$OEM_SOURCE_SLOT" "${OEM_CHEETAH_PRIOR_MARKER:-}" "$OEM_TARGET_SLOT"
 }
 
 # Grow the existing inactive kernel only. OEM captures reserve 32/36 LEBs,
@@ -208,6 +222,7 @@ oem_cheetah_grow_local_kernel() (
  # An already large enough volume is retained; this component never shrinks.
  [ "$needed" -gt "$blocks" ] || exit 0
  [ "$((needed-blocks))" -le "$free" ] || exit 1
+ oem_cheetah_persist_source || exit 1
  (umask 077;printf 'kernel-grow-start\t%s\t%s\n' "$blocks" "$needed" >> "$OEM_WORK/cheetah-update.journal") || exit 1
  ubirsvol "$path" -n 0 -s "$((needed*leb))" || exit 1
  oem_ubi_child_check "$sys" "$parent" "$device" 0 kernel || exit 1
