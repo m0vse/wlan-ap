@@ -106,22 +106,35 @@ if [ "$MODE" = command ]; then ab_cheetah_guarded_command "$SLOT"; else legacy_g
   env={**common,'MODE':'command','SLOT':str(slot)}
   r=subprocess.run(shell+[str(script)],env=env,text=True,capture_output=True);assert r.returncode==0
   cmd=r.stdout.strip();assert cmd.startswith('if setenv bootcount 0 && setenv image '+str(1-slot)+' && ')
-  assert '&& saveenv; then ' in cmd and '; bootipq; else reset; fi' in cmd
+  assert '&& saveenv; then ' in cmd and '; bootipq; else echo OEM_ENV_UNSAFE_STOP_AT_PROMPT; fi' in cmd
   rows.append({'slot':slot,'guarded_save_failure_gated':True,'passed':True})
   for fault in ['', 'bootcount', 'image', 'bootcmd', 'changing_bootcmd', 'saveenv']:
    harness="""
-setenv() { echo SET:$1; [ "$FAIL_STAGE" != "$1" ]; }
-saveenv() { echo SAVE; [ "$FAIL_STAGE" != saveenv ]; }
+# Failed prefix writes affect RAM only; old persisted count9 remains unsafe.
+DURABLE_COUNT=9; DURABLE_IMAGE=$OEM_SLOT; RUNTIME_COUNT=9; RUNTIME_IMAGE=$TARGET_SLOT
+setenv() {
+ echo SET:$1; [ "$FAIL_STAGE" != "$1" ] || return 1
+ case "$1" in bootcount) RUNTIME_COUNT=$2;; image) RUNTIME_IMAGE=$2;; esac
+}
+saveenv() {
+ echo SAVE; [ "$FAIL_STAGE" != saveenv ] || return 1
+ DURABLE_COUNT=$RUNTIME_COUNT; DURABLE_IMAGE=$RUNTIME_IMAGE
+ echo SAVED:$DURABLE_IMAGE:$DURABLE_COUNT
+}
 nand() { echo NAND; }
 ubi() { echo UBI; }
 bootm() { echo FIT_RETURN; return 1; }
-bootipq() { echo OEM_RETURN; }
-reset() { echo RESET; }
-"""+cmd
-   r=subprocess.run(shell+['-c',harness],env={**os.environ,'FAIL_STAGE':fault},text=True,capture_output=True)
+bootipq() { echo OEM_RETURN:$DURABLE_IMAGE:$DURABLE_COUNT; }
+reset() { echo RESET_WITH_DURABLE:$DURABLE_IMAGE:$DURABLE_COUNT; }
+"""+cmd+'\necho DURABLE_FINAL:$DURABLE_IMAGE:$DURABLE_COUNT\n'
+   r=subprocess.run(shell+['-c',harness],env={**os.environ,'FAIL_STAGE':fault,'OEM_SLOT':str(1-slot),'TARGET_SLOT':str(slot)},text=True,capture_output=True)
    assert r.returncode==0,(fault,r.stdout,r.stderr)
-   if fault:assert 'RESET' in r.stdout and 'NAND' not in r.stdout and 'OEM_RETURN' not in r.stdout,(fault,r.stdout)
-   else:assert r.stdout.index('SET:bootcount')<r.stdout.index('SAVE')<r.stdout.index('NAND')<r.stdout.index('OEM_RETURN')
+   if fault:
+    assert 'OEM_ENV_UNSAFE_STOP_AT_PROMPT' in r.stdout and 'RESET' not in r.stdout and 'NAND' not in r.stdout and 'OEM_RETURN' not in r.stdout,(fault,r.stdout)
+    assert f'DURABLE_FINAL:{1-slot}:9' in r.stdout and 'SAVED:' not in r.stdout,(fault,r.stdout)
+   else:
+    assert r.stdout.index('SET:bootcount')<r.stdout.index('SAVED:')<r.stdout.index('NAND')<r.stdout.index('OEM_RETURN')
+    assert f'SAVED:{1-slot}:0' in r.stdout and f'OEM_RETURN:{1-slot}:0' in r.stdout and 'RESET' not in r.stdout,r.stdout
    rows.append({'slot':slot,'actual_rendered_prefix_fault':fault,'passed':True})
 
  for slot in [0,1]:

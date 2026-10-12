@@ -1,0 +1,43 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-cheetah: gate legacy OEM fallback and cancel its counter
+
+Use the shared legacy-only prepare_oem_return hook installed by 0187.
+Do not place the opposite-OEM selector check in healthy_boot: that hook
+also runs for converted A/B banks. Gate every prefix write and save before
+candidate reads or native bootipq; preserve the verified surviving image.
+If a prefix write/save fails, stop at the prompt: resetting could reload
+an old durable counter of 8/9. Native fallback is allowed only after save.
+
+--- a/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
++++ b/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
+@@ -54,5 +54,18 @@
+ ab_cheetah_guarded_command() {
+ 	local boot
+ 	boot=$(ab_cheetah_boot_command "$1") || return 1
+-	echo "setenv bootcmd bootipq; setenv changing_bootcmd; saveenv; $boot; bootipq"
++	echo "if setenv bootcount 0 && setenv image $((1 - $1)) && setenv bootcmd bootipq && setenv changing_bootcmd && saveenv; then $boot; bootipq; else echo OEM_ENV_UNSAFE_STOP_AT_PROMPT; fi"
+ }
++
++# Legacy OEM return only; converted A/B commands must not require an OEM bank.
++ab_cheetah_prepare_oem_return() {
++	local slot="$1" image counter
++	case "$slot" in 0|1) ;; *) return 1 ;; esac
++	image=$(ab_getenv image) || return 1
++	[ "$image" = "$((1 - slot))" ] || return 1
++	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || return 1
++	ab_setenv bootcount 0 && sync || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	[ "$counter" = 0 ] && [ "$(ab_getenv image)" = "$image" ] &&
++		[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ]
++}
+--- a/package/cambium/cambium-cheetah-support/Makefile
++++ b/package/cambium/cambium-cheetah-support/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-cheetah-support
+-PKG_RELEASE:=6
++PKG_RELEASE:=7
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
