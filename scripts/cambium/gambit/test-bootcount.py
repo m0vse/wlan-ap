@@ -22,9 +22,9 @@ class CounterTests(unittest.TestCase):
         for slot, offset in ((0, '0x00000000'), (1, '0x03000000')):
             result = self.run_module(f'ab_gambit_boot_command {slot}')
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(result.stdout.startswith('setenv bootcount 0; setenv bootargs '))
+            self.assertTrue(result.stdout.startswith('setenv bootcount 0 && setenv bootargs '))
             self.assertIn(f'ubi.mtd=rootfs{slot} root=/dev/ubiblock0_1', result.stdout)
-            self.assertTrue(result.stdout.rstrip().endswith(f'nboot 0x83000000 0 {offset}'))
+            self.assertTrue(result.stdout.rstrip().endswith(f"nboot 0x83000000 0 {offset}; reset"))
 
     def test_guard_saves_cleared_counter_before_runtime_args(self):
         for oem in (0, 1):
@@ -32,7 +32,7 @@ class CounterTests(unittest.TestCase):
 AB_STOCK_BOOTCMD="nboot 0x81000000 0 0x{'00000000' if oem == 0 else '03000000'}"
 ab_gambit_guarded_command {1-oem}''')
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('; setenv bootcount 0; saveenv; setenv bootcount 0; setenv bootargs ', result.stdout)
+            self.assertIn(" && setenv bootcount 0 && saveenv && setenv bootcount 0 && setenv bootargs ", result.stdout)
 
     def test_wrong_guard_bank_refused(self):
         result = self.run_module('ab_getenv() { echo 0; }; ab_gambit_guarded_command 0')
@@ -80,6 +80,42 @@ ab_gambit_write_target_inner''')
         result = self.run_module('ab_getenv() { echo 9; }; ab_setenv() { echo "$1=$2"; }; ab_gambit_healthy_boot')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), 'bootcount=0')
+
+
+    def rendered_execution(self, guarded, failed_stage=0, nboot_failure=False):
+        prepare = 'ab_getenv() { echo 0; }; AB_STOCK_BOOTCMD="nboot 0x81000000 0 0x00000000"; '
+        rendered = self.run_module(prepare + ('ab_gambit_guarded_command 1' if guarded else 'ab_gambit_boot_command 1'))
+        self.assertEqual(rendered.returncode, 0, rendered.stderr)
+        harness = f'''
+step=0
+setenv() {{ step=$((step+1)); echo "ENV:$step:$1"; [ "$step" != {failed_stage} ]; }}
+saveenv() {{ step=$((step+1)); echo "SAVE:$step"; [ "$step" != {failed_stage} ]; }}
+nboot() {{ echo NBOOT; return {1 if nboot_failure else 0}; }}
+reset() {{ echo RESET; }}
+'''
+        result = subprocess.run(COMMAND + ['-c', harness + rendered.stdout], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.splitlines()
+
+    def test_rendered_direct_each_env_failure_never_reads_nand(self):
+        for stage in (1, 2):
+            with self.subTest(stage=stage):
+                trace = self.rendered_execution(False, stage)
+                self.assertNotIn('NBOOT', trace)
+                self.assertEqual(trace[-1], 'RESET')
+
+    def test_rendered_guarded_each_env_or_save_failure_never_reads_nand(self):
+        for stage in range(1, 6):
+            with self.subTest(stage=stage):
+                trace = self.rendered_execution(True, stage)
+                self.assertNotIn('NBOOT', trace)
+                self.assertEqual(trace[-1], 'RESET')
+
+    def test_rendered_success_and_returned_nboot_always_reset(self):
+        for guarded in (False, True):
+            for nboot_failure in (False, True):
+                trace = self.rendered_execution(guarded, nboot_failure=nboot_failure)
+                self.assertEqual(trace[-2:], ['NBOOT', 'RESET'])
 
 
 if __name__ == '__main__':

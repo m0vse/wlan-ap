@@ -29,7 +29,7 @@ index 0000000000..8895f3d62f
 +include $(TOPDIR)/rules.mk
 +
 +PKG_NAME:=cambium-gambit-support
-+PKG_RELEASE:=6
++PKG_RELEASE:=7
 +PKG_LICENSE:=GPL-2.0-only
 +PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
 +
@@ -207,7 +207,7 @@ new file mode 100644
 +	local offset
 +	case "$1" in 0) offset=0x00000000 ;; 1) offset=0x03000000 ;; *) return 1 ;; esac
 +	# 0x81000000 overlaps an expanded initramfs. Keep the proven safe address.
-+	echo "setenv bootcount 0; setenv bootargs console=ttyS0,115200n8 ubi.mtd=rootfs$1 root=/dev/ubiblock0_1 rootfstype=squashfs init=/sbin/init panic=5 mem=128M; nboot 0x83000000 0 $offset"
++	echo "setenv bootcount 0 && setenv bootargs console=ttyS0,115200n8 ubi.mtd=rootfs$1 root=/dev/ubiblock0_1 rootfstype=squashfs init=/sbin/init panic=5 mem=128M && nboot 0x83000000 0 $offset; reset"
 +}
 +
 +ab_gambit_guarded_command() {
@@ -217,7 +217,7 @@ new file mode 100644
 +	oem=$(ab_getenv gambit_oem_slot)
 +	case "$oem" in 0|1) ;; *) return 1 ;; esac
 +	[ "$1" = "$((1 - oem))" ] || return 1
-+	echo "setenv bootcmd $AB_STOCK_BOOTCMD; setenv bootcount 0; saveenv; $(ab_gambit_boot_command "$1")"
++	echo "setenv bootcmd $AB_STOCK_BOOTCMD && setenv bootcount 0 && saveenv && $(ab_gambit_boot_command "$1")"
 +}
 +
 +ab_gambit_running_slot() {
