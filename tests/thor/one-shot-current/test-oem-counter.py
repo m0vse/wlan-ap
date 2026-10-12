@@ -36,8 +36,8 @@ stub=r'''
 AB_STOCK_BOOTCMD='aq_load_fw&&bootipq'; AB_FIT=config@hk02; AB_SLOT1_OFFSET=0x6000000
 ab_bank_hex(){ echo 0x6000000; }
 ab_converted(){ return 1; }
-mock_bootcmd=$AB_STOCK_BOOTCMD; mock_image=$IMAGE; mock_count=$COUNT
-ab_getenv(){ case "$1" in bootcmd) echo "$mock_bootcmd";; image) echo "$mock_image"; [ "$READ_FAIL" != image ];; bootcount) echo "$mock_count";; esac; }
+mock_bootcmd=$AB_STOCK_BOOTCMD; mock_image=$IMAGE; mock_count=$COUNT; READ_PHASE=before
+ab_getenv(){ case "$1" in bootcmd) echo "$mock_bootcmd";; image) echo "$mock_image"; [ "$READ_FAIL" != image ] || return 1;; bootcount) echo "$mock_count";; esac; [ "$FAIL" != "$READ_PHASE-$1-read-status" ]; }
 '''
 for slot in (0,1):
  r=execute('. "$MODULE"\n'+stub+'ab_thor_guarded_command "$SLOT"',{'MODULE':a.module,'SLOT':slot,'IMAGE':1-slot,'COUNT':9,'READ_FAIL':'image'})
@@ -85,6 +85,20 @@ if a.old_module:
    assert durable.read_text().splitlines()[0]=='9' and trace.read_text().splitlines()[-1]=='oem:'+str(slot)
    rows.append({'case':'old-prefix-counter9-selects-destroyed-bank-negative-control','slot':slot,'passed':True})
 
+# Matching stdout must never hide a failed critical read, before or after NV write.
+for slot in (0,1):
+ for phase in ('before','after'):
+  for field in ('bootcmd','image','bootcount'):
+   script='. "$MODULE"\n'+stub+r'''
+ab_setenv(){ echo WRITE:bootcount; mock_count=$2; READ_PHASE=after; }
+sync(){ :; }
+ab_thor_prepare_oem_return "$SLOT"
+'''
+   r=execute(script,{'MODULE':a.module,'SLOT':slot,'IMAGE':1-slot,'COUNT':9,'FAIL':phase+'-'+field+'-read-status'})
+   assert r.returncode!=0,(slot,phase,field,r.stdout,r.stderr)
+   if phase=='before': assert 'WRITE:' not in r.stdout,(slot,field,r.stdout)
+   rows.append({'case':'critical-read-status-with-matching-stdout-refused','slot':slot,'phase':phase,'field':field,'passed':True})
+
 merged=[]
 if a.guard:
  # Execute the actual shared 0187 legacy callback sites, not a hand-picked
@@ -93,7 +107,9 @@ if a.guard:
  legacy=re.search(r'(?ms)^legacy_guard\(\) \{.*?^\}',a.guard.read_text()).group()
  for slot in (0,1):
   for healthy in ('yes','no'):
-   for fault in ('','write','sync','counter'):
+   for fault in ('','write','sync','counter',
+                 'before-bootcmd-read-status','before-image-read-status','before-bootcount-read-status',
+                 'after-bootcmd-read-status','after-image-read-status','after-bootcount-read-status'):
     script='. "$MODULE"\n'+stub+r'''
 ab_running_slot(){ echo "$SLOT"; }
 ab_guarded_command(){ ab_thor_guarded_command "$@"; }
@@ -103,7 +119,7 @@ wait_healthy(){ [ "$HEALTH" = yes ]; }
 ab_setenv(){
  echo "WRITE:$1:$2"
  [ "$FAIL" != write ] || return 1
- case "$1" in bootcount) mock_count=$2; [ "$FAIL" != counter ] || mock_count=9;; bootcmd) mock_bootcmd=$2;; esac
+ case "$1" in bootcount) mock_count=$2; READ_PHASE=after; [ "$FAIL" != counter ] || mock_count=9;; bootcmd) mock_bootcmd=$2;; esac
 }
 sync(){ [ "$FAIL" != sync ]; }
 log(){ :; }

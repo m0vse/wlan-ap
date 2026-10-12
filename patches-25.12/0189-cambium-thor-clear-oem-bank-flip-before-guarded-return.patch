@@ -8,7 +8,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 ---
 --- a/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
 +++ b/package/cambium/cambium-thor-support/files/cambium-ab-thor.sh
-@@ -67,7 +67,29 @@
+@@ -67,7 +67,32 @@
  	boot=$(ab_thor_boot_command "$1") || return 1
  	# This hook is only the one-OEM/one-OpenWiFi entry path.
  	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] && ! ab_converted || return 1
@@ -27,15 +27,18 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +# Legacy one-OEM/one-OpenWiFi only: do not rewrite a mismatched selector.
 +# Shared guard calls this before rearming and before a failed-start reboot.
 +ab_thor_prepare_oem_return() {
-+	local slot="$1" image counter
++	local slot="$1" image counter bootcmd checked_image checked_bootcmd
 +	case "$slot" in 0|1) ;; *) return 1 ;; esac
++	bootcmd=$(ab_getenv bootcmd) || return 1
 +	image=$(ab_getenv image) || return 1
-+	[ "$image" = "$((1 - slot))" ] || return 1
-+	[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ] || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	[ "$bootcmd" = "$AB_STOCK_BOOTCMD" ] && [ "$image" = "$((1 - slot))" ] || return 1
 +	ab_setenv bootcount 0 && sync || return 1
 +	counter=$(ab_getenv bootcount) || return 1
-+	[ "$counter" = 0 ] && [ "$(ab_getenv image)" = "$image" ] &&
-+		[ "$(ab_getenv bootcmd)" = "$AB_STOCK_BOOTCMD" ]
++	checked_image=$(ab_getenv image) || return 1
++	checked_bootcmd=$(ab_getenv bootcmd) || return 1
++	[ "$counter" = 0 ] && [ "$checked_image" = "$image" ] &&
++		[ "$checked_bootcmd" = "$bootcmd" ]
  }
  
  # Validate supported previous-bank defaults before any Thor upgrade write.

@@ -25,7 +25,7 @@ UBI boot commands are unchanged. Do not change nvram_badcount.
  PKG_LICENSE:=GPL-2.0-only
 --- a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
 +++ b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
-@@ -65,3 +65,17 @@
+@@ -65,3 +65,20 @@
  	esac
 -	echo "setenv bootcmd bootipq && setenv changing_bootcmd && saveenv && nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset"
 +	echo "if setenv image $((1 - $1)) && setenv bootcount 0 && setenv bootcmd bootipq && setenv changing_bootcmd && saveenv; then nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset; fi"
@@ -34,15 +34,18 @@ UBI boot commands are unchanged. Do not change nvram_badcount.
 +# Used only by the one-OEM/one-OpenWiFi Linux guard before rearming or
 +# rebooting to native bootipq. Never rewrite a mismatched selector.
 +ab_jaguar_prepare_oem_return() {
-+	local slot=$1 oem
++	local slot="$1" image counter bootcmd checked_image checked_bootcmd
 +	case "$slot" in 0|1) ;; *) return 1 ;; esac
-+	oem=$((1 - slot))
-+	[ "$(ab_getenv bootcmd)" = bootipq ] &&
-+		[ "$(ab_getenv image)" = "$oem" ] || return 1
++	bootcmd=$(ab_getenv bootcmd) || return 1
++	image=$(ab_getenv image) || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	[ "$bootcmd" = bootipq ] && [ "$image" = "$((1 - slot))" ] || return 1
 +	ab_setenv bootcount 0 && sync || return 1
-+	[ "$(ab_getenv bootcount)" = 0 ] &&
-+		[ "$(ab_getenv image)" = "$oem" ] &&
-+		[ "$(ab_getenv bootcmd)" = bootipq ]
++	counter=$(ab_getenv bootcount) || return 1
++	checked_image=$(ab_getenv image) || return 1
++	checked_bootcmd=$(ab_getenv bootcmd) || return 1
++	[ "$counter" = 0 ] && [ "$checked_image" = "$image" ] &&
++		[ "$checked_bootcmd" = "$bootcmd" ]
 +}
 --- a/package/cambium/cambium-ab/files/cambium-ab-guard
 +++ b/package/cambium/cambium-ab/files/cambium-ab-guard

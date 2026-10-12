@@ -1,5 +1,5 @@
 from pathlib import Path
-import subprocess,tempfile,json,os,sys,shutil,shlex
+import subprocess,tempfile,json,os,sys,shutil,shlex,hashlib
 base=Path(__file__).resolve().parent
 shell=shlex.split(os.environ.get('CHEETAH_TEST_SHELL','/bin/sh'))
 repo=base.parents[1]
@@ -64,6 +64,7 @@ ab_hook() { command -v "ab_${AB_FAMILY}_$1" >/dev/null; }
 wait_healthy() { [ "$HEALTH" = yes ]; }
 log() { :; }
 do_reboot() { echo REBOOT; }
+READ_PHASE=before
 sync() { [ "$FAIL" != sync ]; }
 ab_getenv() {
  case "$1" in
@@ -71,6 +72,7 @@ ab_getenv() {
  image) [ "$FAIL" != image-read ] || return 1; echo "$IMAGE" ;;
  bootcount) [ "$FAIL" != count-read ] || return 1; echo "$COUNT" ;;
  esac
+ [ "$FAIL" != "$READ_PHASE-$1-read-status" ]
 }
 ab_setenv() {
  echo "SET:$1:$2"
@@ -80,6 +82,7 @@ ab_setenv() {
   [ "$FAIL" = count-mismatch ] || COUNT=$2
   [ "$FAIL" != image-mutates ] || IMAGE=$SLOT
   [ "$FAIL" != bootcmd-mutates ] || BOOTCMD=unreviewed
+  READ_PHASE=after
   ;;
  bootcmd) BOOTCMD=$2 ;;
  esac
@@ -96,12 +99,16 @@ if [ "$MODE" = command ]; then ab_cheetah_guarded_command "$SLOT"; else legacy_g
    assert 'SET:bootcount:0' in r.stdout
    if health=='yes':assert r.stdout.index('SET:bootcount:0')<r.stdout.index('SET:bootcmd:') and 'REBOOT' not in r.stdout
    else:assert r.stdout.index('SET:bootcount:0')<r.stdout.index('REBOOT') and 'SET:bootcmd:' not in r.stdout
-  else:assert 'REBOOT' not in r.stdout and 'SET:bootcmd:' not in r.stdout
+  else:
+   assert 'REBOOT' not in r.stdout and 'SET:bootcmd:' not in r.stdout
+   if fail.startswith('before-'): assert 'SET:bootcount' not in r.stdout,r.stdout
   rows.append({'slot':slot,'health':health,'counter':count,'fault':fail or ('wrong-image' if image is not None else 'independent-bootcmd' if bootcmd!='bootipq' else ''),'passed':True})
  for slot in [0,1]:
   for health in ['yes','no']:
    for counter in ['','0','1','7','8','9','90','garbage']:run(slot,health,counter)
-   for fault in ['count-write','count-read','count-mismatch','image-read','image-mutates','bootcmd-mutates','sync']:run(slot,health,'9',fault)
+   for fault in ['count-write','count-read','count-mismatch','image-read','image-mutates','bootcmd-mutates','sync',
+                 'before-bootcmd-read-status','before-image-read-status','before-bootcount-read-status',
+                 'after-bootcmd-read-status','after-image-read-status','after-bootcount-read-status']:run(slot,health,'9',fault)
    run(slot,health,'9',image=slot);run(slot,health,'9',bootcmd='independent')
   env={**common,'MODE':'command','SLOT':str(slot)}
   r=subprocess.run(shell+[str(script)],env=env,text=True,capture_output=True);assert r.returncode==0
@@ -196,4 +203,4 @@ main
    assert re.search(pattern,old_guard).group()==re.search(pattern,new_guard).group(),function
   rows.append({'converted_renderer_and_orchestration_unchanged':True,'passed':True})
 
-print(json.dumps({'passed':True,'cases':len(rows),'results':rows,'scope':'Actual candidate shell functions, synthetic environment/write/reboot boundaries. No AP writes or bootloader hardware acceptance.'},indent=2))
+print(json.dumps({'passed':True,'cases':len(rows),'results':rows,'candidate_module_sha256':hashlib.sha256(module.read_bytes()).hexdigest(),'scope':'Actual candidate shell functions, synthetic environment/write/reboot boundaries. No AP writes or bootloader hardware acceptance.'},indent=2))

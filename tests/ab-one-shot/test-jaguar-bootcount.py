@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exact family renderer/legacy guard, private ENV stubs, no AP operations."""
 from pathlib import Path
-import os, re, subprocess, tempfile
+import os, re, subprocess, tempfile, hashlib
 REPO=Path(__file__).resolve().parents[2]
 BASE=REPO/'patches-25.12/0124-qualcommax-add-Cambium-Jaguar-OpenWiFi-family.patch'
 def created(relative):
@@ -13,13 +13,15 @@ with tempfile.TemporaryDirectory(prefix='jaguar-bootcount-') as td:
     root=Path(td)
     family='package/cambium/cambium-jaguar-support'
     common='package/cambium/cambium-ab'
-    for relative in (family+'/files/cambium-ab-jaguar.sh', family+'/Makefile',common+'/files/cambium-ab-guard',common+'/Makefile'):
+    relatives=(family+'/files/cambium-ab-jaguar.sh', family+'/Makefile',common+'/files/cambium-ab-guard',common+'/Makefile')
+    for relative in relatives:
         p=root/relative;p.parent.mkdir(parents=True,exist_ok=True)
         text=created(relative)
-        if relative==common+'/Makefile': text=re.sub(r'PKG_RELEASE:=\d+', 'PKG_RELEASE:=19',text)
         p.write_text(text)
-    subprocess.run(['git','apply','--include='+family+'/*',str(REPO/'patches-25.12/0180-cambium-jaguar-gate-oem-first-boot-on-save.patch')],cwd=root,check=True)
-    subprocess.run(['git','apply','--include='+common+'/files/cambium-ab-guard',str(REPO/'patches-25.12/0142-cambium-ab-retain-generic-family-kernel-and-env-hooks.patch')],cwd=root,check=True)
+    for patch in sorted((REPO/'patches-25.12').glob('*.patch')):
+        if 124 < int(patch.name[:4]) < 187:
+            subprocess.run(['git','apply',*['--include='+relative for relative in relatives],str(patch)],cwd=root,check=True,capture_output=True)
+    assert 'PKG_RELEASE:=19\n' in (root/common/'Makefile').read_text()
     subprocess.run(['git','apply',str(REPO/'patches-25.12/0187-cambium-jaguar-neutralize-oem-bank-toggle-counter.patch')],cwd=root,check=True)
     module=root/family/'files/cambium-ab-jaguar.sh'
     guard=(root/common/'files/cambium-ab-guard').read_text()
@@ -42,7 +44,9 @@ nand(){ echo NAND; };ubi(){ :; };bootm(){ echo BOOT;exit 0; };reset(){ echo RESE
             else: assert r.stdout.index('SAVE:')<r.stdout.index('NAND'),r.stdout
             count+=1
         for healthy in ('0','1'):
-            for failure in ('','write','readback','image','command','sync'):
+            for failure in ('','write','readback','image','command','sync',
+                            'before-bootcmd-read-status','before-image-read-status','before-bootcount-read-status',
+                            'after-bootcmd-read-status','after-image-read-status','after-bootcount-read-status'):
                 stub=r'''
 . "$MODULE"
 AB_FAMILY=jaguar AB_STOCK_BOOTCMD=bootipq AB_MARKER=1; ENV_IMAGE=$SOURCE; ENV_BOOTCMD=bootipq; ENV_COUNT=9
@@ -52,15 +56,17 @@ ab_running_slot(){ echo "$TARGET"; }
 ab_guarded_command(){ echo MOCK_CANDIDATE; }
 wait_healthy(){ [ "$HEALTHY" = 1 ]; }
 ab_hook(){ [ "$1" = prepare_oem_return ]; }
-ab_getenv(){ case "$1" in image) echo "$ENV_IMAGE";;bootcmd) echo "$ENV_BOOTCMD";;bootcount) [ "$FAIL" = readback ] && echo 9 || echo "$ENV_COUNT";;esac; }
-ab_setenv(){ echo "WRITE:$1:$2";case "$1" in bootcount) [ "$FAIL" != write ] || return 1;ENV_COUNT=$2;;esac; }
+READ_PHASE=before
+ab_getenv(){ case "$1" in image) echo "$ENV_IMAGE";;bootcmd) echo "$ENV_BOOTCMD";;bootcount) [ "$FAIL" = readback ] && echo 9 || echo "$ENV_COUNT";;esac; [ "$FAIL" != "$READ_PHASE-$1-read-status" ]; }
+ab_setenv(){ echo "WRITE:$1:$2";case "$1" in bootcount) [ "$FAIL" != write ] || return 1;ENV_COUNT=$2;READ_PHASE=after;;esac; }
 sync(){ [ "$FAIL" != sync ]; }
 log(){ :; }; do_reboot(){ echo REBOOT; }
 '''
                 r=run(stub+legacy+'\nlegacy_guard\n',{**env,'FAIL':failure,'HEALTHY':healthy})
                 if failure:
+                    assert r.returncode!=0,(failure,r.stdout,r.stderr)
                     assert 'REBOOT' not in r.stdout and 'WRITE:changing_bootcmd' not in r.stdout,r.stdout
-                    if failure in ('image','command'): assert 'WRITE:bootcount' not in r.stdout,r.stdout
+                    if failure in ('image','command') or failure.startswith('before-'): assert 'WRITE:bootcount' not in r.stdout,r.stdout
                 else:
                     assert r.returncode==0 and 'WRITE:bootcount:0' in r.stdout,(r.stdout,r.stderr)
                     assert ('WRITE:changing_bootcmd:1' in r.stdout) == (healthy=='1'),r.stdout
@@ -82,4 +88,5 @@ log(){ :; };do_reboot(){ echo REBOOT; }
             assert ('REBOOT' in r.stdout)==(healthy=='0'),r.stdout
             count+=1
     print(f'PASS {count} Jaguar count9 renderer and legacy rearm/OEM-return controls')
+    print('candidate_module_sha256='+hashlib.sha256(module.read_bytes()).hexdigest())
     print('Scope: production shell/functions with private stubs; not installed bootloader or AP qualification.')
