@@ -102,6 +102,30 @@ static void samples(unsigned index,unsigned size,unsigned erase,const char *list
   c.qualified && good?"checked":"unavailable",output);
  free(copy);close(fd);
 }
+/* Cached driver snapshot only: opening sysfs does not execute NAND commands. */
+static void first_failure(void) {
+ const char *path = STORAGE_ROOT "/sys/bus/platform/devices/79b0000.nand/miami_first_failure";
+ char text[2048];
+ int fd = open(path, O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
+ ssize_t n = fd < 0 ? -1 : read(fd,text,sizeof(text)-1);
+ if(fd>=0)close(fd);
+ const char *state = n>0 && !strncmp(text,"state=captured ",15) ? "captured" :
+                     n>0 && !strncmp(text,"state=armed ",12) ? "armed" : "unavailable";
+ printf("{\"state\":\"%s\"",state);
+ if(strcmp(state,"unavailable")) {
+  printf(",\"record\":\"");
+  for(ssize_t i=0;i<n;i++) {
+   unsigned char c=text[i];
+   if(c=='\n')fputs("\\n",stdout);
+   else if(c=='\r')fputs("\\r",stdout);
+   else if(c=='\\' || c=='\"')printf("\\%c",c);
+   else if(c>=32 && c<127)putchar(c);
+   else printf("\\u%04x",c);
+  }
+  printf("\"");
+ }
+ printf("}");
+}
 int main(int argc,char **argv) {
  unsigned count=0;printf("{\"mtd\":[");
  for(unsigned i=0;i<LIMIT;i++) {
@@ -130,5 +154,6 @@ int main(int argc,char **argv) {
   if(a>1)printf(",");
   samples(index,size,erase,argv[a+3]);
  }
- printf("]}\n");return ferror(stdout)?1:0;
+ printf("],\"nand_first_failure\":");first_failure();
+ printf("}\n");return ferror(stdout)?1:0;
 }
