@@ -24,6 +24,11 @@ for script in sorted(HERE.glob('test-*.py')):
     run('Family inspection fixture: '+script.name,[sys.executable,str(script)])
 run('Actual existing Sage recovery/writer/settings regressions',[sys.executable,'-m','unittest','discover','-s','tools/oem-migration/recovery/scripts/tests','-v'])
 run('Actual one-shot rendered command regressions',[sys.executable,'tests/ab-one-shot/test-trial.py'])
+for script in ('tests/ab-one-shot/test-jaguar-oem.py',
+               'tests/ab-one-shot/test-jaguar-bootcount.py',
+               'tests/cheetah-bootcount/test-legacy-counter.py',
+               'tests/thor/one-shot-current/test-oem-counter.py'):
+    run('Retained OEM counter safety: '+script,[sys.executable,script])
 linux=ROOT/'tests/installer/overlay-root-permissions/test-unprivileged-traversal.py'
 if sys.platform.startswith('linux') and os.geteuid()==0 and linux.is_file():
     run('Private Linux OverlayFS UID81 traversal/secret-denial regression',[sys.executable,str(linux)])
