@@ -1,0 +1,262 @@
+Prevent partial channel tuples and false success after failed channel setup.
+
+Keep complete state comparisons, validate events before committing frequency,
+and stop advertising an affected interface if its channel setup fails.
+Restore scalar channel state without copying lifecycle-owned pointers.
+
+--- a/src/ap/ucode.c
++++ b/src/ap/ucode.c
+@@ -1,4 +1,5 @@
+ #include <sys/un.h>
++#include <limits.h>
+ 
+ #include "utils/includes.h"
+ #include "utils/common.h"
+@@ -582,18 +583,48 @@
+ 	return NULL;
+ }
+ 
++static void
++uc_hostapd_restore_channel(struct hostapd_iface *iface,
++			   struct hostapd_config *previous, int freq)
++{
++	struct hostapd_config *conf = iface->conf;
++
++	/* Restore scalars only: lifecycle helpers may change pointer ownership. */
++	conf->hw_mode = previous->hw_mode;
++	conf->channel = previous->channel;
++	conf->op_class = previous->op_class;
++	conf->secondary_channel = previous->secondary_channel;
++	conf->acs = previous->acs;
++	conf->punct_bitmap = previous->punct_bitmap;
++	conf->he_6ghz_reg_pwr_type = previous->he_6ghz_reg_pwr_type;
++	hostapd_set_oper_chwidth(conf, hostapd_get_oper_chwidth(previous));
++	hostapd_set_oper_centr_freq_seg0_idx(conf,
++			hostapd_get_oper_centr_freq_seg0_idx(previous));
++	hostapd_set_oper_centr_freq_seg1_idx(conf,
++			hostapd_get_oper_centr_freq_seg1_idx(previous));
++	iface->freq = freq;
++}
++
+ static uc_value_t *
+ uc_hostapd_iface_start(uc_vm_t *vm, size_t nargs)
+ {
+ 	struct hostapd_iface *iface = uc_fn_thisval("hostapd.iface");
+ 	uc_value_t *info = uc_fn_arg(0);
+ 	struct hostapd_config *conf;
+-	bool changed = false;
++	struct hostapd_config previous;
++	int previous_freq;
++	u8 channel;
+ 	uint64_t intval;
+ 	int i, ret;
+ 
+ 	if (!iface)
+ 		return NULL;
++
++	conf = iface->conf;
++	if (!conf)
++		return ucv_boolean_new(false);
++	previous = *conf;
++	previous_freq = iface->freq;
+ 
+ 	if (!info) {
+ 		iface->freq = 0;
+@@ -603,16 +634,22 @@
+ 	if (ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
+-#define UPDATE_VAL(field, name)							\
+-	if ((intval = ucv_int64_get(ucv_object_get(info, name, NULL))) &&	\
+-		!errno && intval != conf->field) do {				\
+-		conf->field = intval;						\
+-		changed = true;							\
+-	} while(0)
+-
+-	conf = iface->conf;
+-	if (!conf)
+-		return NULL;
++#define UPDATE_VAL(field, name) \
++	do { \
++		intval = ucv_int64_get(ucv_object_get(info, name, NULL)); \
++		if (!errno) conf->field = intval; \
++	} while (0)
++
++	/* Do not combine a previous channel with a new operating band. */
++	intval = ucv_int64_get(ucv_object_get(info, "frequency", NULL));
++	if (errno || !intval || intval > INT_MAX)
++		return ucv_boolean_new(false);
++	iface->freq = intval;
++	intval = ucv_int64_get(ucv_object_get(info, "channel", NULL));
++	if (errno || !intval || intval > 255 ||
++	    ieee80211_freq_to_chan(iface->freq, &channel) == NUM_HOSTAPD_MODES ||
++	    intval != channel)
++		goto invalid;
+ 
+ 	UPDATE_VAL(hw_mode, "hw_mode");
+ 	UPDATE_VAL(channel, "channel");
+@@ -625,13 +662,7 @@
+ 	intval = ucv_int64_get(ucv_object_get(info, "sec_channel", NULL));
+ 	if (!errno) {
+ 		conf->secondary_channel = intval;
+-		changed = true;
+-	}
+-
+-	if (!changed &&
+-	    (iface->bss[0]->beacon_set_done ||
+-	     iface->state == HAPD_IFACE_DFS))
+-		return ucv_boolean_new(true);
++	}
+ 
+ 	intval = ucv_int64_get(ucv_object_get(info, "center_seg0_idx", NULL));
+ 	if (!errno)
+@@ -645,11 +676,6 @@
+ 	if (!errno)
+ 		hostapd_set_oper_chwidth(conf, intval);
+ 
+-	intval = ucv_int64_get(ucv_object_get(info, "frequency", NULL));
+-	if (!errno)
+-		iface->freq = intval;
+-	else
+-		iface->freq = 0;
+ 	conf->acs = 0;
+ 
+ 	intval = ucv_int64_get(ucv_object_get(info, "punct_bitmap", NULL));
+@@ -657,6 +683,24 @@
+ 		conf->punct_bitmap = intval;
+ 	else
+ 		conf->punct_bitmap = 0;
++
++	if (is_6ghz_freq(iface->freq) != is_6ghz_op_class(conf->op_class))
++		goto invalid;
++
++	/* Frequency, width, centers and operating class are part of the state. */
++	if (previous_freq == iface->freq &&
++	    previous.hw_mode == conf->hw_mode &&
++	    previous.channel == conf->channel &&
++	    previous.op_class == conf->op_class &&
++	    previous.secondary_channel == conf->secondary_channel &&
++	    previous.acs == conf->acs && previous.punct_bitmap == conf->punct_bitmap &&
++	    hostapd_get_oper_chwidth(&previous) == hostapd_get_oper_chwidth(conf) &&
++	    hostapd_get_oper_centr_freq_seg0_idx(&previous) == hostapd_get_oper_centr_freq_seg0_idx(conf) &&
++	    hostapd_get_oper_centr_freq_seg1_idx(&previous) == hostapd_get_oper_centr_freq_seg1_idx(conf) &&
++	    ((iface->state == HAPD_IFACE_ENABLED &&
++	      iface->bss[0]->beacon_set_done) ||
++	     iface->state == HAPD_IFACE_DFS))
++		return ucv_boolean_new(true);
+ 
+ out:
+ 	switch (iface->state) {
+@@ -675,7 +719,9 @@
+ 		iface->freq = hostapd_hw_get_freq(iface->bss[0], conf->channel);
+ 
+ 	if (iface->state != HAPD_IFACE_ENABLED) {
+-		hostapd_enable_iface(iface);
++		ret = hostapd_enable_iface(iface);
++		if (ret)
++			goto failed;
+ 		return ucv_boolean_new(true);
+ 	}
+ 
+@@ -695,8 +741,6 @@
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		struct hostapd_data *hapd = iface->bss[i];
+-
+-		hapd->conf->start_disabled = 0;
+ 
+ 		ret = hostapd_set_freq(hapd, conf->hw_mode, iface->freq,
+ 				       conf->channel,
+@@ -715,12 +759,36 @@
+ 
+ 		wpa_printf(MSG_INFO, "set_freq called for bssid " MACSTR " ret %d ifname %s\n",
+ 			   MAC2STR(hapd->own_addr), ret, hapd->conf->iface);
++		if (ret)
++			goto failed;
++	}
++
++	/* All frequency requests must succeed before advertising the candidate. */
++	for (i = 0; i < iface->num_bss; i++) {
++		struct hostapd_data *hapd = iface->bss[i];
++
++		hapd->conf->start_disabled = 0;
+ 		ret = ieee802_11_set_beacon(hapd);
+ 		wpa_printf(MSG_DEBUG, "set beacon called for bssid " MACSTR " ret %d \n",
+ 			   MAC2STR(hapd->own_addr), ret);
++		if (ret)
++			goto failed;
+ 	}
+ 
+ 	return ucv_boolean_new(true);
++
++failed:
++	/* A partially accepted request is not a known operating state. */
++	wpa_printf(MSG_ERROR, "ucode: channel setup failed; disabling affected interface");
++	uc_hostapd_restore_channel(iface, &previous, previous_freq);
++	hostapd_disable_iface(iface);
++	hostapd_set_state(iface, HAPD_IFACE_DISABLED);
++	return ucv_boolean_new(false);
++
++invalid:
++	wpa_printf(MSG_ERROR, "ucode: inconsistent frequency/channel tuple");
++	uc_hostapd_restore_channel(iface, &previous, previous_freq);
++	return ucv_boolean_new(false);
+ }
+ 
+ static uc_value_t *
+@@ -769,8 +837,11 @@
+ 	if ((intval = ucv_int64_get(ucv_object_get(info, "power_mode", NULL))) && !errno)
+ 		csa.power_mode = intval;
+ 
+-	for (i = 0; i < iface->num_bss; i++)
++	for (i = 0; i < iface->num_bss; i++) {
+ 		ret = hostapd_switch_channel(iface->bss[i], &csa);
++		if (ret)
++			break;
++	}
+ 
+ 	return ucv_boolean_new(!ret);
+ }
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1268,6 +1268,9 @@
+ #ifdef NEED_AP_MLME
+ 	int channel, chwidth, is_dfs0, is_dfs;
+ 	u8 seg0_idx = 0, seg1_idx = 0, op_class, chan_no;
++	int previous_freq = hapd->iface->freq;
++	enum hostapd_hw_mode previous_hw_mode = hapd->iconf->hw_mode;
++	struct hostapd_hw_modes *previous_mode = hapd->iface->current_mode;
+ 	size_t i;
+ 
+ 	hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
+@@ -1290,7 +1293,6 @@
+ 
+ 	/* Check if any of configured channels require DFS */
+ 	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
+-	hapd->iface->freq = freq;
+ 
+ 	channel = hostapd_hw_get_channel(hapd, freq);
+ 	if (!channel) {
+@@ -1299,6 +1301,7 @@
+ 			       "driver switched to bad channel!");
+ 		return;
+ 	}
++	hapd->iface->freq = freq;
+ 
+ 	switch (width) {
+ 	case CHAN_WIDTH_80:
+@@ -1324,8 +1327,12 @@
+ 	/* The operating channel changed when CSA finished, so need to update
+ 	 * hw_mode for all following operations to cover the cases where the
+ 	 * driver changed the operating band. */
+-	if (finished && hostapd_csa_update_hwmode(hapd->iface))
+-		return;
++	if (finished && hostapd_csa_update_hwmode(hapd->iface)) {
++		hapd->iface->freq = previous_freq;
++		hapd->iconf->hw_mode = previous_hw_mode;
++		hapd->iface->current_mode = previous_mode;
++		return;
++	}
+ 
+ 	switch (hapd->iface->current_mode->mode) {
+ 	case HOSTAPD_MODE_IEEE80211A:

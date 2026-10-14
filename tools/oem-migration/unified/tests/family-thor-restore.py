@@ -64,7 +64,7 @@ def main():
             (root/'tmp').mkdir();(root/'tmp/cambium-ab-fw_env.config').write_text(f'/dev/mtd{envindex} 0x0 0x10000 0x10000 1\n')
             proc=root/'proc';(proc/'self').mkdir(parents=True);(proc/'cmdline').write_text(('ubi.mtd=rootfs_1' if slot==1 else 'ubi.mtd=rootfs')+' root=ubi6:rootfs');(proc/'mtd').write_text(''.join(f'mtd{i}: {int(row.split(chr(9))[3]):08x} {int(row.split(chr(9))[5]):08x} \"{names[i]}\"\n' for i,row in enumerate(profile)));(proc/'device-tree').mkdir();(proc/'device-tree/compatible').write_bytes(b'cambiumnetworks,xv3-8\0');(proc/'mounts').write_text('');(proc/'self/mountinfo').write_text('')
             (dev/'urandom').write_bytes(bytes(range(64)))
-            (root/'environment.json').write_text(__import__('json').dumps({'image':str(slot),'bootcmd':f'run thor_stable{slot}','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me','changing_bootcmd':'1','thor_ab_confirmed':str(slot),'thor_ab_state':'confirmed','thor_ab_version':'1'}))
+            (root/'environment.json').write_text(__import__('json').dumps({'bootcount':'9','image':str(slot),'bootcmd':f'run thor_stable{slot}','factory_keep':'untouched','serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me','changing_bootcmd':'1','thor_ab_confirmed':str(slot),'thor_ab_state':'confirmed','thor_ab_version':'1'}))
             tools=root/'bin';tools.mkdir()
             actor=tools/'actor'
             actor.write_text(r'''#!/usr/bin/env python3
@@ -83,6 +83,7 @@ if cmd=='fw_printenv':
   key=a[a.index('-n')+1]
   if key not in data:sys.exit(1)
   print(data[key])
+  if os.environ['DRIFT']=='counter-read-error' and key=='bootcount' and data[key]=='0':sys.exit(1)
  else:
   for k,v in data.items():print(k+'='+v)
  sys.exit(0)
@@ -90,6 +91,9 @@ state=root/'counter';n=int(state.read_text())+1 if state.exists() else 1;state.w
 cmd=Path(sys.argv[0]).name;a=sys.argv[1:]
 with (root/'trace').open('a') as f:f.write(cmd+' '+' '.join(a)+'\n')
 if n==int(os.environ['FAIL_OPERATION']):sys.exit(1)
+if cmd in ('ubirmvol','ubirename','ubirsvol','ubiupdatevol'):
+ data=json.loads((root/'environment.json').read_text())
+ assert data['bootcount']=='0' and data['image']==os.environ['SLOT'] and data['bootcmd']=='run thor_boot'+os.environ['SLOT'],'unsafe source selector before flash'
 ubi=root/'sys/class/ubi';dev=root/'dev'
 def put(p,v):p.parent.mkdir(parents=True,exist_ok=True);p.write_text(str(v))
 if cmd=='ubidetach':
@@ -194,7 +198,7 @@ oem_restore_migrate
             assert 'handoff=one-shot-oem-armed' in r.stdout
             data=__import__('json').loads((root/'environment.json').read_text())
             assert data['thor_ab_confirmed']==str(slot) and data['factory_keep']=='untouched'
-            assert 'saveenv && run thor_restore_oem' in data['bootcmd']
+            assert 'saveenv; then run thor_restore_oem' in data['bootcmd']
             operations=int((root/'counter').read_text())
             # Execute the shipped .8 rollback record and stable-default
             # restoration body on the actual source-only wrapper just saved.
@@ -212,9 +216,11 @@ commit_trial "$SLOT" || exit 1
             assert restored['bootcmd']==f'run thor_stable{slot}'
             assert restored[f'thor_stable{slot}']==f'run thor_boot{slot}'
             assert {k:data[k] for k in ('serial#','factory.region','vendor-option')}=={'serial#':'factory-serial','factory.region':'EU','vendor-option':'preserve-me'}
-            for drift in ('env-punctuation-changed','env-punctuation-removed'):
+            for drift in ('env-punctuation-changed','env-punctuation-removed','counter-read-error'):
                 root,env,names=fixture(slot=slot,drift=drift);boot_environment(root,env);run(root,env,False)
                 assert __import__('json').loads((root/'environment.json').read_text())['bootcmd']==f'run thor_boot{slot}'
+                if drift=='counter-read-error':
+                    assert not any(v.startswith(('ubirmvol','ubirename','ubirsvol','ubiupdatevol')) for v in (root/'trace').read_text().splitlines())
             if a.env_only:continue
             print('Thor restore slot',slot,'positive passed; sweeping',operations,'failure points',flush=True)
             def failed_case(fail):

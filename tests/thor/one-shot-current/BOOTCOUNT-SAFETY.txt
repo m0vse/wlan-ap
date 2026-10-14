@@ -1,0 +1,51 @@
+Thor OEM counter safety — source integration, 12 October 2026
+
+The verified XV3-8/XE5-8 7.2-r1 OEM firmware contains Thor U-Boot
+2016.01 v2.7.5a (15 June 2026). OEM container SHA256:
+66a9b4bb558bf18a8e678d65ecf3857065683ba1da60885fa416d27a40f15192
+Bootloader SHA256:
+fd6ecad47036bf3135f4ecdd59b6ee9bfc57376f25b6fe745c0ff035ba2856da
+
+Independent disassembly traces bootipq descriptor 0x4a973564 to handler
+0x4a904118, then 0x4a9038b0 and helper 0x4a903308. The helper inspects
+the first bootcount ASCII digit, flips image for 8/9, writes count1 and
+persists it. This is not a general integer-threshold parser. A direct
+RAM/UBI loader bypasses the helper, leaving a pending OEM alternate-bank
+sentinel intact. Missing/mismatched selectors are not admitted.
+
+Patch0189 uses shared0187 prepare_oem_return(running_slot) only in the
+legacy one-OEM/one-OpenWiFi guard. Exact stock bootcmd and opposite OEM
+selector are required. Counter0 write, sync and counter/image/bootcmd
+readback must succeed before rearming or returning to OEM. Trial-prefix
+environment writes and save must succeed before any candidate/native load.
+If persistence fails, it performs no load or automatic reset; it returns
+to the bootloader prompt. A reset could reload the old durable count9.
+Native fallback after a successfully saved counter0/selector remains valid.
+Converted A/B explicit FIT commands and their routing ABI are unchanged.
+
+Run the current source integration without any device access:
+    python3 tests/thor/one-shot-current/test-oem-counter.py
+
+The standalone fixture reconstructs exact prerequisite package hunks,
+including the current shared0187 guard, checks support release13/core20,
+applies0189 with git apply --check, then checks support release14.
+Fresh host qualification: 88 original family cases plus2 failed-selector
+getter cases (even with matching stdout) and16 actual merged
+legacy guard cases. This includes old-prefix count9 negative controls,
+selector admission, each setter/save failure, sync/write/readback failures,
+and byte-identical converted renderer/preflight/prior-command functions.
+
+Existing independently retained target evidence records88 original cases
+passing under released ARM64 BusyBox/qemu. Its original tested module
+SHA256 is bcf5df5701abc268b2ba89ae303eb3d77742df0e8fa7269d7d89bbc5848e89e7.
+The integrated renderer additionally requires successful selector reads;
+its patch/module are therefore no longer byte-identical to that original
+target evidence. A target rerun of this exact adjusted module is pending.
+That prior evidence is not a new target run of the16 merged guard cases
+or2 added getter-failure cases. Host/target shell models are not installed-bootloader, physical
+flash durability, watchdog or power-loss acceptance.
+
+Unified destructive-write/native-return adapters need separate qualification.
+Published firmware, historical operator bundles and manual command copies
+remain immutable and are not retrofitted by this source patch. No firmware
+build, release replacement, deployment, AP write, flash or reboot is implied.

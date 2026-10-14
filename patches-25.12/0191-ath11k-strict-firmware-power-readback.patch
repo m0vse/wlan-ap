@@ -1,0 +1,49 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] ath11k: preserve unavailable firmware TX-power readback
+
+Do not replace failed firmware statistics with a configured power limit.
+The read-only marker prevents older kernels being credited as verified.
+
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -1 +1 @@
+-PKG_RELEASE:=3
++PKG_RELEASE:=4
+--- /dev/null
++++ b/package/kernel/mac80211/patches/ath11k/961-ath11k-strict-firmware-txpower-readback.patch
+@@ -0,0 +1,35 @@
++From: Phil Taylor <phil@m0vse.uk>
++Subject: [PATCH] ath11k: report firmware power query failure, not configured fallback
++
++--- a/drivers/net/wireless/ath/ath11k/mac.c
+++++ b/drivers/net/wireless/ath/ath11k/mac.c
++@@ -9618,6 +9618,7 @@
++ 					struct ath11k_fw_stats_pdev, list);
++ 	if (!pdev) {
++ 		spin_unlock_bh(&ar->data_lock);
+++		ret = -ENODATA;
++ 		goto err_fallback;
++ 	}
++ 
++@@ -9633,11 +9634,8 @@
++ 
++ err_fallback:
++ 	mutex_unlock(&ar->conf_mutex);
++-	/* We didn't get txpower from FW. Hence, relying on vif->bss_conf.txpower */
++-	*dbm = vif->bss_conf.txpower;
++-	ath11k_dbg(ar->ab, ATH11K_DBG_MAC, "txpower from firmware NaN, reported %d dBm\n",
++-		   *dbm);
++-	return 0;
+++	/* A configured limit is not a successful firmware power readback. */
+++	return ret;
++ }
++ 
++ static int ath11k_mac_station_add(struct ath11k *ar,
++--- a/drivers/net/wireless/ath/ath11k/core.c
+++++ b/drivers/net/wireless/ath/ath11k/core.c
++@@ -1 +1,5 @@
++ #include <linux/module.h>
+++/* Read-only firmware readback capability, never an operator override. */
+++static bool txpower_readback_strict = true;
+++module_param_named(txpower_readback_strict, txpower_readback_strict, bool, 0444);
+++MODULE_PARM_DESC(txpower_readback_strict, "Strict firmware TX-power readback");

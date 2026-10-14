@@ -1,0 +1,230 @@
+--- a/renderer/wifi/station.uc
++++ b/renderer/wifi/station.uc
+@@ -45,6 +45,27 @@
+ 	return rate;
+ }
+ 
++function negotiated_peer_links(sta, authorized) {
++	if (authorized !== true || type(sta.mlo_links) != 'array' || length(sta.mlo_links) < 1 || length(sta.mlo_links) > 16)
++		return null;
++	let valid_mac = value => type(value) == 'string' && match(value, /^[0-9a-fA-F][02468aAcCeE](:[0-9a-fA-F]{2}){5}$/) &&
++		lc(value) != '00:00:00:00:00:00';
++	if (!valid_mac(sta.mac)) return null;
++	let ids = {}, addresses = {}, links = [];
++	for (let link in sta.mlo_links) {
++		if (type(link.link_id) != 'int' || link.link_id < 0 || link.link_id > 15 || !valid_mac(link.mac) ||
++		    exists(ids, '' + link.link_id) || exists(addresses, lc(link.mac))) return null;
++		ids['' + link.link_id] = true; addresses[lc(link.mac)] = true;
++		push(links, { link_id: link.link_id, address: lc(link.mac) });
++	}
++	return links;
++}
++
++function negotiated_mlo(sta, authorized) {
++	let links = negotiated_peer_links(sta, authorized);
++	return length(links) >= 2 ? { mld_address: lc(sta.mac), links, counters_scope: 'mld' } : null;
++}
++
+ function iface_assoclist(wif) {
+ 	let params = { dev: wif.ifname };
+ 	let res = nl.request(def.NL80211_CMD_GET_STATION, def.NLM_F_DUMP, params);
+@@ -79,6 +100,10 @@
+ 		};
+ 		if (authorized !== null)
+ 			assoc.authorized = authorized;
++		let mlo = negotiated_mlo(sta, authorized);
++		if (mlo) assoc.mlo = mlo;
++		else if (authorized === true && length(wif.mlo_links || []) > 1 && length(negotiated_peer_links(sta, authorized)) == 1)
++			assoc.mlo_link_id = sta.mlo_links[0].link_id;
+ 		if (global.tid_stats)
+ 			assoc.tid_stats = sta.sta_info?.tid_stats || [];
+ 		push(assocdev, assoc);
+--- a/system/state/wifi.uc
++++ b/system/state/wifi.uc
+@@ -12,6 +12,9 @@
+ let survey = require('wifi.survey');
+ let mesh = require('wifi.mesh');
+ let live_regulatory = regulatory.sample(wifiphy);
++let mlo_telemetry = require('mlo_telemetry');
++let mlo_sample = { views: {}, owners: {} };
++let mlo_sample_ready = false;
+ 
+ /* Collect data via ubus */
+ let wifistatus = global.ubus.call("network.wireless", "status");
+@@ -74,6 +77,33 @@
+ };
+ 
+ 
++function vap_view(vap) {
++	if (!mlo_sample_ready) {
++		mlo_sample = mlo_telemetry.sample(global.wireless);
++		mlo_sample_ready = true;
++	}
++	return mlo_telemetry.vap_view(vap, global.wireless, wifiiface, mlo_sample);
++}
++
++function radio_view(data) {
++	for (let iface in data.interfaces || []) {
++		let v = vap_view(iface);
++		if (length(v) && length(v.frequency)) return v;
++	}
++	return length(data.interfaces) ? vap_view(data.interfaces[0]) : null;
++}
++
++function radio_reference(name) {
++	let index = 0;
++	for (let key, data in wifistatus) {
++		if (!length(data.interfaces) || !length(radio_view(data)) ||
++		    !wifiphy[mlo_telemetry.radio_key(data.config, wifiphy)]) continue;
++		if (key == name) return index;
++		index++;
++	}
++	return null;
++}
++
+ export function collect_wifi_radios(state) {
+ 	let radios = [];
+ 	
+@@ -81,19 +111,9 @@
+ 		if (!length(data.interfaces))
+ 			continue;
+ 
+-		// Find first interface with valid frequency, fallback to first available
+-		let vap;
+-		for (let iface in data.interfaces) {
+-			let v = wifiiface[iface.ifname];
+-			if (length(v) && length(v.frequency)) {
+-				vap = v;
+-				break;
+-			}
+-		}
+-		if (!vap)
+-			vap = wifiiface[data.interfaces[0].ifname];
+-		if (!length(vap))
+-			continue;
++		let vap = radio_view(data);
++		let path = mlo_telemetry.radio_key(data.config, wifiphy);
++		if (!length(vap) || !wifiphy[path]) continue;
+ 
+ 		let radio = {};
+ 		radio.channel = length(vap.channel) ? vap.channel[0] : 0;
+@@ -102,13 +122,14 @@
+ 		radio.channel_width = +vap.ch_width || 0;
+ 		radio.tx_power = vap.tx_power || 0;
+ 
+-		let path = data.config.path;
+-		if (exists(data.config, 'radio'))
+-			path += ':' + uc(data.config.band);
+ 		radio.phy = path;
+ 		if (wifiphy[path] && wifiphy[path].temperature)
+ 			radio.temperature = wifiphy[path].temperature;
+ 		radio.band = wifiphy[path].band;
++		if (mlo_telemetry.native_radio(data.config, wifiphy)) {
++			radio.radio_index = +data.config.radio;
++			radio.physical_phy = wifiphy[path].wiphy_name;
++		}
+ 		let eligible = regulatory.telemetry(live_regulatory[path], data.config.country);
+ 		// Missing/mismatched country is unavailable, not an unrestricted list.
+ 		if (eligible)
+@@ -171,9 +192,9 @@
+ 		for (let k, vap in data.interfaces) {
+ 			if (!length(vap.config) ||
+ 			    !length(vap.config.network) ||
+-			    !wifiiface[vap.ifname])
++			    !vap_view(vap))
+ 				continue;
+-			let wif = wifiiface[vap.ifname];
++			let wif = vap_view(vap);
+ 			if (!(iface.name in vap.config.network) && !is_mesh(iface, wif))
+ 				continue;
+ 			let ssid = {
+@@ -181,6 +202,17 @@
+ 				phy: data.config.path,
+ 				band: uc(data.config.band)
+ 			};
++			if (mlo_telemetry.native_radio(data.config, wifiphy)) {
++				let actual_index = radio_reference(radio);
++				if (actual_index != null) ssid.radio = { "$ref": sprintf("#/radios/%d", actual_index) };
++			}
++			let mld = mlo_telemetry.is_mld(vap, global.wireless);
++			let aggregate_owner = !mld || mlo_telemetry.owner(wif, mlo_sample);
++			if (mld) {
++				ssid.mlo_link_id = wif.mlo_link_id;
++				ssid.mld_address = wif.mld_address;
++				ssid.counters_scope = 'mld';
++			}
+ 			ssid.location = global.wireless[vap.section]?.ucentral_path || '';
+ 			ssid.ssid = wif.ssid || vap.config.mesh_id;
+ 			ssid.mode = wif.mode;
+@@ -199,7 +231,7 @@
+ 					if (vlan[1])
+ 						for (let k, assoc in v)
+ 							assoc.dynamic_vlan = +vlan[1];
+-					ssid.associations = [ ...(ssid.associations || []), ...v ];
++					ssid.associations = [ ...(ssid.associations || []), ...(mld ? mlo_telemetry.select_associations(v, wif, mlo_sample) : v) ];
+ 				}
+ 				// Handle WDS STA interfaces (e.g., wlan2.sta1)
+ 				else if (wds[0] == vap.ifname && wds[1]) {
+@@ -244,7 +276,7 @@
+ 			}
+ 
+ 			ssid.iface = vap.ifname;
+-			if (global.ports && global.ports[vap.ifname]?.counters) {
++			if (aggregate_owner && global.ports && global.ports[vap.ifname]?.counters) {
+ 				ssid.counters = global.ports[vap.ifname].counters || {};
+ 				ssid.delta_counters = telemetry_module.ports_deltas(vap.ifname, global.ports, global.previous);
+ 			}
+--- /dev/null
++++ b/system/mlo_telemetry.uc
+@@ -0,0 +1,51 @@
++// Additive MLO views. Ordinary interface dictionaries remain unchanged.
++let health=require('mlo_health');
++function freq2channel(freq){if(freq==2484)return 14;if(freq<1000)return(freq-900)/2;if(freq>2400&&freq<2484)return(freq-2407)/5;if(freq>=4910&&freq<=4980)return(freq-4000)/5;if(freq>=5955&&freq<=7115)return(freq-5950)/5;return(freq-5000)/5;}
++function radio_key(config,phys){
++ if(type(config)!='object'||!config.path)return null;
++ let old=config.path;if(exists(config,'radio'))old+=':'+uc(config.band);
++ if(match(''+config.radio,/^[0-9]+$/)){
++  let key=config.path+'+'+(+config.radio)+':'+uc(config.band),p=phys[key];
++  if(p?.radio_index_source=='driver'&&p.radio_index==+config.radio)return key;
++ }return old;
++}
++function native_radio(config,phys){let key=radio_key(config,phys);return phys[key]?.radio_index_source=='driver';}
++function sample(config,raw,query,phy_index,radio_phy){
++ let output={views:{},owners:{}};
++ if(raw==null){if(!length(filter(keys(config||{}),k=>config[k]?.mld)))return output;try{let nl=require('nl80211');raw=nl.request(nl.const.NL80211_CMD_GET_INTERFACE,nl.const.NLM_F_DUMP);}catch(e){return output;}}
++ let proof=health.collect(config,query,raw,phy_index,radio_phy);
++ let widths={'1':'20','2':'40','3':'80','4':'80p80','5':'160','6':'5','7':'10','13':'320'};
++ for(let section,view in proof.links){
++  let root=filter(raw||[],r=>r.ifname==view.ifname)[0];let link=filter(root?.mlo_links||[],l=>l.link_id==view.link_id)[0];if(!link)continue;
++  let frequencies=link.wiphy_freq?[link.wiphy_freq,link.center_freq1,link.center_freq2]:[];
++  frequencies=uniq(filter(frequencies,f=>type(f)=='int'&&f>0));
++  output.views[section]={ssid:root.ssid,mode:'ap',bssid:view.bssid,phy:root.wiphy,physical_phy:view.phy,
++   channel:map(frequencies,freq2channel),frequency:frequencies,tx_power:(link.wiphy_tx_power_level/100)||0,
++   ch_width:widths[link.channel_width]||'0',has_channel:view.ready,mlo_link_id:view.link_id,
++   mld_address:root.mac,radio_index:view.radio_index,ifname:view.ifname};
++  if(view.ready&&(output.owners[view.ifname]==null||view.link_id<output.owners[view.ifname]))output.owners[view.ifname]=view.link_id;
++ }return output;
++}
++function is_mld(vap,config){return !!config[vap.section]?.mld;}
++function vap_view(vap,config,ordinary,proof){return is_mld(vap,config)?proof.views[vap.section]:ordinary[vap.ifname];}
++function owner(view,proof){return type(view?.mlo_link_id)=='int'&&view.mlo_link_id==proof.owners[view.ifname];}
++function enrich(association,proof,ifname){
++ let out={...association};if(!association.mlo)return out;
++ let links=[];
++ for(let peer in association.mlo.links||[]){
++  let ap=filter(values(proof.views),v=>v.ifname==ifname&&v.mlo_link_id==peer.link_id&&v.has_channel)[0];
++  if(!ap)return null;
++  let freq=ap.frequency[0];push(links,{link_id:peer.link_id,address:peer.address,bssid:ap.bssid,frequency:freq,channel:ap.channel[0],band:freq>=5925?'6G':freq>=5150?'5G':'2G'});
++ }
++ if(length(links)<2)return null;
++ out.mlo={mld_address:association.mlo.mld_address,links,counters_scope:'mld'};return out;
++}
++function select_associations(rows,view,proof){
++ let output=[];
++ for(let row in rows||[]){
++  if(row.mlo){if(!owner(view,proof))continue;let richer=enrich(row,proof,view.ifname);if(richer){richer.bssid=view.bssid;push(output,richer);}else {let unavailable={...row};delete unavailable.mlo;push(output,unavailable);}}
++  else if(row.mlo_link_id!=null){if(row.mlo_link_id==view.mlo_link_id)push(output,{...row,bssid:view.bssid});}
++  else if(owner(view,proof))push(output,{...row});
++ }return output;
++}
++return {radio_key,native_radio,sample,is_mld,vap_view,owner,enrich,select_associations};

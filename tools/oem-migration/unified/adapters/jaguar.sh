@@ -23,7 +23,9 @@ oem_jaguar_env_read() (
  printf '%s\n' "$oem_private_environment_blob"
 )
 oem_jaguar_env_value() {
- oem_jaguar_env_read | awk -v key="$1" '{i=index($0,"=");if(substr($0,1,i-1)==key){value=substr($0,i+1);n++}} END{if(n!=1)exit 1;print value}'
+ local snapshot
+ snapshot=$(oem_jaguar_env_read) || return 1
+ printf '%s\n' "$snapshot" | awk -v key="$1" '{i=index($0,"=");if(substr($0,1,i-1)==key){value=substr($0,i+1);n++}} END{if(n!=1)exit 1;print value}'
 }
 oem_jaguar_config() {
  local file text normalized= index offset size erase sectors
@@ -54,7 +56,9 @@ oem_adapter_inspect() {
  product=$(awk -F= '$1=="PRODUCT" {v=$2;n++} END{if(n!=1)exit 1;print v}' "$OEM_SYS_ROOT/etc/version") || return 1
  [ "$product" = jaguar ] && [ "$OEM_SOURCE_RELEASE" = 7.2-r1 ] || { oem_fail 'Jaguar OEM source is not the reviewed 7.2-r1 baseline'; return 1; }
  oem_jaguar_env_read >/dev/null || return 1
- [ "$(oem_jaguar_env_value bootcmd)" = bootipq ] || return 1
+ case "$(oem_jaguar_env_value bootcmd)" in
+  bootipq|'setenv bootcount 0 && bootipq'|"run jaguar_boot0"|"run jaguar_boot1") ;; *) return 1;;
+ esac
  for argument in $(cat "$OEM_SYS_ROOT/proc/cmdline"); do
   case "$argument" in root=*) [ -z "$rootarg" ] || return 1; rootarg=${argument#root=};; ubi.mtd=*) [ -z "$attachment" ] || return 1; attachment=${argument#ubi.mtd=};; esac
  done
@@ -62,6 +66,11 @@ oem_adapter_inspect() {
  case "$attachment" in rootfs) OEM_SOURCE_SLOT=0;; rootfs_1) OEM_SOURCE_SLOT=1;; *) return 1;; esac
  OEM_TARGET_SLOT=$((1-OEM_SOURCE_SLOT))
  [ "$(oem_jaguar_env_value image)" = "$OEM_SOURCE_SLOT" ] || return 1
+ case "$(oem_jaguar_env_value bootcmd)" in
+  "run jaguar_boot$OEM_SOURCE_SLOT")
+   [ "$(oem_jaguar_env_value "jaguar_boot$OEM_SOURCE_SLOT")" = "setenv bootcount 0 && setenv image $OEM_SOURCE_SLOT && bootipq" ] || return 1;;
+  "run jaguar_boot"*) return 1;;
+ esac
  OEM_JAGUAR_SOURCE_MTD=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$attachment") || return 1
  if [ "$OEM_TARGET_SLOT" = 0 ]; then label=rootfs; else label=rootfs_1; fi
  OEM_JAGUAR_TARGET_MTD=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$label") || return 1
@@ -314,6 +323,8 @@ oem_jaguar_live_target() (
 )
 oem_jaguar_write_check() (
  local operation=$1 id=$2 name=$3 absent=${4:-0} sys=$OEM_SYS_ROOT/sys/class/ubi device=$OEM_JAGUAR_TARGET_UBI node count=0
+ oem_adapter_boot_preflight && [ "$(oem_jaguar_env_value bootcount)" = 0 ] &&
+  [ "$(oem_jaguar_env_value bootcmd)" = "run jaguar_boot$OEM_SOURCE_SLOT" ] || exit 1
  oem_jaguar_live_target || exit 1
  awk -F '\t' -v op="$operation" -v parent="$OEM_JAGUAR_TARGET_MTD" -v id="$id" -v name="$name" \
   '$1==op && $2==parent && $3==id && $4==name {n++}END{exit n!=1}' "$OEM_WRITE_PLAN" || exit 1
@@ -394,7 +405,7 @@ oem_adapter_migrate() (
  [ "$OEM_JAGUAR_REUSE" = 1 ] || oem_jaguar_vault_prepare || exit 1
  OEM_JAGUAR_VAULT_PIN=$(oem_sha "$OEM_WORK/jaguar-vault.tar") && oem_hex64 "$OEM_JAGUAR_VAULT_PIN" || exit 1
  oem_jaguar_env_read > "$OEM_WORK/env-before" && oem_jaguar_protected_snapshot > "$OEM_WORK/protected-before" || exit 1
- printf '%s\n' bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state jaguar_installer_target jaguar_installer_job jaguar_installer_image jaguar_oem_restore_target jaguar_oem_restore_state > "$OEM_WORK/env-allowed" || exit 1
+ printf '%s\n' bootcount bootcmd image jaguar_storage_pending jaguar_boot0 jaguar_boot1 jaguar_stable0 jaguar_stable1 jaguar_ab_version jaguar_ab_confirmed jaguar_ab_target jaguar_ab_state jaguar_installer_target jaguar_installer_job jaguar_installer_image jaguar_oem_restore_target jaguar_oem_restore_state > "$OEM_WORK/env-allowed" || exit 1
  while IFS="$(printf '\t')" read -r kind label size reason;do index=$(oem_physical_index "$OEM_SYS_ROOT/sys/class/mtd" "$label") || exit 1;[ "$(oem_sha "$OEM_RECOVERY_DIR/$kind.bin")" = "$(oem_sha "$OEM_SYS_ROOT/dev/mtd${index}ro")" ] || exit 1;done < "$OEM_RECOVERY_DIR/manifest.tsv"
  OEM_JAGUAR_JOURNAL="install:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$OEM_JAGUAR_IMAGE_PIN:$job"
  oem_jaguar_payload_hash_check || exit 1
@@ -442,7 +453,7 @@ oem_jaguar_target_command() {
 }
 oem_jaguar_source_command() {
  oem_jaguar_table && oem_context_check || return 1
- printf '%s\n' "setenv image $OEM_SOURCE_SLOT; bootipq"
+ printf '%s\n' "setenv bootcount 0 && setenv image $OEM_SOURCE_SLOT && bootipq"
 }
 oem_adapter_boot_preflight() {
  local current expected tool
@@ -450,7 +461,7 @@ oem_adapter_boot_preflight() {
  [ "$(oem_jaguar_env_value image)" = "$OEM_SOURCE_SLOT" ] || return 1
  current=$(oem_jaguar_env_value bootcmd) || return 1
  case "$current" in
-  bootipq) ;;
+  bootipq|'setenv bootcount 0 && bootipq') ;;
   "run jaguar_boot$OEM_SOURCE_SLOT")
    expected=$(oem_jaguar_source_command) || return 1
    [ "$(oem_jaguar_env_value "jaguar_boot$OEM_SOURCE_SLOT")" = "$expected" ] || return 1;;
@@ -470,7 +481,7 @@ oem_jaguar_persist_source() (
  umask 077
  work=$(mktemp -d /tmp/cambium-jaguar-source.XXXXXX) || exit 1
  trap 'rm -f "$work/environment";rmdir "$work"' EXIT
- printf 'jaguar_boot%s %s\nbootcmd run jaguar_boot%s\nimage %s\njaguar_storage_pending %s\n' \
+ printf 'bootcount 0\njaguar_boot%s %s\nbootcmd run jaguar_boot%s\nimage %s\njaguar_storage_pending %s\n' \
   "$OEM_SOURCE_SLOT" "$command" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$journal" > "$work/environment" || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$work/environment" && sync || exit 1
  while read -r key value; do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$work/environment"
@@ -485,7 +496,8 @@ oem_jaguar_arm() (
  # An interrupted/foreign/partial incoming enrollment must not be overwritten.
  oem_jaguar_env_read | awk -F= '$1~/^jaguar_installer_(target|job|image)$/ {if(NF!=2 || length($2) || seen[$1]++)bad=1} END{exit bad}' || exit 1
  target=$(oem_jaguar_target_command) || exit 1
- trial="setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_ab_state trial-started && saveenv && run jaguar_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT"
+ [ "$(oem_jaguar_env_value bootcount)" = 0 ] || exit 1
+ trial="if setenv bootcount 0 && setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_ab_state trial-started && saveenv; then run jaguar_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT; fi"
  umask 077
  work=$(mktemp -d /tmp/cambium-jaguar-arm.XXXXXX) || exit 1
  trap 'rm -f "$work/environment";rmdir "$work"' EXIT

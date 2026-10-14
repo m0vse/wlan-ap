@@ -1,0 +1,41 @@
+--- a/session_status.c
++++ b/session_status.c
+@@ -22,6 +22,11 @@
+         r->sequence && r->uuid && r->generation == a->generation &&
+         r->sequence == a->sequence && r->request == a->request &&
+         r->uuid == a->uuid;
++}
++
++bool session_has_completed_config(void)
++{
++ return completed_receipts();
+ }
+ 
+ void session_connected(void)
+--- a/session_status.h
++++ b/session_status.h
+@@ -14,6 +14,7 @@
+ 	struct session_receipt received, applied;
+ };
+ extern struct native_session_status native_session;
++bool session_has_completed_config(void);
+ void session_connected(void);
+ void session_disconnected(void);
+ void session_received(uint64_t uuid, uint32_t request);
+--- a/proto.c
++++ b/proto.c
+@@ -210,10 +210,12 @@
+ 		blobmsg_add_u64(&proto, "uuid", 0);
+ 	else
+ 		blobmsg_add_u64(&proto, "uuid", uuid_active ? uuid_active : 1);
+-	if (client.boot_cause) {
++	/* Retain the first-process reason until native configuration acceptance.
++	 * A lost hello or incomplete apply must not become a socket no-op. */
++	if (client.boot_cause && !session_has_completed_config()) {
+ 		blobmsg_add_string(&proto, "reason", client.boot_cause);
++	} else {
+ 		client.boot_cause = NULL;
+-	} else {
+ 		blobmsg_add_string(&proto, "reason", "socket");
+ 	}
+ 	if (password) {

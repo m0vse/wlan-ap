@@ -18,7 +18,9 @@ BACKEND=r'''
 import json,os,shutil,sys
 from pathlib import Path
 r=Path(os.environ['FIXTURE']);cmd,a=sys.argv[1],sys.argv[2:];fault=os.environ.get('FAULT','');p=r/'env.json';s=json.loads(p.read_text());dev=r/'dev';sysdir=r/'sys/class/ubi'
-if cmd=='fw_printenv':print(''.join(k+'='+v+'\n' for k,v in s.items()),end='');sys.exit(0)
+if cmd in ('ubirsvol','ubirmvol','ubimkvol','ubiupdatevol','ubiblock'):
+ assert s['bootcount']=='0' and s['image']==os.environ['SOURCE'] and s['bootcmd']=='run jaguar_boot'+os.environ['SOURCE'],'unsafe source selector/counter before target write'
+if cmd=='fw_printenv':print(''.join(k+'='+v+'\n' for k,v in s.items()),end='');sys.exit(1 if fault=='initial-read-error' or (fault=='counter-read-error' and s.get('bootcount')=='0') else 0)
 if cmd=='fw_setenv':
  args=a[2:];label='SOURCE' if args[0]=='-s' and Path(args[1]).name=='return-source.env' else ('ARM' if args[0]=='-s' else 'SELECTOR')
 elif cmd=='ubirsvol':label='RESIZE'
@@ -52,6 +54,7 @@ elif cmd=='fw_setenv':
    if len(fields)==1:s.pop(fields[0],None)
    else:s[fields[0]]=fields[1]
   if fault=='source-readback' and label=='SOURCE':s['jaguar_oem_restore_state']='wrong'
+  if fault=='counter-readback' and label=='SOURCE':s['bootcount']='9'
   if fault=='arm-readback' and label=='ARM':s['jaguar_oem_restore_state']='wrong'
   if fault=='late-vault' and label=='ARM':
    with (dev/'ubi1_3').open('r+b') as f:f.write(b'BAD!')
@@ -96,7 +99,7 @@ class RestoreTests(unittest.TestCase):
   put(root/'lib/functions/system.sh','get_mac_label_dt() { echo bc:a9:93:00:00:02; }\n')
   put(root/'proc/cmdline',f'ubi.mtd={"rootfs" if slot==0 else "rootfs_1"} root=/dev/ubiblock0_1 rootfstype=squashfs\n')
   boot=f'KNOWN_NONFLASHABLE_SOURCE_BOOT_SLOT_{slot}'
-  state=dict(image=str(slot),bootcmd=f'run jaguar_stable{slot}',jaguar_ab_confirmed=str(slot),jaguar_ab_state='confirmed',factory_mac='bca993000002')
+  state=dict(bootcount='9',image=str(slot),bootcmd=f'run jaguar_stable{slot}',jaguar_ab_confirmed=str(slot),jaguar_ab_state='confirmed',factory_mac='bca993000002')
   state[f'jaguar_boot{slot}']=boot;state[f'jaguar_stable{slot}']=f'run jaguar_boot{slot}; run jaguar_boot{1-slot}'
   put(root/'env.json',json.dumps(state))
   status=bin/'cambium-ab-status';put(status,f'#!/bin/sh\nprintf "mode=ab\\nfamily=jaguar\\nmodel={model}\\nrunning={slot}\\nconfirmed={slot}\\nstate=confirmed\\n"\n');status.chmod(0o755)
@@ -146,7 +149,7 @@ class RestoreTests(unittest.TestCase):
     self.assertEqual(protected,{p:p.read_bytes() for p in protected});self.assertEqual(cert,(root/'dev/ubi1_4').read_bytes())
     self.assertEqual((root/'sys/class/ubi/ubi1_4/reserved_ebs').read_text(),'20')
     self.assertEqual((root/'sys/class/ubi/ubi1_1/name').read_text(),'ubi_rootfs')
-    values=json.loads((root/'env.json').read_text());self.assertIn('saveenv && run jaguar_oem_boot',values['bootcmd']);self.assertEqual(values[f'jaguar_boot{slot}'],f'KNOWN_NONFLASHABLE_SOURCE_BOOT_SLOT_{slot}')
+    values=json.loads((root/'env.json').read_text());self.assertIn('saveenv; then run jaguar_oem_boot',values['bootcmd']);self.assertEqual(values[f'jaguar_boot{slot}'],f'KNOWN_NONFLASHABLE_SOURCE_BOOT_SLOT_{slot}')
     self.assertEqual(values[f'jaguar_stable{slot}'],f'run jaguar_boot{slot}')
     if model=='XV2-2':self.assertIn('RESIZE ',events);self.assertEqual((root/'sys/class/ubi/ubi1_3/reserved_ebs').read_text(),'1')
     else:self.assertNotIn('RESIZE ',events)
@@ -159,11 +162,17 @@ class RestoreTests(unittest.TestCase):
     self.assertEqual(checked.returncode,0,checked.stderr)
     self.assertIn('identity_retired=no',result.stdout)
  def test_failures_never_select_oem_or_touch_working_source(self):
-  for fault in ('SOURCE','source-readback','RESIZE','vault-readback','REMOVE2','REMOVE1','REMOVE0','CREATE0','CREATE1','WRITE0','WRITE1','readback','ARM','arm-readback','SELECTOR'):
+  for fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync','RESIZE','vault-readback','REMOVE2','REMOVE1','REMOVE0','CREATE0','CREATE1','WRITE0','WRITE1','readback','ARM','arm-readback','SELECTOR'):
    fixture=self.fixture();root=fixture[0][0];source=(root/'dev/ubi0_1').read_bytes();cert=(root/'dev/ubi1_4').read_bytes()
    result=self.invoke(fixture,fault);self.assertNotEqual(result.returncode,0,fault)
    self.assertEqual(source,(root/'dev/ubi0_1').read_bytes());self.assertEqual(cert,(root/'dev/ubi1_4').read_bytes())
    self.assertIn(json.loads((root/'env.json').read_text())['bootcmd'],('run jaguar_stable0','run jaguar_boot0'))
+   if fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync'):
+    events=(root/'events').read_text()
+    for operation in ('RESIZE ','REMOVE','CREATE','WRITE','ROOTMAP'):self.assertNotIn(operation,events)
+ def test_error_returning_reader_with_correct_output_never_saves_source(self):
+  fixture=self.fixture();root=fixture[0][0];result=self.invoke(fixture,'initial-read-error')
+  self.assertNotEqual(result.returncode,0);self.assertFalse((root/'events').exists())
  def detach_fixture(self,fixture):
   root=fixture[0][0];(root/'detached/sys').mkdir(parents=True);(root/'detached/dev').mkdir()
   for p in (root/'sys/class/ubi').glob('ubi1*'):shutil.move(str(p),str(root/'detached/sys'/p.name))

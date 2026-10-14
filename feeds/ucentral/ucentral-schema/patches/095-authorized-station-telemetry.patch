@@ -30,7 +30,7 @@ than being guessed from traffic counters, preserving legacy/mesh drivers.
  		push(assocdev, assoc);
 --- a/state/interface.ssid.association.yml
 +++ b/state/interface.ssid.association.yml
-@@ -19,6 +19,13 @@
+@@ -19,5 +19,12 @@
        description:
          The MAC address of the station.
 +    authorized:

@@ -48,7 +48,7 @@ csr_apply_oem_defaults
     def test_compiled_defaults_and_selected_oem_bank_preserve_all_factory_keys(self):
         result,ops=self.invoke();self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(ops,['ENV'])
         rows=dict(x.split('=',1) for x in (self.r/'env-snapshot').read_text().splitlines())
-        for k,v in {'bootcmd':'bootipq','bootdelay':'2','image':'1','bootcount':'0','ipaddr':'192.168.1.11','serverip':'192.168.1.120','ethaddr':'02:00:00:00:00:01','serial#':'synthetic-device','custom':'keep=all'}.items():self.assertEqual(rows[k],v)
+        for k,v in {'bootcmd':'setenv bootcount 0 && bootipq','bootdelay':'2','image':'1','bootcount':'0','ipaddr':'192.168.1.11','serverip':'192.168.1.120','ethaddr':'02:00:00:00:00:01','serial#':'synthetic-device','custom':'keep=all'}.items():self.assertEqual(rows[k],v)
         self.assertNotIn('sage_ab_state',rows);self.assertNotIn('sage_installer_job',rows)
         self.assertIn('reboot_performed=no',result.stdout)
     def test_unverified_boot_model_code_or_missing_receipt_never_writes(self):

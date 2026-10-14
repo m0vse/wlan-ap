@@ -7,7 +7,8 @@ function evaluate(facts, previous, now) {
  let next = { updated: now, active: [], counters: {}, ecc: {}, monitoring: {
   radio: facts?.radio_monitoring || 'unavailable', radio_reason: facts?.radio_reason || null,
   adapter: facts?.adapter || { status: 'unavailable' },
-  storage: facts != null ? 'available' : 'unavailable', feature_registers: 'not_available_in_this_kernel', canary: facts?.canary || []
+  storage: facts != null ? 'available' : 'unavailable', feature_registers: facts?.nand_first_failure?.state == 'captured' ? 'see_first_failure_record' : 'not_captured',
+  nand_first_failure: facts?.nand_first_failure || { state: 'unavailable' }, canary: facts?.canary || []
  } };
 
  function candidate(code, resource, detail, immediate) {

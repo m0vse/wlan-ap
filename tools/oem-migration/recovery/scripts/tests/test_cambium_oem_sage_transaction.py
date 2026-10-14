@@ -29,6 +29,7 @@ cos_source_check() { step source; }
 cos_refuse_pending() { step pending && [ "$PENDING" = no ]; }
 cos_boot_preflight() { step boot_preflight; }
 cos_recovery() { step recovery; }
+cos_persist_source() { step persist_source; }
 cos_arm() { step arm; }
 ow_settings_tree() { step settings_validate; }
 ow_settings_context() { step settings_context; }
@@ -66,7 +67,7 @@ cos_install image kernel root settings
     def test_every_failure_before_activation_refuses_arm(self):
         for failure in ('admit', 'authenticate', 'source', 'pending', 'boot_preflight',
                         'settings_validate', 'settings_context', 'payload_check',
-                        'recovery', 'writer', 'readback', 'mkdir', 'mount',
+                        'recovery', 'persist_source', 'writer', 'readback', 'mkdir', 'mount',
                         'settings_stage', 'sync', 'unmount', 'rmdir'):
             with self.subTest(failure=failure):
                 result, calls = self.run_transaction(failure)

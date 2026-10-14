@@ -4,7 +4,7 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=qca-ssdk-qca
 PKG_SOURCE_PROTO:=git
 PKG_BRANCH:=master
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/qca-ssdk
 PKG_MIRROR_HASH:=ee81c6e98b520eb7652d72a72f8d3a3df5f9cf4bdd5504a1711e94b6a752dc3b
 PKG_SOURCE_VERSION:=4a51edc04910792fde91098b6c1a1655e63800b6
@@ -169,7 +169,9 @@ define files_profile
 	fi
 endef
 
+ifneq ($(strip $(TARGET_PROFILE)),)
 Hooks/Prepare/Post += patch_profile
 Hooks/Prepare/Post += files_profile
+endif
 
 $(eval $(call KernelPackage,qca-ssdk-qca-nohnat))

@@ -1,0 +1,48 @@
+--- a/system/health.uc
++++ b/system/health.uc
+@@ -10,2 +10,3 @@
+ let dfs_cac = require('dfs_cac');
++let radio_operating = require('radio_operating');
+ let mlo_health = require('mlo_health');
+@@ -552,1 +553,2 @@
+-	try { mlo_report = mlo_health.collect(configs.wifi_config); } catch(e) {}
++	let radio_interfaces = radio_operating.interfaces();
++	try { mlo_report = mlo_health.collect(configs.wifi_config, null, radio_interfaces); } catch(e) {}
+@@ -594,5 +595,21 @@
+ 	let total_checks = interface_count + radios_checked;
+ 	let total_errors = iface_errors + radio_errors;
++	// Kernel state and hostapd must agree; unavailable readback is not success.
++	try {
++		state.radio_operating = radio_operating.collect(configs.wifi_config,
++			ubus.call('network.wireless', 'status'), mlo_report, radio_interfaces);
++		for (let section, result in state.radio_operating) {
++			if (result.status == 'unconfirmed' || result.status == 'pending') continue;
++			total_checks++;
++			if (result.status != 'failed') continue;
++			total_errors++;
++			state.faults.active ??= [];
++			push(state.faults.active, { code: 'radio_operating_mismatch',
++				resource: section, severity: 'critical', radio: result.radio });
++		}
++	} catch(e) {
++		state.radio_operating = { monitoring: 'unavailable' };
++	}
+ 	let sanity = 100 - (total_errors * 100 / (total_checks || 1));
+ 
+ 	warn(sprintf('health check reports sanity of %d (iface_errors=%d, radio_errors=%d)\n', sanity, iface_errors, radio_errors));
+--- a/system/mlo_telemetry.uc
++++ b/system/mlo_telemetry.uc
+@@ -23,1 +23,1 @@
+-   channel:map(frequencies,freq2channel),frequency:frequencies,tx_power:(link.wiphy_tx_power_level/100)||0,
++   channel:map(frequencies,freq2channel),frequency:frequencies,tx_power:link.wiphy_tx_power_level != null ? (link.wiphy_tx_power_level > 2147483647 ? link.wiphy_tx_power_level - 4294967296 : link.wiphy_tx_power_level)/100 : null,
+--- a/system/state/wifi.uc
++++ b/system/state/wifi.uc
+@@ -123,1 +123,1 @@
+-		radio.tx_power = vap.tx_power || 0;
++		radio.tx_power = vap.tx_power ?? null;
+--- a/renderer/wifi/iface.uc
++++ b/renderer/wifi/iface.uc
+@@ -74,1 +74,2 @@
+-		w.tx_power = (wif_obj.wiphy_tx_power_level / 100) || 0;
++		let tx_power_mbm = wif_obj.wiphy_tx_power_level;
++		w.tx_power = tx_power_mbm != null ? (tx_power_mbm > 2147483647 ? tx_power_mbm - 4294967296 : tx_power_mbm) / 100 : null;
