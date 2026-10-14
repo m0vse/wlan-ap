@@ -1,0 +1,28 @@
+#!/bin/sh
+# Explicitly admit the first shared A/B upgrade from a healthy OEM-installed
+# seed. This writes only the boot environment, never either firmware bank.
+# Native OpenWrt system/UCI/JSON libraries require unset-variable defaults.
+set -e
+[ "$*" = '--yes --replace-oem-peer' ] || { echo 'Usage: cambium-ab-seed-confirm --yes --replace-oem-peer' >&2;exit 2; }
+. /lib/functions/system.sh
+. /lib/functions/cambium-ab.sh
+. /lib/upgrade/cambium-ab.sh
+ab_identity && [ "$AB_FAMILY:$AB_MODEL:$AB_SKU" = miami:X7-35X:0000002c ] && ab_miami_ab_profile && ab_miami_storage_context && ab_miami_upgrade_geometry || exit 1
+[ ! -e /proc/device-tree/cambium-platform/boot-mode ] && [ -z "$(ab_getenv miami_ab_version)" ] || exit 1
+ab_miami_certificate_mount && ab_miami_readiness_identity && ab_miami_native_connected || exit 1
+# Existing same-boot export proves that retained identity is usable by stage2.
+ab_certificate_export && ab_certificate_validate_snapshot || exit 1
+source=$(ab_miami_slot_command "$AB_ACTIVE" ab)
+boot_id=$(cat /proc/sys/kernel/random/boot_id)
+ab_setenv "miami_boot$AB_ACTIVE" "$source"
+ab_setenv changing_bootcmd 1
+ab_setenv bootcmd "run miami_boot$AB_ACTIVE"
+ab_setenv image "$AB_ACTIVE"
+sync
+[ "$(ab_getenv bootcmd)" = "run miami_boot$AB_ACTIVE" ] && [ "$(ab_getenv image)" = "$AB_ACTIVE" ] || exit 1
+batch=$(mktemp /tmp/miami-seed-env.XXXXXX)
+trap 'rm -f "$batch"' EXIT
+printf 'miami_ab_confirmed %s\nmiami_ab_state confirmed\nmiami_ab_seed_boot_id %s\n' "$AB_ACTIVE" "$boot_id" > "$batch"
+ab_setenv_batch "$batch"
+ab_miami_seed_context || exit 1
+echo "Healthy seed confirmed for this boot; the standard upgrader may replace slot$AB_TARGET. No firmware write or reboot performed."

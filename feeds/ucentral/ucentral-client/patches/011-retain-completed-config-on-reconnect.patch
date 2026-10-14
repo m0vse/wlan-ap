@@ -1,0 +1,45 @@
+--- a/session_status.c
++++ b/session_status.c
+@@ -11,9 +11,22 @@
+ 	memset(&native_session.applied, 0, sizeof(native_session.applied));
+ }
+ 
++/* Completed application is evidence from this client process, even after a
++ * transport reconnect. Incomplete receipts cannot qualify the next session.
++ * Keep the original generation: it must not authorize a new apply task. */
++static bool completed_receipts(void)
++{
++ const struct session_receipt *r = &native_session.received;
++ const struct session_receipt *a = &native_session.applied;
++ return r->generation && r->generation <= native_session.generation &&
++        r->sequence && r->uuid && r->generation == a->generation &&
++        r->sequence == a->sequence && r->request == a->request &&
++        r->uuid == a->uuid;
++}
++
+ void session_connected(void)
+ {
+-	clear_receipts();
++ if (!completed_receipts()) clear_receipts();
+ 	/* Do not reuse a generation after overflow. A new client process resets it. */
+ 	native_session.connected = native_session.generation != UINT32_MAX;
+ 	if (native_session.connected) native_session.generation++;
+@@ -22,7 +35,7 @@
+ void session_disconnected(void)
+ {
+ 	native_session.connected = false;
+-	clear_receipts();
++ if (!completed_receipts()) clear_receipts();
+ }
+ 
+ void session_received(uint64_t uuid, uint32_t request)
+@@ -40,7 +53,8 @@
+ struct session_receipt session_capture(uint64_t uuid, uint32_t request)
+ {
+ 	struct session_receipt receipt = native_session.received;
+-	if (!native_session.connected || receipt.uuid != uuid || receipt.request != request)
++	if (!native_session.connected || receipt.generation != native_session.generation ||
++	    receipt.uuid != uuid || receipt.request != request)
+ 		return (struct session_receipt){0};
+ 	return receipt;
+ }

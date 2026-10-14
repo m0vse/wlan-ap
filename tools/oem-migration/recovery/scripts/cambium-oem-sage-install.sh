@@ -70,7 +70,7 @@ cos_admit() {
     CSP_SYS=/sys/class/ubi CSP_DEV=/dev CSP_CMDLINE=/proc/cmdline CSP_MOUNTS=/proc/mounts
     OW_SETTINGS_SYS=/sys/class/ubi OW_SETTINGS_DEV=/dev OW_SETTINGS_MOUNTS=/proc/mounts
     OW_SETTINGS_OWNER=0
-    COS_OEM_BOOT_COMMAND="setenv image $OW_EXPECT_SOURCE; bootipq"
+    COS_OEM_BOOT_COMMAND="setenv bootcount 0 && setenv image $OW_EXPECT_SOURCE && bootipq"
     case "$OW_EXPECT_MODEL" in E410) COS_TARGET_FIT=config@5 ;; E410B) COS_TARGET_FIT=config@17 ;; esac
     # Reached only through a sealed qualified model/source operator tuple.
     COS_BOOT_QUALIFIED=qualified

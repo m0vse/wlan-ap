@@ -26,13 +26,15 @@ if any(key in value for value in [*args,*os.environ.values()]):
 if command=='ls':
  s=Path(args[-1]).lstat();print(stat.filemode(s.st_mode),s.st_nlink,0,0,s.st_size,'Jan 1 00:00',args[-1]);sys.exit(0)
 envfile=p/'env.json';env=json.loads(envfile.read_text());fault=os.environ.get('FAULT','')
+if command in ('ubirmvol','ubimkvol','ubiupdatevol'):
+ assert env['bootcount']=='0' and env['image']==str(1-int(os.environ['TARGET'])) and env['bootcmd']=='run sage_boot'+env['image'],'unsafe source selector/counter before target write'
 if command=='fw_printenv':
  if '-n' in args:
   name=args[args.index('-n')+1]
   if name not in env:sys.exit(1)
-  print('wrong' if (fault=='source-readback' and name=='sage_storage_pending') or (fault=='arm-readback' and name=='sage_installer_job') else env[name])
+  print('9' if fault=='counter-readback' and name=='bootcount' else ('wrong' if (fault=='source-readback' and name=='sage_storage_pending') or (fault=='arm-readback' and name=='sage_installer_job') else env[name]))
  else:print(''.join(k+'='+v+'\n' for k,v in env.items()),end='')
- sys.exit(0)
+ sys.exit(1 if fault=='initial-read-error' or (fault=='counter-read-error' and '-n' in args and name=='bootcount') else 0)
 if command=='fw_setenv':
  a=args[2:]
  label='SOURCE' if a[0]=='-s' and Path(a[1]).name=='environment' else ('ARM' if a[0]=='-s' else 'SELECTOR')
@@ -98,7 +100,7 @@ class ForwardTests(unittest.TestCase):
   put(root/'fixture-key','k'*64+'\n',0o600);put(root/'dev/urandom',bytes(range(32)))
   for key,value in dict(name='nvram',reserved_ebs=167,usable_eb_size=126976,type='dynamic',upd_marker=0,corrupted=0).items():put(root/f'sys/class/ubi/ubi0_4/{key}',str(value))
   put(root/'dev/ubi0_4',b'original shared nonunique configuration')
-  put(root/'env.json',json.dumps(dict(image=str(slot),bootcmd='bootipq',factory_mac='000456abcdef')))
+  put(root/'env.json',json.dumps(dict(bootcount='9',image=str(slot),bootcmd='bootipq',factory_mac='000456abcdef')))
   put(root/'proc/cmdline',f'ubi.mtd=fs root=ubi0:rootfs{slot} rootfstype=ubifs\n')
   put(root/'sys/class/mtd/mtd7/name','0:APPSBL')
   for key,value in dict(offset=196608,size=524288,type='nor',erasesize=65536,writesize=1,flags='0xc00').items():put(root/f'sys/class/mtd/mtd7/{key}',str(value))
@@ -148,14 +150,20 @@ oem_adapter_migrate "$input"
      self.assertEqual(settings.stat().st_mode & 0o777,0o700)
      self.assertNotIn('k'*64,events+result.stdout+result.stderr)
      values=json.loads((root/'env.json').read_text());self.assertNotIn('sage_storage_pending',values)
-     self.assertIn(f'saveenv && run sage_boot{1-slot}; run sage_boot{slot}',values['bootcmd'])
+     self.assertIn(f'saveenv; then run sage_boot{1-slot}; run sage_boot{slot}; fi',values['bootcmd'])
  def test_actual_fault_boundaries_never_arm(self):
-  for fault in ('SOURCE','source-readback','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback'):
+  for fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync','ubirmvol','ubimkvol','ubiupdatevol','readback','mount','umount','ARM','arm-readback'):
    with self.subTest(fault=fault):
     case=self.fixture();root=case[0];result=self.invoke(case,fault)
     self.assertNotEqual(result.returncode,0);values=json.loads((root/'env.json').read_text())
     self.assertIn(values['bootcmd'],('bootipq','run sage_boot0'))
     self.assertFalse((root/'PRIVACY_FAILURE').exists());self.assertNotIn('handoff=one-shot-armed',result.stdout)
+    if fault in ('SOURCE','source-readback','counter-readback','counter-read-error','sync'):
+     events=(root/'events').read_text()
+     for operation in ('ubirmvol ','ubimkvol ','ubiupdatevol '):self.assertNotIn(operation,events)
+ def test_error_returning_reader_with_correct_output_never_saves_source(self):
+  case=self.fixture();root=case[0];result=self.invoke(case,'initial-read-error')
+  self.assertNotEqual(result.returncode,0);self.assertFalse((root/'events').exists())
  def test_normal_source_activity_does_not_become_installer_source_write(self):
   case=self.fixture();root=case[0];kernel=(root/'dev/ubi0_0').read_bytes()
   result=self.invoke(case,activity=True);self.assertEqual(result.returncode,0,result.stderr)

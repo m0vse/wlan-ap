@@ -1,0 +1,73 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] cambium-jaguar: neutralize OEM alternate-bank counter
+
+The matching OEM 7.2-r1 v2.7.5a bootipq implementation toggles image when
+the first bootcount digit is 8 or 9. Nine is also an OEM upgrade sentinel.
+An explicit RAM/UBI loader bypasses that selector and leaves the sentinel
+pending. Persist the surviving OEM image and count zero before loading the
+candidate. Read back the selector before Linux rearms or returns to OEM.
+Only Jaguar implements this hook; other families and converted explicit
+UBI boot commands are unchanged. Do not change nvram_badcount.
+
+--- a/package/cambium/cambium-ab/Makefile
++++ b/package/cambium/cambium-ab/Makefile
+@@ -3,3 +3,3 @@
+ PKG_NAME:=cambium-ab
+-PKG_RELEASE:=19
++PKG_RELEASE:=20
+ PKG_LICENSE:=GPL-2.0-only
+--- a/package/cambium/cambium-jaguar-support/Makefile
++++ b/package/cambium/cambium-jaguar-support/Makefile
+@@ -3,3 +3,3 @@
+ PKG_NAME:=cambium-jaguar-support
+-PKG_RELEASE:=9
++PKG_RELEASE:=10
+ PKG_LICENSE:=GPL-2.0-only
+--- a/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
++++ b/package/cambium/cambium-jaguar-support/files/cambium-ab-jaguar.sh
+@@ -65,3 +65,20 @@
+ 	esac
+-	echo "setenv bootcmd bootipq && setenv changing_bootcmd && saveenv && nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset"
++	echo "if setenv image $((1 - $1)) && setenv bootcount 0 && setenv bootcmd bootipq && setenv changing_bootcmd && saveenv; then nand device 0 && setenv mtdids nand0=nand0 && setenv mtdparts \"mtdparts=nand0:$mtdparts\" && ubi part $part && ubi read 0x60000000 kernel && setenv bootargs \"console=ttyMSM0,115200n8 cnss2.bdf_pci0=0xab ubi.mtd=$(ab_bank_name "$1") root=/dev/ubiblock0_1 rootfstype=squashfs rootwait swiotlb=1\" && bootm 0x60000000#$AB_FIT; reset; fi"
+ }
++
++# Used only by the one-OEM/one-OpenWiFi Linux guard before rearming or
++# rebooting to native bootipq. Never rewrite a mismatched selector.
++ab_jaguar_prepare_oem_return() {
++	local slot="$1" image counter bootcmd checked_image checked_bootcmd
++	case "$slot" in 0|1) ;; *) return 1 ;; esac
++	bootcmd=$(ab_getenv bootcmd) || return 1
++	image=$(ab_getenv image) || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	[ "$bootcmd" = bootipq ] && [ "$image" = "$((1 - slot))" ] || return 1
++	ab_setenv bootcount 0 && sync || return 1
++	counter=$(ab_getenv bootcount) || return 1
++	checked_image=$(ab_getenv image) || return 1
++	checked_bootcmd=$(ab_getenv bootcmd) || return 1
++	[ "$counter" = 0 ] && [ "$checked_image" = "$image" ] &&
++		[ "$checked_bootcmd" = "$bootcmd" ]
++}
+--- a/package/cambium/cambium-ab/files/cambium-ab-guard
++++ b/package/cambium/cambium-ab/files/cambium-ab-guard
+@@ -219,5 +219,11 @@
+ 		}
+ 		! ab_hook healthy_boot || "ab_${AB_FAMILY}_healthy_boot" || return 1
++		if ab_hook prepare_oem_return; then
++			"ab_${AB_FAMILY}_prepare_oem_return" "$slot" || {
++				log 'OEM selector/counter could not be durably validated; not rearming'
++				return 1
++			}
++		fi
+ 		[ "$AB_MARKER" != 1 ] || ab_setenv changing_bootcmd 1 || return 1
+ 		ab_setenv bootcmd "$bootcmd" || return 1
+ 		log "healthy; guarded OpenWrt boot of slot $slot rearmed"
+@@ -190,3 +197,9 @@
+ 	}
++	if ab_hook prepare_oem_return; then
++		"ab_${AB_FAMILY}_prepare_oem_return" "$slot" || {
++			log 'OEM selector/counter could not be durably validated; not rebooting'
++			return 1
++		}
++	fi
+ 	log 'startup checks failed; rebooting to OEM'
+ 	do_reboot

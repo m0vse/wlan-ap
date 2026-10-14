@@ -1890,7 +1890,7 @@ mac80211_set_vif_txpower() {
 	json_select config
 	json_get_var ifname _ifname
 	json_get_var ppe_vp _ppe_vp
-	json_get_vars vif_txpower
+	json_get_vars vif_txpower mld
 	json_select ..
 
 	set_default vif_txpower "$txpower"
@@ -1906,17 +1906,40 @@ mac80211_set_vif_txpower() {
 		;;
 	esac
 
+	# A missing MLO link must not silently change the default link's power.
+	if [ -n "$mld" ] && { [ -z "$link_id" ] || ! [ "$link_id" -ge 0 ] 2>/dev/null || ! [ "$link_id" -le 15 ] 2>/dev/null; }; then
+		txpower_failed=1
+		wireless_setup_vif_failed TXPOWER_LINK_UNAVAILABLE
+		return 1
+	fi
+
 	if [ -n "$vif_txpower" ]; then
 		if [ -n "$link_id" ]; then
-			iw dev "$ifname" set txpower -l "$link_id" fixed "${vif_txpower%%.*}00"
+			iw dev "$ifname" set txpower -l "$link_id" fixed "${vif_txpower%%.*}00" || {
+				txpower_failed=1
+				wireless_setup_vif_failed TXPOWER_SET_FAILED
+				return 1
+			}
 		else
-			iw dev "$ifname" set txpower fixed "${vif_txpower%%.*}00"
+			iw dev "$ifname" set txpower fixed "${vif_txpower%%.*}00" || {
+				txpower_failed=1
+				wireless_setup_vif_failed TXPOWER_SET_FAILED
+				return 1
+			}
 		fi
 	else
 		if [ -n "$link_id" ]; then
-			iw dev "$ifname" set txpower -l "$link_id" auto
+			iw dev "$ifname" set txpower -l "$link_id" auto || {
+				txpower_failed=1
+				wireless_setup_vif_failed TXPOWER_SET_FAILED
+				return 1
+			}
 		else
-			iw dev "$ifname" set txpower auto
+			iw dev "$ifname" set txpower auto || {
+				txpower_failed=1
+				wireless_setup_vif_failed TXPOWER_SET_FAILED
+				return 1
+			}
 		fi
 	fi
 
@@ -2371,7 +2394,12 @@ drv_mac80211_setup() {
 	wdev_tool "$phy$phy_suffix" set_config "$(json_dump)" $active_ifnames
 	json_set_namespace "$prev"
 
+	txpower_failed=0
 	for_each_interface "ap sta adhoc mesh monitor" mac80211_set_vif_txpower
+	[ "$txpower_failed" = 0 ] || {
+		wireless_setup_failed TXPOWER_SET_FAILED
+		return 1
+	}
 
 	config_get enable_smp_affinity mac80211 enable_smp_affinity 0
 	if [ "$enable_smp_affinity" -eq 1 ]; then

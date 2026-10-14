@@ -48,8 +48,11 @@ const actions = {
 		// Could n't reprouce it though
 		// Give few milliseconds to settle
 		sleep(10);	
-		let level = global.local.txpower(msg.bssid) / 100;
-		return result(0, msg.event, 'BSS ' + msg.bssid + ' changed TX power', { action: 'tx_power', bssid: msg.bssid, level });
+		let actual = global.local.txpower(msg.bssid);
+		let level = actual != null ? actual / 100 : null;
+		return result(0, msg.event, 'BSS ' + msg.bssid + ' TX power request accepted', {
+			action: 'tx_power', bssid: msg.bssid, requested_level: msg.level, level,
+			verification: actual != null ? 'driver_reported' : 'unconfirmed' });
 	},
 
 	// ubus call rrm command '{"action": "bss_transition", "addr": "4e:7f:3e:2c:8a:68", "neighbors": ["34:ef:b6:af:48:b1"] }'

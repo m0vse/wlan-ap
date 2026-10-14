@@ -1,0 +1,381 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi: preserve accepted operating state and propagate setup failures
+
+Only OpenWiFi generated package sources are changed. Preserve OWE refresh,
+legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
+
+--- a/package/network/services/hostapd/Makefile
++++ b/package/network/services/hostapd/Makefile
+@@ -1 +1 @@
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+--- a/package/network/services/hostapd/src/src/ap/ucode.c
++++ b/package/network/services/hostapd/src/src/ap/ucode.c
+@@ -1,4 +1,5 @@
+ #include <sys/un.h>
++#include <limits.h>
+ 
+ #include "utils/includes.h"
+ #include "utils/common.h"
+@@ -598,43 +599,85 @@
+ 	return NULL;
+ }
+ 
++static void
++uc_hostapd_restore_channel(struct hostapd_iface *iface,
++			   struct hostapd_config *previous, int freq)
++{
++	struct hostapd_config *conf = iface->conf;
++
++	/* Restore scalars only: lifecycle helpers may change pointer ownership. */
++	conf->hw_mode = previous->hw_mode;
++	conf->channel = previous->channel;
++	conf->op_class = previous->op_class;
++	conf->secondary_channel = previous->secondary_channel;
++	conf->acs = previous->acs;
++	conf->punct_bitmap = previous->punct_bitmap;
++	hostapd_set_oper_chwidth(conf, hostapd_get_oper_chwidth(previous));
++	hostapd_set_oper_centr_freq_seg0_idx(conf,
++			hostapd_get_oper_centr_freq_seg0_idx(previous));
++	hostapd_set_oper_centr_freq_seg1_idx(conf,
++			hostapd_get_oper_centr_freq_seg1_idx(previous));
++	iface->freq = freq;
++}
++
+ static uc_value_t *
+ uc_hostapd_iface_start(uc_vm_t *vm, size_t nargs)
+ {
+ 	struct hostapd_iface *iface = uc_fn_thisval("hostapd.iface");
+ 	uc_value_t *info = uc_fn_arg(0);
+ 	struct hostapd_config *conf;
+-	bool changed = false;
++	struct hostapd_config previous;
++	int previous_freq;
++	u8 channel;
+ 	uint64_t intval;
+-	int i;
++	int i, ret;
+ 
+ 	if (!iface)
+ 		return NULL;
+ 
+-	if (!info)
++	conf = iface->conf;
++	if (!conf)
++		return ucv_boolean_new(false);
++	previous = *conf;
++	previous_freq = iface->freq;
++
++	if (!info) {
++		iface->freq = 0;
+ 		goto out;
++	}
+ 
+ 	if (ucv_type(info) != UC_OBJECT)
+ 		return NULL;
+ 
+-#define UPDATE_VAL(field, name)							\
+-	do {									\
+-		intval = ucv_int64_get(ucv_object_get(info, name, NULL));	\
+-		if (!errno && intval != conf->field) {				\
+-			conf->field = intval;					\
+-			changed = true;						\
+-		}								\
+-	} while(0)
+-
+-	conf = iface->conf;
+-	UPDATE_VAL(op_class, "op_class");
++#define UPDATE_VAL(field, name) \
++	do { \
++		intval = ucv_int64_get(ucv_object_get(info, name, NULL)); \
++		if (!errno) conf->field = intval; \
++	} while (0)
++
++	/* Do not combine a previous channel with a new operating band. */
++	intval = ucv_int64_get(ucv_object_get(info, "frequency", NULL));
++	if (errno || !intval || intval > INT_MAX)
++		return ucv_boolean_new(false);
++	iface->freq = intval;
++	intval = ucv_int64_get(ucv_object_get(info, "channel", NULL));
++	if (errno || !intval || intval > 255 ||
++	    ieee80211_freq_to_chan(iface->freq, &channel) == NUM_HOSTAPD_MODES ||
++	    intval != channel)
++		goto invalid;
++
+ 	UPDATE_VAL(hw_mode, "hw_mode");
+ 	UPDATE_VAL(channel, "channel");
+-	UPDATE_VAL(secondary_channel, "sec_channel");
+-	if (!changed &&
+-	    (iface->bss[0]->beacon_set_done ||
+-	     iface->state == HAPD_IFACE_DFS))
+-		return ucv_boolean_new(true);
++
++	/*op_class for 5GHz 320MHz bw is not defined in spec. So unset op_class*/
++	intval = ucv_int64_get(ucv_object_get(info, "op_class", NULL));
++	if (!errno)
++		conf->op_class = intval;
++
++	intval = ucv_int64_get(ucv_object_get(info, "sec_channel", NULL));
++	if (!errno) {
++		conf->secondary_channel = intval;
++	}
+ 
+ 	intval = ucv_int64_get(ucv_object_get(info, "center_seg0_idx", NULL));
+ 	if (!errno)
+@@ -648,12 +691,31 @@
+ 	if (!errno)
+ 		hostapd_set_oper_chwidth(conf, intval);
+ 
+-	intval = ucv_int64_get(ucv_object_get(info, "frequency", NULL));
++	conf->acs = 0;
++
++	intval = ucv_int64_get(ucv_object_get(info, "punct_bitmap", NULL));
+ 	if (!errno)
+-		iface->freq = intval;
++		conf->punct_bitmap = intval;
+ 	else
+-		iface->freq = 0;
+-	conf->acs = 0;
++		conf->punct_bitmap = 0;
++
++	if (is_6ghz_freq(iface->freq) != is_6ghz_op_class(conf->op_class))
++		goto invalid;
++
++	/* Frequency, width, centers and operating class are part of the state. */
++	if (previous_freq == iface->freq &&
++	    previous.hw_mode == conf->hw_mode &&
++	    previous.channel == conf->channel &&
++	    previous.op_class == conf->op_class &&
++	    previous.secondary_channel == conf->secondary_channel &&
++	    previous.acs == conf->acs && previous.punct_bitmap == conf->punct_bitmap &&
++	    hostapd_get_oper_chwidth(&previous) == hostapd_get_oper_chwidth(conf) &&
++	    hostapd_get_oper_centr_freq_seg0_idx(&previous) == hostapd_get_oper_centr_freq_seg0_idx(conf) &&
++	    hostapd_get_oper_centr_freq_seg1_idx(&previous) == hostapd_get_oper_centr_freq_seg1_idx(conf) &&
++	    ((iface->state == HAPD_IFACE_ENABLED &&
++	      iface->bss[0]->beacon_set_done) ||
++	     iface->state == HAPD_IFACE_DFS))
++		return ucv_boolean_new(true);
+ 
+ out:
+ 	switch (iface->state) {
+@@ -671,36 +733,66 @@
+ 	if (conf->channel && !iface->freq)
+ 		iface->freq = hostapd_hw_get_freq(iface->bss[0], conf->channel);
+ 
+-	for (i = 0; i < iface->num_bss; i++)
+-		iface->bss[i]->conf->start_disabled = 0;
+-
+ 	if (iface->state != HAPD_IFACE_ENABLED) {
+-		hostapd_enable_iface(iface);
++		for (i = 0; i < iface->num_bss; i++)
++			iface->bss[i]->conf->start_disabled = 0;
++		ret = hostapd_enable_iface(iface);
++		if (ret)
++			goto failed;
+ 		return ucv_boolean_new(true);
+ 	}
++
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		struct hostapd_data *hapd = iface->bss[i];
+-		int ret;
+-
+-		hostapd_set_freq(hapd, conf->hw_mode, iface->freq,
+-				 conf->channel,
+-				 conf->enable_edmg,
+-				 conf->edmg_channel,
+-				 conf->ieee80211n,
+-				 conf->ieee80211ac,
+-				 conf->ieee80211ax,
+-				 conf->ieee80211be,
+-				 conf->secondary_channel,
+-				 hostapd_get_oper_chwidth(conf),
+-				 hostapd_get_oper_centr_freq_seg0_idx(conf),
+-				 hostapd_get_oper_centr_freq_seg1_idx(conf));
+-
+-		ieee802_11_set_beacon(hapd);
+-	}
++
++		ret = hostapd_set_freq(hapd, conf->hw_mode, iface->freq,
++				       conf->channel,
++				       conf->enable_edmg,
++				       conf->edmg_channel,
++				       conf->ieee80211n,
++				       conf->ieee80211ac,
++				       conf->ieee80211ax,
++				       conf->ieee80211be,
++				       conf->secondary_channel,
++				       hostapd_get_oper_chwidth(conf),
++				       hostapd_get_oper_centr_freq_seg0_idx(conf),
++				       hostapd_get_oper_centr_freq_seg1_idx(conf));
++
++		wpa_printf(MSG_INFO, "set_freq called for bssid " MACSTR " ret %d ifname %s\n",
++			   MAC2STR(hapd->own_addr), ret, hapd->conf->iface);
++		if (ret)
++			goto failed;
++	}
++
++	/* All frequency requests must succeed before advertising the candidate. */
++	for (i = 0; i < iface->num_bss; i++) {
++		struct hostapd_data *hapd = iface->bss[i];
++
++		hapd->conf->start_disabled = 0;
++		ret = ieee802_11_set_beacon(hapd);
++		wpa_printf(MSG_DEBUG, "set beacon called for bssid " MACSTR " ret %d \n",
++			   MAC2STR(hapd->own_addr), ret);
++		if (ret)
++			goto failed;
++	}
++
+ 	hostapd_owe_update_trans(iface);
+ 
+ 	return ucv_boolean_new(true);
++
++failed:
++	/* A partially accepted request is not a known operating state. */
++	wpa_printf(MSG_ERROR, "ucode: channel setup failed; disabling affected interface");
++	uc_hostapd_restore_channel(iface, &previous, previous_freq);
++	hostapd_disable_iface(iface);
++	hostapd_set_state(iface, HAPD_IFACE_DISABLED);
++	return ucv_boolean_new(false);
++
++invalid:
++	wpa_printf(MSG_ERROR, "ucode: inconsistent frequency/channel tuple");
++	uc_hostapd_restore_channel(iface, &previous, previous_freq);
++	return ucv_boolean_new(false);
+ }
+ 
+ static uc_value_t *
+@@ -743,8 +835,11 @@
+ 	if ((intval = ucv_int64_get(ucv_object_get(info, "center_freq2", NULL))) && !errno)
+ 		csa.freq_params.center_freq2 = intval;
+ 
+-	for (i = 0; i < iface->num_bss; i++)
++	for (i = 0; i < iface->num_bss; i++) {
+ 		ret = hostapd_switch_channel(iface->bss[i], &csa);
++		if (ret)
++			break;
++	}
+ 
+ 	return ucv_boolean_new(!ret);
+ }
+--- a/package/network/services/hostapd/files/hostapd.uc
++++ b/package/network/services/hostapd/files/hostapd.uc
+@@ -149,7 +149,7 @@
+ 
+ 	let freq_info = iface_freq_info(iface, config, phy_status);
+ 
+-	return iface.start(freq_info) >= 0;
++	return iface.start(freq_info) == true;
+ }
+ 
+ function iface_config_macaddr_list(config)
+@@ -1187,7 +1187,7 @@
+ 			}
+ 
+ 			let ret = iface.start(freq_info);
+-			if (!ret)
++			if (ret != true)
+ 				return libubus.STATUS_UNKNOWN_ERROR;
+ 
+ 			return 0;
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -1 +1 @@
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+--- a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+@@ -900,9 +900,17 @@
+ 
+ 	set_default vif_txpower "$txpower"
+ 	if [ -n "$vif_txpower" ]; then
+-		iw dev "$ifname" set txpower fixed "${vif_txpower%%.*}00"
++		iw dev "$ifname" set txpower fixed "${vif_txpower%%.*}00" || {
++			txpower_failed=1
++			wireless_setup_vif_failed TXPOWER_SET_FAILED
++			return 1
++		}
+ 	else
+-		iw dev "$ifname" set txpower auto
++		iw dev "$ifname" set txpower auto || {
++			txpower_failed=1
++			wireless_setup_vif_failed TXPOWER_SET_FAILED
++			return 1
++		}
+ 	fi
+ }
+ 
+@@ -1222,13 +1230,24 @@
+ 
+ 	[ -z "$phy_suffix" ] && {
+ 		if [ -n "$txpower" ]; then
+-			iw phy "$phy" set txpower fixed "${txpower%%.*}00"
++			iw phy "$phy" set txpower fixed "${txpower%%.*}00" || {
++				wireless_setup_failed TXPOWER_SET_FAILED
++				return 1
++			}
+ 		else
+-			iw phy "$phy" set txpower auto
++			iw phy "$phy" set txpower auto || {
++				wireless_setup_failed TXPOWER_SET_FAILED
++				return 1
++			}
+ 		fi
+ 	}
+ 
++	txpower_failed=0
+ 	for_each_interface "ap sta adhoc mesh monitor" mac80211_set_vif_txpower
++	[ "$txpower_failed" = 0 ] || {
++		wireless_setup_failed TXPOWER_SET_FAILED
++		return 1
++	}
+ 	wireless_set_up
+ }
+ 
+--- /dev/null
++++ b/package/network/services/hostapd/patches/9999-accepted-channel-event.patch
+@@ -0,0 +1,43 @@
++--- a/src/ap/drv_callbacks.c
+++++ b/src/ap/drv_callbacks.c
++@@ -1243,6 +1243,9 @@
++ {
++ #ifdef NEED_AP_MLME
++ 	int channel, chwidth, is_dfs0, is_dfs;
+++	int previous_freq = hapd->iface->freq;
+++	enum hostapd_hw_mode previous_hw_mode = hapd->iconf->hw_mode;
+++	struct hostapd_hw_modes *previous_mode = hapd->iface->current_mode;
++ 	u8 seg0_idx = 0, seg1_idx = 0, op_class, chan_no;
++ 	size_t i;
++ 
++@@ -1266,7 +1269,6 @@
++ 
++ 	/* Check if any of configured channels require DFS */
++ 	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
++-	hapd->iface->freq = freq;
++ 
++ 	channel = hostapd_hw_get_channel(hapd, freq);
++ 	if (!channel) {
++@@ -1275,6 +1277,7 @@
++ 			       "driver switched to bad channel!");
++ 		return;
++ 	}
+++	hapd->iface->freq = freq;
++ 
++ 	switch (width) {
++ 	case CHAN_WIDTH_80:
++@@ -1300,8 +1303,12 @@
++ 	/* The operating channel changed when CSA finished, so need to update
++ 	 * hw_mode for all following operations to cover the cases where the
++ 	 * driver changed the operating band. */
++-	if (finished && hostapd_csa_update_hwmode(hapd->iface))
++-		return;
+++	if (finished && hostapd_csa_update_hwmode(hapd->iface)) {
+++		hapd->iface->freq = previous_freq;
+++		hapd->iconf->hw_mode = previous_hw_mode;
+++		hapd->iface->current_mode = previous_mode;
+++		return;
+++	}
++ 
++ 	switch (hapd->iface->current_mode->mode) {
++ 	case HOSTAPD_MODE_IEEE80211A:

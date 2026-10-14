@@ -22,7 +22,7 @@ class DeferredTests(unittest.TestCase):
             f.put('dev/ubi0_3', b'KEEP source root')
         f.put('cmdline', f'ubi.mtd=fs root=/dev/ubiblock0_{2*slot+1} rootfstype=squashfs ro\n')
         case.source_boot = f'setenv image {slot}; bootm qualified-native-source'
-        f.put('env-snapshot', f'image={slot}\nbootcmd=run sage_stable{slot}\nsage_ab_state=confirmed\nsage_boot{slot}={case.source_boot}\nethaddr=02:00:00:00:00:01\n')
+        f.put('env-snapshot', f'bootcount=9\nimage={slot}\nbootcmd=run sage_stable{slot}\nsage_ab_state=confirmed\nsage_boot{slot}={case.source_boot}\nethaddr=02:00:00:00:00:01\n')
         writer = f.bin/'ubiupdatevol'
         writer.write_text(writer.read_text().replace('("ubi0_2","ubi0_3")',
                           f'("ubi0_{2*(1-slot)}","ubi0_{2*(1-slot)+1}")').replace('dst.name=="ubi0_2"', f'dst.name=="ubi0_{2*(1-slot)}"'))
@@ -42,12 +42,12 @@ class DeferredTests(unittest.TestCase):
                 self.assertEqual(env[f'sage_boot{slot}'], case.source_boot)
                 self.assertEqual(env['image'], str(slot))
                 self.assertEqual(env['sage_oem_restore_state'], 'armed')
-                self.assertIn(f'saveenv && run sage_boot{1-slot}; run sage_boot{slot}', env['bootcmd'])
+                self.assertIn(f'saveenv; then run sage_boot{1-slot}; run sage_boot{slot}; fi', env['bootcmd']);self.assertEqual(env['bootcount'],'0')
                 self.assertIn('shared_configuration=preserved', result.stdout)
 
     def test_failures_never_reset_shared_data_or_claim_success(self):
         for slot in (0, 1):
-            for fault in ('boundary', 'env', 'batch', 'sync', 'root', 'kernel', 'metadata_readback', 'selector'):
+            for fault in ('boundary', 'env', 'batch', 'sync', 'counter_read_error', 'root', 'kernel', 'metadata_readback', 'selector'):
                 with self.subTest(slot=slot, fault=fault):
                     case, extra = self.fixture(slot)
                     kept = {p: p.read_bytes() for p in case.f.dev.iterdir()
@@ -58,7 +58,7 @@ class DeferredTests(unittest.TestCase):
                     self.assertNotIn('NOR', ops)
                     self.assertNotIn('NVRAM', ops)
                     self.assertNotIn('shared_configuration=preserved', result.stdout)
-                    if fault in ('boundary', 'env', 'batch', 'sync'):
+                    if fault in ('boundary', 'env', 'batch', 'sync', 'counter_read_error'):
                         self.assertNotIn('ROOT', ops)
                         self.assertNotIn('KERNEL', ops)
                     env = dict(row.split('=', 1) for row in (case.r/'env-snapshot').read_text().splitlines())
@@ -87,7 +87,7 @@ class DeferredTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(ops, ['ENV_BATCH', 'ROOT', 'KERNEL', 'ENV_BATCH', 'ENV_SELECTOR'])
         env = dict(row.split('=', 1) for row in (case.r/'env-snapshot').read_text().splitlines())
-        self.assertIn('saveenv && run sage_boot1; run sage_boot0', env['bootcmd'])
+        self.assertIn('saveenv; then run sage_boot1; run sage_boot0; fi', env['bootcmd'])
         self.assertEqual(env['sage_oem_restore_state'], 'armed')
         self.assertEqual((case.r/'dev/ubi0_4').read_bytes(), b'simulated independent daemon write')
         self.assertIn('oem_candidate_armed=', result.stdout)

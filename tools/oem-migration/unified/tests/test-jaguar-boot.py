@@ -9,9 +9,9 @@ import unittest
 
 HERE=Path(__file__).resolve().parents[1]
 class BootTests(unittest.TestCase):
- def invoke(self,model,sku,slot,fault=''):
+ def invoke(self,model,sku,slot,fault='',counter='9'):
   with tempfile.TemporaryDirectory() as directory:
-   root=Path(directory);state=root/'state';state.write_text(json.dumps(dict(image=str(slot),bootcmd='bootipq',factory_mac='bca993000002')))
+   root=Path(directory);state=root/'state';state.write_text(json.dumps(dict(image=str(slot),bootcmd='bootipq',bootcount=counter,factory_mac='bca993000002')))
    script=r'''
 . "$HERE/lib/common.sh"; . "$HERE/adapters/jaguar.sh"
 OEM_JAGUAR_ENV_CONFIG=$STATE
@@ -32,6 +32,8 @@ if args[0]=='-s':
   if len(fields)==1:s.pop(fields[0],None)
   else:s[fields[0]]=fields[1]
  if fault=='source-readback' and label=='SOURCE':s['jaguar_storage_pending']='bad'
+ if fault=='counter-readback' and label=='SOURCE':s['bootcount']='9'
+ if fault=='source-image' and label=='SOURCE':s['image']=str(1-int(s['image']))
  if fault=='arm-readback' and label=='ARM':s['jaguar_ab_target']='bad'
  if fault.startswith('metadata-') and label=='ARM':s['jaguar_installer_'+fault.removeprefix('metadata-')]='bad'
 else:
@@ -63,17 +65,29 @@ oem_jaguar_arm
     result,state,events=self.invoke(model,sku,slot)
     self.assertEqual(result.returncode,0,result.stderr)
     self.assertEqual(events,['SOURCE','WRITER','ARM','SELECTOR'])
-    self.assertEqual(state[f'jaguar_boot{slot}'],f'setenv image {slot}; bootipq')
+    self.assertEqual(state[f'jaguar_boot{slot}'],f'setenv bootcount 0 && setenv image {slot} && bootipq')
     self.assertIn('#'+fit,state[f'jaguar_boot{1-slot}'])
-    self.assertEqual(state['image'],str(slot));self.assertEqual(state['factory_mac'],'bca993000002')
-    self.assertIn(f'saveenv && run jaguar_boot{1-slot}; run jaguar_boot{slot}',state['bootcmd'])
+    self.assertEqual(state['image'],str(slot));self.assertEqual(state['factory_mac'],'bca993000002');self.assertEqual(state['bootcount'],'0')
+    self.assertIn(f'saveenv; then run jaguar_boot{1-slot}; run jaguar_boot{slot}; fi',state['bootcmd'])
  def test_failed_persistence_or_metadata_never_activates_candidate(self):
   for slot in (0,1):
-   for fault in ('SOURCE','source-readback','sync','ARM','arm-readback','metadata-target','metadata-job','metadata-image','late-target','late-job','late-image','protected','SELECTOR'):
+   for fault in ('SOURCE','source-readback','counter-readback','source-image','sync','ARM','arm-readback','metadata-target','metadata-job','metadata-image','late-target','late-job','late-image','protected','SELECTOR'):
     result,state,events=self.invoke('XV2-2T1','0000001f',slot,fault)
     self.assertNotEqual(result.returncode,0)
     self.assertIn(state['bootcmd'],('bootipq',f'run jaguar_boot{slot}'))
-    if fault in ('SOURCE','source-readback','sync'):self.assertNotIn('WRITER',events)
+    if fault in ('SOURCE','source-readback','counter-readback','source-image','sync'):self.assertNotIn('WRITER',events)
+ def test_counter_eight_nine_and_retry_are_neutralized(self):
+  for counter in ('8','9','0'):
+   for slot in (0,1):
+    result,state,events=self.invoke('XV2-2','00000014',slot,counter=counter)
+    self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(state['bootcount'],'0')
+ def test_rendered_trial_never_loads_on_failed_prefix_or_save(self):
+  result,state,events=self.invoke('XV2-2','00000014',0)
+  self.assertEqual(result.returncode,0,result.stderr)
+  for failure in ('bootcount','bootcmd','image','jaguar_ab_state','saveenv',''):
+   script='''events=; setenv() { [ "$1" != "$FAIL" ]; }; saveenv() { [ "$FAIL" != saveenv ] || return 1; events="$events SAVE"; }; run() { events="$events $*"; }; '''+state['bootcmd']+'; printf "%s" "$events"'
+   tested=subprocess.run(['sh','-c',script],env=dict(os.environ,FAIL=failure),capture_output=True,text=True)
+   self.assertEqual(tested.stdout,'' if failure else ' SAVE jaguar_boot1 jaguar_boot0')
  def test_unsupported_or_mismatched_model_never_writes_env(self):
   for model,sku in (('XV2-2T0','00000016'),('XE3-4TN','00000021'),('XV2-2','0000001f')):
    result,state,events=self.invoke(model,sku,0)

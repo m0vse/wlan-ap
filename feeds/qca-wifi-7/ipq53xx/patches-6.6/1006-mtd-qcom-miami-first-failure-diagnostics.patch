@@ -1,0 +1,369 @@
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3,6 +3,8 @@
+  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+  */
+ #include <linux/clk.h>
++#include <linux/ktime.h>
++#include <linux/spinlock.h>
+ #include <linux/slab.h>
+ #include <linux/bitops.h>
+ #include <linux/dma/qcom_adm.h>
+@@ -491,6 +493,23 @@
+  *
+  * @cmd1/vld:			some fixed controller register values
+  */
++/* A single immutable, non-secret first-failure record per boot. */
++#define MIAMI_DIAG_CWS 4
++#define MIAMI_DIAG_REGS 14
++struct miami_nand_diag {
++ u64 ns;
++ int page, result, command;
++ u32 failed, corrected, header;
++ u32 regs[MIAMI_DIAG_REGS], status[MIAMI_DIAG_CWS * 3];
++ u32 page_scope_status[MIAMI_DIAG_CWS * 3];
++ int dma_cookie[4], dma_state[4];
++ unsigned long hz;
++ unsigned int ce, cmd_sgl, rx_sgl, tx_sgl, sts_sgl, codewords;
++ int feature[3];
++ const char *reason;
++ bool status_valid;
++};
++
+ struct qcom_nand_controller {
+ 	struct device *dev;
+ 
+@@ -545,6 +564,11 @@
+ 	u32 cmd1, vld;
+ 	__le32 *status_buf;
+ 	int sts_buf_size;
++ bool miami_diag_enabled, miami_diag_claimed, miami_diag_ready;
++ unsigned int miami_diag_seen;
++ spinlock_t miami_diag_lock;
++ struct miami_nand_diag miami_diag;
++ dma_cookie_t miami_diag_cookie[4];
+ };
+ 
+ /*
+@@ -1689,8 +1713,15 @@
+ 		}
+ 	}
+ 
+-	list_for_each_entry(desc, &nandc->desc_list, node)
++	list_for_each_entry(desc, &nandc->desc_list, node) {
+ 		cookie = dmaengine_submit(desc->dma_desc);
++		if (nandc->miami_diag_enabled) {
++			struct dma_chan *c = desc->dma_desc->chan;
++			unsigned int slot = c == nandc->cmd_chan ? 0 :
++				 c == nandc->rx_chan ? 1 : c == nandc->tx_chan ? 2 : 3;
++			nandc->miami_diag_cookie[slot] = cookie;
++		}
++	}
+ 
+ 	if (nandc->props->is_bam) {
+ 		bam_txn->last_cmd_desc->callback = qpic_bam_dma_done;
+@@ -1936,6 +1967,89 @@
+ 	}
+ 
+ 	return true;
++}
++
++static void miami_diag_publish(struct qcom_nand_host *host,
++                              struct miami_nand_diag *record, bool features);
++
++/* Only CPU reads of documented controller registers; no array access. */
++static void miami_diag_take(struct qcom_nand_host *host,
++                           struct miami_nand_diag *d, int page,
++                           const char *reason, bool status_valid)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ struct mtd_info *m = nand_to_mtd(&host->chip);
++ const unsigned int offsets[MIAMI_DIAG_REGS] = {
++  NAND_FLASH_CMD, NAND_ADDR0, NAND_ADDR1, NAND_FLASH_STATUS,
++  NAND_BUFFER_STATUS, NAND_DEV0_CFG0, NAND_DEV0_CFG1, NAND_DEV0_ECC_CFG,
++  NAND_CTRL, NAND_VERSION, NAND_ERASED_CW_DETECT_STATUS,
++  NAND_FLASH_SPI_CFG, NAND_QSPI_MSTR_CONFIG, NAND_FLASH_FEATURES
++ };
++ unsigned int i;
++
++ memset(d, 0, sizeof(*d));
++ d->ns = ktime_get_boottime_ns();
++ d->page = page; d->reason = reason; d->command = host->last_command;
++ d->status_valid = status_valid;
++ d->failed = m->ecc_stats.failed; d->corrected = m->ecc_stats.corrected;
++ d->hz = clk_get_rate(n->iomacro_clk);
++ for (i = 0; i < MIAMI_DIAG_REGS; i++)
++  d->regs[i] = nandc_read(n, offsets[i] == NAND_FLASH_SPI_CFG ?
++                          dev_cmd_reg_addr(n, offsets[i]) : offsets[i]);
++ if (status_valid)
++  for (i = 0; i < MIAMI_DIAG_CWS * 3; i++)
++   d->status[i] = le32_to_cpu(n->reg_read_buf[i]);
++ if (status_valid && n->status_buf)
++  for (i = 0; i < MIAMI_DIAG_CWS * 3; i++)
++   d->page_scope_status[i] = le32_to_cpu(n->status_buf[i]);
++ for (i = 0; i < 4; i++) {
++  struct dma_chan *chan = i == 0 ? n->cmd_chan : i == 1 ? n->rx_chan :
++                          i == 2 ? n->tx_chan : n->sts_chan;
++  d->dma_cookie[i] = n->miami_diag_cookie[i];
++  d->dma_state[i] = !chan || d->dma_cookie[i] <= 0 ? -ENODATA :
++                   dma_async_is_tx_complete(chan, d->dma_cookie[i], NULL, NULL);
++ }
++ d->codewords = n->max_cwperpage;
++ if (n->bam_txn) {
++  d->ce = n->bam_txn->bam_ce_pos;
++  d->cmd_sgl = n->bam_txn->cmd_sgl_pos;
++  d->rx_sgl = n->bam_txn->rx_sgl_pos;
++  d->tx_sgl = n->bam_txn->tx_sgl_pos;
++  d->sts_sgl = n->bam_txn->sts_sgl_pos;
++ }
++ for (i = 0; i < 3; i++) d->feature[i] = -ENODATA;
++}
++
++/* Observe the existing canary reads, never issue an additional page read.
++ * Only previously observed UBI# headers qualify: free/bad/unformatted
++ * blocks cannot become a false first fault. Addresses are physical PEBs
++ * for this exact board's fixed bank offsets, not unstable MTD numbers.
++ */
++static void miami_diag_header(struct qcom_nand_host *host, const u8 *data,
++                             int page, int result)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ const unsigned int pebs[] = { 6, 7, 255, 256, 774, 775,
++                               1023, 1024, 1025, 1181 };
++ struct miami_nand_diag d;
++ unsigned int i, peb;
++
++ if (!n->miami_diag_enabled || n->miami_diag_claimed || !data ||
++     result < 0 || page % 64) return;
++ peb = page / 64;
++ for (i = 0; i < ARRAY_SIZE(pebs); i++) {
++  if (peb != pebs[i]) continue;
++  if (!memcmp(data, "UBI#", 4)) {
++   n->miami_diag_seen |= BIT(i);
++  } else if (n->miami_diag_seen & BIT(i)) {
++   miami_diag_take(host, &d, page, "qualified_ec_header_changed", true);
++   d.result = result;
++   d.header = ((u32)data[0] << 24) | ((u32)data[1] << 16) |
++              ((u32)data[2] << 8) | data[3];
++   miami_diag_publish(host, &d, true);
++  }
++  return;
++ }
+ }
+ 
+ struct read_stats {
+@@ -2120,7 +2234,9 @@
+ 	unsigned int max_bitflips = 0, uncorrectable_cws = 0;
+ 	struct read_stats *buf;
+ 	bool flash_op_err = false, erased;
+-	int i;
++	struct miami_nand_diag first;
++	u32 failed_before = mtd->ecc_stats.failed;
++	int i, result;
+ 	u8 *data_buf_start = data_buf, *oob_buf_start = oob_buf;
+ 
+ 	buf = (struct read_stats *)nandc->reg_read_buf;
+@@ -2198,15 +2314,30 @@
+ 			oob_buf += oob_len + ecc->bytes;
+ 	}
+ 
+-	if (flash_op_err)
++	if (nandc->miami_diag_enabled && !nandc->miami_diag_claimed &&
++	    (flash_op_err || uncorrectable_cws))
++		miami_diag_take(host, &first, page, flash_op_err ?
++			"read_operational_error" : "uncorrectable_ecc", true);
++	if (flash_op_err) {
++		if (nandc->miami_diag_enabled && !nandc->miami_diag_claimed) {
++			first.result = -EIO;
++			miami_diag_publish(host, &first, true);
++		}
+ 		return -EIO;
+-
++	}
+ 	if (!uncorrectable_cws)
+ 		return max_bitflips;
+ 
+-	return check_for_erased_page(host, data_buf_start, oob_buf_start,
+-				     uncorrectable_cws, page,
+-				     max_bitflips);
++	/* Save original ECC/controller state before erased-page raw retries.
++	 * Publish only if those checks establish a genuine error. */
++	result = check_for_erased_page(host, data_buf_start, oob_buf_start,
++				       uncorrectable_cws, page, max_bitflips);
++	if (nandc->miami_diag_enabled && !nandc->miami_diag_claimed &&
++	    (result < 0 || mtd->ecc_stats.failed != failed_before)) {
++		first.result = result < 0 ? result : -EBADMSG;
++		miami_diag_publish(host, &first, result >= 0);
++	}
++	return result;
+ }
+ 
+ /*
+@@ -2287,6 +2418,13 @@
+ 	}
+ 
+ 	ret = submit_descs(nandc);
++	if (ret && nandc->miami_diag_enabled && !nandc->miami_diag_claimed) {
++		struct miami_nand_diag first;
++		miami_diag_take(host, &first, page, "read_dma_failure", false);
++		first.result = ret;
++		/* A timed-out BAM transfer may still own its buffers: no GET_FEATURE. */
++		miami_diag_publish(host, &first, false);
++	}
+ 	free_descs(nandc);
+ 
+ 	if (ret) {
+@@ -2296,7 +2434,9 @@
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope)
+ 		memmove(nandc->reg_read_buf, status_buf_start, nandc->sts_buf_size);
+ 
+-	return parse_read_errors(host, data_buf_start, oob_buf_start, page);
++	ret = parse_read_errors(host, data_buf_start, oob_buf_start, page);
++	miami_diag_header(host, data_buf_start, page, ret);
++	return ret;
+ }
+ 
+ /*
+@@ -3525,6 +3665,49 @@
+ 	return ret;
+ }
+ 
++/* Called only from an existing NAND read callback under NAND core's chip
++ * and controller locks. Freeze the original register/status snapshot first;
++ * GET_FEATURE values are explicitly collected after erased-page checks.
++ * No SET_FEATURE, RESET, array reads, retries or automatic recovery here.
++ */
++static void miami_diag_publish(struct qcom_nand_host *host,
++                              struct miami_nand_diag *record, bool features)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ unsigned long flags;
++ unsigned int i;
++ int value;
++
++ if (!n->miami_diag_enabled || n->miami_diag_claimed) return;
++ n->miami_diag_claimed = true;
++ /* Do not submit feature commands if any submitted channel is unfinished. */
++ for (i = 0; i < 4; i++)
++  if (record->dma_cookie[i] > 0 && record->dma_state[i] != DMA_COMPLETE)
++   features = false;
++ if (features) {
++  for (i = 0; i < 3; i++) {
++   value = qcom_serial_get_feature(n, host, 0xa0 + 0x10 * i);
++   record->feature[i] = value < 0 ? value : (value >> 8) & 0xff;
++   /* Stop after a failed diagnostic command; never retry a wedged BAM. */
++   if (value < 0) break;
++  }
++ }
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ n->miami_diag = *record;
++ n->miami_diag_ready = true;
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++ dev_err(n->dev, "Miami first NAND failure: %s page=%d result=%d; snapshot in miami_first_failure\n",
++         record->reason, record->page, record->result);
++ dev_err(n->dev, "Miami first NAND facts: boottime_ns=%llu clock=%lu cmd=%d valid=%d A0=%d B0=%d C0=%d\n",
++         record->ns, record->hz, record->command, record->status_valid,
++         record->feature[0], record->feature[1], record->feature[2]);
++ for (i = 0; i < MIAMI_DIAG_CWS; i++)
++  dev_err(n->dev, "Miami first NAND cw%u: parsed=%08x/%08x/%08x scope=%08x/%08x/%08x dma_cookie=%d dma_state=%d\n",
++          i, record->status[3*i], record->status[3*i+1], record->status[3*i+2],
++          record->page_scope_status[3*i], record->page_scope_status[3*i+1],
++          record->page_scope_status[3*i+2], record->dma_cookie[i], record->dma_state[i]);
++}
++
+ static int qcom_serial_set_feature(struct qcom_nand_controller *nandc,
+ 		struct qcom_nand_host *host, u32 faddr, u32 fval)
+ {
+@@ -4425,6 +4608,49 @@
+ static const DEVICE_ATTR(boot_layout, 0644, boot_layout_show,
+ 			boot_layout_store);
+ 
++/* Reading this attribute copies cached facts only; it never touches NAND.
++ * It cannot clear/rearm the record, and remains readable after flash fails. */
++static ssize_t miami_first_failure_show(struct device *dev,
++                                        struct device_attribute *attr, char *buf)
++{
++ struct qcom_nand_controller *n = dev_get_drvdata(dev);
++ struct miami_nand_diag d;
++ unsigned long flags;
++ unsigned int i;
++ bool ready;
++ ssize_t len = 0;
++
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ ready = n->miami_diag_ready;
++ d = n->miami_diag;
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++ if (!ready)
++  return sysfs_emit(buf, "state=armed qualified_samples=0x%x\n",
++                    READ_ONCE(n->miami_diag_seen));
++ len += sysfs_emit_at(buf, len,
++  "state=captured reason=%s boottime_ns=%llu page=%d physical_peb=%d result=%d command=%d\n"
++  "clock_hz=%lu ecc_failed_before=%u ecc_corrected_before=%u observed_magic=%08x\n"
++  "status_valid=%u codewords=%u bam_ce=%u cmd_sgl=%u rx_sgl=%u tx_sgl=%u sts_sgl=%u\n"
++  "features_after_erased_check A0=%d B0=%d C0=%d (-61=not_read)\n",
++  d.reason, d.ns, d.page, d.page / 64, d.result, d.command,
++  d.hz, d.failed, d.corrected, d.header,
++  d.status_valid, d.codewords, d.ce, d.cmd_sgl, d.rx_sgl, d.tx_sgl, d.sts_sgl,
++  d.feature[0], d.feature[1], d.feature[2]);
++ for (i = 0; i < MIAMI_DIAG_REGS; i++)
++  len += sysfs_emit_at(buf, len, "reg[%u]=%08x\n", i, d.regs[i]);
++ for (i = 0; i < MIAMI_DIAG_CWS; i++)
++  len += sysfs_emit_at(buf, len, "cw[%u] flash=%08x buffer=%08x erased=%08x\n",
++                      i, d.status[3*i], d.status[3*i+1], d.status[3*i+2]);
++ for (i = 0; i < MIAMI_DIAG_CWS; i++)
++  len += sysfs_emit_at(buf, len, "page_scope_cw[%u] flash=%08x buffer=%08x erased=%08x\n",
++                      i, d.page_scope_status[3*i], d.page_scope_status[3*i+1], d.page_scope_status[3*i+2]);
++ for (i = 0; i < 4; i++)
++  len += sysfs_emit_at(buf, len, "dma[%u] cookie=%d state=%d (-61=not_submitted)\n",
++                      i, d.dma_cookie[i], d.dma_state[i]);
++ return len;
++}
++static DEVICE_ATTR_RO(miami_first_failure);
++
+ static int qcom_nandc_probe(struct platform_device *pdev)
+ {
+ 	struct qcom_nand_controller *nandc;
+@@ -4441,6 +4667,7 @@
+ 
+ 	platform_set_drvdata(pdev, nandc);
+ 	nandc->dev = dev;
++	spin_lock_init(&nandc->miami_diag_lock);
+ 
+ 	dev_data = of_device_get_match_data(dev);
+ 	if (!dev_data) {
+@@ -4525,6 +4752,25 @@
+ 	if (ret)
+ 		goto err_setup;
+ 
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x") &&
++	    nandc->props->is_serial_nand) {
++		list_for_each_entry(host, &nandc->host_list, node) {
++			struct mtd_info *m = nand_to_mtd(&host->chip);
++			if (host->chip.id.data[0] != 0xc2 || host->chip.id.data[1] != 0xa6 ||
++			    m->size != SZ_256M || m->writesize != 2048 ||
++			    m->erasesize != SZ_128K || m->oobsize != 128 || host->cs != 0 ||
++			    host->chip.ecc.strength != 8 || host->chip.ecc.size != 512 ||
++			    host->chip.ecc.steps != MIAMI_DIAG_CWS)
++				continue;
++			ret = device_create_file(dev, &dev_attr_miami_first_failure);
++			if (ret)
++				dev_warn(dev, "Miami NAND diagnostics unavailable: %d\n", ret);
++			else
++				nandc->miami_diag_enabled = true;
++			break;
++		}
++	}
++
+ 	if (nandc->props->is_serial_nand && nandc->props->switch_layout) {
+ 		list_for_each_entry(host, &nandc->host_list, node) {
+ 			struct nand_chip *chip = &host->chip;
+@@ -4563,6 +4809,8 @@
+ 	struct nand_chip *chip;
+ 	int ret;
+ 
++	if (nandc->miami_diag_enabled)
++		device_remove_file(&pdev->dev, &dev_attr_miami_first_failure);
+ 	list_for_each_entry(host, &nandc->host_list, node) {
+ 		chip = &host->chip;
+ 		ret = mtd_device_unregister(nand_to_mtd(chip));

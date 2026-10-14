@@ -1,0 +1,7 @@
+{
+  "generated_sdk_commit": "ec2a03dd3463be8c9c96272ea6687e0bad4fb698",
+  "path": "package/cambium/cambium-ab/files/cambium-return-oem",
+  "git_blob": "45d1a5265ce1e454856d60e2406c11081a6467de",
+  "sha256": "6f960f3fc3d9e30ea4f2770882fc60698ac9cbfe03a8c58b4ed8eb0261548fdf",
+  "scope": "Actual qualified retained dispatcher as test fixture only. Current Miami module has no oem_return_arm_trial hooks, so tests establish unsupported/refusal and synthetic dispatch, not whole OEM-return qualification or deployed support."
+}

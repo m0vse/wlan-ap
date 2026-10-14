@@ -1,0 +1,12 @@
+{
+  "purpose": "Retain these qualified source parents; source receipts are not hardware acceptance.",
+  "shared_public_base": "a7f691d7896b07d79bfcb6415bbcfe139adbfd6e",
+  "families": {
+    "sage": "3475512d080488ff091dd7c6bc2e77d4970ed2a7",
+    "jaguar": "3475512d080488ff091dd7c6bc2e77d4970ed2a7",
+    "cheetah": "cb2978a9a70fb20fe20628fc88b1e1ca6f78074d",
+    "thor": "bdcaf457e57c9c5c0bd33983f01270c6331d4fe2",
+    "miami": "6ccaaef2097ede7d19fbac8c346e5d99edeafb2a"
+  },
+  "policy": "One retained build tree per family. No AP changes or soak interruption. Preserve all qualified family/shared fixes and private build settings. Commit reviewed source, never credentials, calibration or artifacts."
+}
