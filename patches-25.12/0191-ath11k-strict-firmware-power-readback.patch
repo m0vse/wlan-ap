@@ -11,7 +11,7 @@ The read-only marker prevents older kernels being credited as verified.
 +PKG_RELEASE:=4
 --- /dev/null
 +++ b/package/kernel/mac80211/patches/ath11k/961-ath11k-strict-firmware-txpower-readback.patch
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,40 @@
 +From: Phil Taylor <phil@m0vse.uk>
 +Subject: [PATCH] ath11k: report firmware power query failure, not configured fallback
 +
@@ -41,9 +41,14 @@ The read-only marker prevents older kernels being credited as verified.
 + static int ath11k_mac_station_add(struct ath11k *ar,
 +--- a/drivers/net/wireless/ath/ath11k/core.c
 ++++ b/drivers/net/wireless/ath/ath11k/core.c
-+@@ -1 +1,5 @@
++@@ -7,6 +7,10 @@
++ 
++ #include <linux/export.h>
 + #include <linux/module.h>
 ++/* Read-only firmware readback capability, never an operator override. */
 ++static bool txpower_readback_strict = true;
 ++module_param_named(txpower_readback_strict, txpower_readback_strict, bool, 0444);
 ++MODULE_PARM_DESC(txpower_readback_strict, "Strict firmware TX-power readback");
++ #include <linux/slab.h>
++ #include <linux/remoteproc.h>
++ #include <linux/firmware.h>

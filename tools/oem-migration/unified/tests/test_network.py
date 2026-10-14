@@ -51,8 +51,11 @@ if fault=='slowloris':
                 (b/'wget').write_text(code);(b/'wget').chmod(0o755)
                 # Same timeout implementation, shorter fixture duration only.
                 helper=root/'network.sh';helper.write_text((BASE/'lib/network.sh').read_text().replace('oem_bounded_run 15 sh -c','oem_bounded_run 1 sh -c'))
-                script=f'. "{BASE}/lib/common.sh";. "{helper}";OEM_DOWNLOAD_URL=http://fixture.invalid;OEM_NETWORK_BUDGET_LEFT=30;oem_fetch_local payload '+hashlib.sha256(b'X'*64).hexdigest()+f' 64 "{out}"'
-                env={'PATH':str(b)+':'+os.environ['PATH'],'TRACE':str(trace),'FAULT':fault,'LC_ALL':'C'}
+                # Like the cache tests above, bind private fixture ownership to
+                # the test user; production still requires root ownership.
+                common=root/'common.sh';common.write_text((BASE/'lib/common.sh').read_text().replace('$3==0',f'$3=={os.getuid()}'))
+                script=f'. "{common}";. "{helper}";OEM_DOWNLOAD_URL=http://fixture.invalid;OEM_NETWORK_BUDGET_LEFT=30;oem_fetch_local payload '+hashlib.sha256(b'X'*64).hexdigest()+f' 64 "{out}"'
+                env={'PATH':str(b)+':'+os.environ['PATH'],'TRACE':str(trace),'FAULT':fault,'LC_ALL':'C','PYTHONDONTWRITEBYTECODE':'1'}
                 start=time.monotonic();p=subprocess.run(['sh','-c',script],env=env,capture_output=True,text=True,timeout=8)
                 self.assertNotEqual(p.returncode,0);self.assertLess(time.monotonic()-start,7);self.assertFalse(out.exists());self.assertFalse((root/'payload.part').exists());self.assertEqual(trace.read_text().count('request'),2)
     def test_nonlinux_unavailable_watchdog_never_starts_download(self):

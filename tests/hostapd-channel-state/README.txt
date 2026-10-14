@@ -4,6 +4,7 @@ No AP is used or modified. Run with the actual prepared hostapd source and
 the same SDK hostpkg ucode runtime. Example from the wlan-ap repository:
 
   python3 tests/hostapd-channel-state/test-start.py --source PREPARED_HOSTAPD --ucode-prefix openwrt/staging_dir/hostpkg
+  python3 tests/hostapd-channel-state/test-start.py --source PREPARED_REGULAR_HOSTAPD --ucode-prefix openwrt/staging_dir/hostpkg --without-eht
   python3 tests/hostapd-channel-state/test-event.py --source PREPARED_HOSTAPD/src/ap/drv_callbacks.c
   python3 tests/hostapd-channel-state/test-caller.py --source feeds/qca-wifi-7/hostapd/files/hostapd.uc --ucode openwrt/staging_dir/hostpkg/bin/ucode
 
@@ -15,6 +16,9 @@ checks the real headers and target layout. Its 20 cases include stale 36/5955,
 missing/invalid tuples, unchanged state, same channel number on another band,
 width/center/operating-class/puncture-only changes, first/second driver failure,
 beacon failure, failed enable, zero-valued legacy enum and null-info initialization.
+The regular variant also runs19 controls with EHT disabled and the puncturing
+member absent from the structure. Full target builds must retain that layout;
+an always-EHT synthetic structure is not evidence for older AP compatibility.
 
 test-event executes the exact production frequency validation/commit fragment
 with a mocked channel lookup, plus hardware-mode failure rollback. test-caller executes the real iface-add caller

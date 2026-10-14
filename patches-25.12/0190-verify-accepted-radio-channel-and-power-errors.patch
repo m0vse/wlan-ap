@@ -17,7 +17,7 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
  
  #include "utils/includes.h"
  #include "utils/common.h"
-@@ -598,43 +599,85 @@
+@@ -598,43 +599,87 @@
  	return NULL;
  }
  
@@ -33,7 +33,9 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
 +	conf->op_class = previous->op_class;
 +	conf->secondary_channel = previous->secondary_channel;
 +	conf->acs = previous->acs;
++#ifdef CONFIG_IEEE80211BE
 +	conf->punct_bitmap = previous->punct_bitmap;
++#endif
 +	hostapd_set_oper_chwidth(conf, hostapd_get_oper_chwidth(previous));
 +	hostapd_set_oper_centr_freq_seg0_idx(conf,
 +			hostapd_get_oper_centr_freq_seg0_idx(previous));
@@ -122,13 +124,14 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
  
  	intval = ucv_int64_get(ucv_object_get(info, "center_seg0_idx", NULL));
  	if (!errno)
-@@ -648,12 +691,31 @@
+@@ -648,12 +693,36 @@
  	if (!errno)
  		hostapd_set_oper_chwidth(conf, intval);
  
 -	intval = ucv_int64_get(ucv_object_get(info, "frequency", NULL));
 +	conf->acs = 0;
 +
++#ifdef CONFIG_IEEE80211BE
 +	intval = ucv_int64_get(ucv_object_get(info, "punct_bitmap", NULL));
  	if (!errno)
 -		iface->freq = intval;
@@ -137,6 +140,7 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
 -		iface->freq = 0;
 -	conf->acs = 0;
 +		conf->punct_bitmap = 0;
++#endif
 +
 +	if (is_6ghz_freq(iface->freq) != is_6ghz_op_class(conf->op_class))
 +		goto invalid;
@@ -147,7 +151,10 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
 +	    previous.channel == conf->channel &&
 +	    previous.op_class == conf->op_class &&
 +	    previous.secondary_channel == conf->secondary_channel &&
-+	    previous.acs == conf->acs && previous.punct_bitmap == conf->punct_bitmap &&
++	    previous.acs == conf->acs &&
++#ifdef CONFIG_IEEE80211BE
++	    previous.punct_bitmap == conf->punct_bitmap &&
++#endif
 +	    hostapd_get_oper_chwidth(&previous) == hostapd_get_oper_chwidth(conf) &&
 +	    hostapd_get_oper_centr_freq_seg0_idx(&previous) == hostapd_get_oper_centr_freq_seg0_idx(conf) &&
 +	    hostapd_get_oper_centr_freq_seg1_idx(&previous) == hostapd_get_oper_centr_freq_seg1_idx(conf) &&
@@ -158,7 +165,7 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
  
  out:
  	switch (iface->state) {
-@@ -671,36 +733,66 @@
+@@ -671,36 +740,66 @@
  	if (conf->channel && !iface->freq)
  		iface->freq = hostapd_hw_get_freq(iface->bss[0], conf->channel);
  
@@ -246,7 +253,7 @@ legacy radio startup, existing MLO/DFS/regulatory paths and all other patches.
  }
  
  static uc_value_t *
-@@ -743,8 +835,11 @@
+@@ -743,8 +842,11 @@
  	if ((intval = ucv_int64_get(ucv_object_get(info, "center_freq2", NULL))) && !errno)
  		csa.freq_params.center_freq2 = intval;
  
