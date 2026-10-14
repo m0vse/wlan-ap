@@ -304,6 +304,9 @@ oem_restore_jaguar_live() (
 )
 oem_restore_jaguar_write_check() (
  local op=$1 id=$2 name=$3 create=${4:-0}
+ [ "$(oem_jaguar_env_value bootcount)" = 0 ] &&
+  [ "$(oem_jaguar_env_value image)" = "$OEM_SOURCE_SLOT" ] &&
+  [ "$(oem_jaguar_env_value bootcmd)" = "run jaguar_boot$OEM_SOURCE_SLOT" ] || exit 1
  oem_restore_jaguar_live && oem_restore_jaguar_payload_check || exit 1
  awk -F '\t' -v op="$op" -v parent="$RJ_TARGET_MTD" -v id="$id" -v name="$name" '$1==op && $2==parent && $3==id && $4==name {n++}END{exit n!=1}' "$OEM_WRITE_PLAN" || exit 1
  if [ "$create" = 1 ];then [ ! -e "$OEM_SYS_ROOT/sys/class/ubi/${RJ_TARGET_UBI}_$id" ]
@@ -354,7 +357,7 @@ oem_restore_jaguar_save_source() (
  umask 077
  # The old OpenWiFi guard may restore its stable wrapper on rollback. Narrow
  # that wrapper too, so it cannot fall through to the unconfirmed OEM bank.
- printf 'jaguar_stable%s run jaguar_boot%s\nbootcmd run jaguar_boot%s\nimage %s\njaguar_oem_restore_target %s\njaguar_oem_restore_state writing\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT" > "$OEM_WORK/return-source.env" || exit 1
+ printf 'bootcount 0\njaguar_stable%s run jaguar_boot%s\nbootcmd run jaguar_boot%s\nimage %s\njaguar_oem_restore_target %s\njaguar_oem_restore_state writing\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT" > "$OEM_WORK/return-source.env" || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$OEM_WORK/return-source.env" && sync || exit 1
  while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$OEM_WORK/return-source.env"
 )
@@ -371,7 +374,7 @@ oem_restore_migrate() (
  context=$(oem_context_fingerprint) || exit 1
  oem_restore_inspect && [ "$(oem_context_fingerprint)" = "$context" ] && oem_restore_preflight && oem_restore_boot_preflight && oem_restore_jaguar_receipt_live || exit 1
  oem_restore_jaguar_snapshot > "$OEM_WORK/return-before" && oem_jaguar_env_read > "$OEM_WORK/return-env-before" || exit 1
- printf '%s\n' bootcmd image jaguar_oem_restore_target jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target "jaguar_oem_boot$OEM_TARGET_SLOT" "jaguar_stable$OEM_SOURCE_SLOT" > "$OEM_WORK/return-env-allowed" || exit 1
+ printf '%s\n' bootcount bootcmd image jaguar_oem_restore_target jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target "jaguar_oem_boot$OEM_TARGET_SLOT" "jaguar_stable$OEM_SOURCE_SLOT" > "$OEM_WORK/return-env-allowed" || exit 1
  oem_restore_jaguar_public_payload_check && oem_restore_jaguar_save_source || exit 1
  if [ -z "$RJ_TARGET_UBI" ];then
   oem_restore_jaguar_snapshot source-only > "$OEM_WORK/source-before-attach" || exit 1
@@ -385,7 +388,10 @@ oem_restore_migrate() (
  fi
  # The existing shared helper removes only the proved inactive rootfs map.
  # Source-only persistence/readback and discovered vault/cert proof precede it.
- oem_restore_jaguar_payload_check && oem_restore_jaguar_preserved &&
+ [ "$(oem_jaguar_env_value bootcount)" = 0 ] &&
+  [ "$(oem_jaguar_env_value image)" = "$OEM_SOURCE_SLOT" ] &&
+  [ "$(oem_jaguar_env_value bootcmd)" = "run jaguar_boot$OEM_SOURCE_SLOT" ] &&
+  oem_restore_jaguar_payload_check && oem_restore_jaguar_preserved &&
   oem_bank_remove_idle_root_map "$OEM_SYS_ROOT/sys/class/ubi" "$OEM_SYS_ROOT/dev" "$OEM_SYS_ROOT/proc" "$RJ_TARGET_MTD" "$RJ_TARGET_UBI" || exit 1
  if [ "$RJ_VAULT_TARGET_LEBS" != "$RJ_VAULT_LEBS" ];then
   oem_restore_jaguar_write_check ubi-resize 3 cambium_device_data && ubirsvol "$OEM_SYS_ROOT/dev/$RJ_TARGET_UBI" -n 3 -s "$((RJ_VAULT_TARGET_LEBS*126976))" && sync || exit 1
@@ -405,13 +411,13 @@ oem_restore_migrate() (
   oem_restore_jaguar_write_check ubi-update "$id" "$name" && ubiupdatevol "$OEM_SYS_ROOT/dev/${RJ_TARGET_UBI}_$id" "$file" && sync && oem_jaguar_readback "$file" "$OEM_SYS_ROOT/dev/${RJ_TARGET_UBI}_$id" || exit 1
  done
  oem_restore_jaguar_staged_check && oem_restore_jaguar_preserved && oem_restore_jaguar_boot_check || exit 1
- printf 'jaguar_oem_boot%s setenv image %s; bootipq\njaguar_oem_restore_state armed\njaguar_ab_target %s\njaguar_ab_state armed\n' "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" > "$OEM_WORK/return-arm.env" || exit 1
+ printf 'bootcount 0\njaguar_oem_boot%s setenv bootcount 0 && setenv image %s && bootipq\njaguar_oem_restore_state armed\njaguar_ab_target %s\njaguar_ab_state armed\n' "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" > "$OEM_WORK/return-arm.env" || exit 1
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$OEM_WORK/return-arm.env" && sync || exit 1
  while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$OEM_WORK/return-arm.env"
  oem_restore_jaguar_staged_check && oem_restore_jaguar_preserved && oem_restore_jaguar_boot_check || exit 1
  while read -r key value;do [ "$(oem_jaguar_env_value "$key")" = "$value" ] || exit 1;done < "$OEM_WORK/return-arm.env"
  [ "$(oem_jaguar_env_value "jaguar_stable$OEM_SOURCE_SLOT")" = "run jaguar_boot$OEM_SOURCE_SLOT" ] || exit 1
- trial="setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_oem_restore_state trial-started && saveenv && run jaguar_oem_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT"
+ trial="if setenv bootcount 0 && setenv bootcmd run jaguar_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv jaguar_oem_restore_state trial-started && saveenv; then run jaguar_oem_boot$OEM_TARGET_SLOT; run jaguar_boot$OEM_SOURCE_SLOT; fi"
  fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" bootcmd "$trial" && sync && [ "$(oem_jaguar_env_value bootcmd)" = "$trial" ] || exit 1
  printf 'handoff=one-shot-oem-armed\noem_boot=not-yet-verified\nidentity_retired=no\ndefaults_committed=no\n'
 )
@@ -505,13 +511,14 @@ oem_restore_confirm() (
  oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$context" ] && oem_restore_confirm_preflight || exit 1
  umask 077
  oem_jaguar_env_read > "$OEM_WORK/confirm-env-before" || exit 1
- printf '%s\n' bootcmd image jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target > "$OEM_WORK/confirm-allowed" || exit 1
+ printf '%s\n' bootcount bootcmd image jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target > "$OEM_WORK/confirm-allowed" || exit 1
  : > "$OEM_WORK/confirm-rollback.env" || exit 1
  for field in bootcmd image jaguar_oem_restore_state jaguar_ab_state jaguar_ab_target;do
   value=$(oem_jaguar_env_value "$field") || exit 1
   printf '%s %s\n' "$field" "$value" >> "$OEM_WORK/confirm-rollback.env" || exit 1
  done
- printf 'image %s\nbootcmd bootipq\njaguar_oem_restore_state confirmed\njaguar_ab_state confirmed\njaguar_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/confirm.env" || exit 1
+ printf 'bootcount 0\n' >> "$OEM_WORK/confirm-rollback.env" || exit 1
+ printf 'bootcount 0\nimage %s\nbootcmd setenv bootcount 0 && bootipq\njaguar_oem_restore_state confirmed\njaguar_ab_state confirmed\njaguar_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/confirm.env" || exit 1
  # One native ENV batch, not full compiled-default replacement. On command or
  # readback failure, best-effort restore only our old selectors/pending fields.
  if ! fw_setenv -c "$OEM_JAGUAR_ENV_CONFIG" -s "$OEM_WORK/confirm.env" || ! sync ||

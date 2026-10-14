@@ -241,6 +241,30 @@ and limitations are recorded in [the test coverage guide](tests/COVERAGE.md).
 The [release assembly guide](RELEASE-ASSEMBLY.md) records exact-model gaps and
 how to package existing assets without a firmware build.
 
+Installer counter safety: the confirmed OEM boot helpers consume `bootcount`
+values beginning with ASCII `8` or `9` as a bank-switch request. Supported
+Jaguar, Sage and Thor entry/return writers therefore persist `bootcount=0`
+together with the verified surviving source selector, synchronize, and read
+back the fields before touching the inactive software. Cheetah's bounded
+local update/grow primitives perform the same counter/source check; its full
+OEM migration and return routes remain closed. Failed counter writes,
+synchronization or reads stop before the firmware writer. An error-returning
+ENV reader is not accepted even if it prints the expected value.
+
+One-shot commands place candidate loading and fallback inside the successful
+counter/default-selector `saveenv` branch. A prefix or save failure holds at
+the boot prompt: it must not load either bank or reset into an old durable
+bank-switch request. Native OEM source commands separately gate counter and
+image selection before `bootipq` (and Thor's `aq_load_fw`). Confirmation and
+best-effort selector rollback never restore an old nonzero counter.
+
+Miami's pinned generated provider must expose the reviewed counter-clearing
+restore and `if run miami_persistent_restore; then run miami_persistent_load;
+bootipq; fi` contract. The former `... || bootipq` contract is not admitted.
+Its historical standalone OEM-return sources (`5dfc`/`d0c`) are unavailable;
+that return path is not reconstructed or qualified by these changes. Source
+fixtures do not prove real U-Boot power-loss recovery or hardware acceptance.
+
 Run the source harness with:
 
 ```sh

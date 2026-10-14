@@ -6,7 +6,7 @@ base=Path(__file__).resolve().parents[1];common=Path(os.environ.get('OEM_TEST_CO
 cases=[]
 with tempfile.TemporaryDirectory(prefix='cheetah-components.') as temp:
  for slot in [0,1]:
-  for fault in ['none','padded-byte-count','bad-mfg','wrong-version','image-conflict','bad-bank-geometry','bad-payload-hash','wrong-parent','bad-child-name','busy-child','volume-too-small','writer-error','short-readback','corrupt-readback','server-gone','resize-success','resize-no-space','resize-writer-error','resize-bad-readback','resize-static','resize-wrong-parent']:
+  for fault in ['none','counter-eight','env-write','env-sync','env-readback','env-read-error','padded-byte-count','bad-mfg','wrong-version','image-conflict','bad-bank-geometry','bad-payload-hash','wrong-parent','bad-child-name','busy-child','volume-too-small','writer-error','short-readback','corrupt-readback','server-gone','resize-success','resize-no-space','resize-writer-error','resize-bad-readback','resize-static','resize-wrong-parent']:
    work=Path(temp).resolve()/(str(slot)+'-'+fault);work.mkdir();sysroot=work/'capture';(sysroot/'etc').mkdir(parents=True);(sysroot/'proc').mkdir();(sysroot/'dev').mkdir();(sysroot/'sys/class/mtd').mkdir(parents=True);(sysroot/'sys/class/ubi').mkdir(parents=True)
    (sysroot/'etc/version').write_text('VERSION=fixture-oem-7.1.1\n');(sysroot/'proc/cmdline').write_text('console=ttyMSM0 ubi.mtd='+('rootfs' if slot==0 else 'rootfs_1')+' rootwait\n')
    rows=[(2,'rootfs','nand',100663296,131072,2048),(3,'rootfs_1','nand',100663296,131072,2048),(10,'mfginfo','nor',65536,4096,1),(16,'0:APPSBLENV','nor',65536,4096,1)]
@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='cheetah-components.') as temp:
    (sysroot/'dev/mtd10ro').write_bytes(bytes.fromhex('05ca01000c00')+b'0123456789ab'+b'fixture-padding')
    if fault=='bad-mfg':(sysroot/'dev/mtd10ro').write_bytes(b'badheader000000000000')
    if fault=='bad-bank-geometry':(sysroot/'sys/class/mtd/mtd3/size').write_text('100663295\n')
-   envfile=work/'env';envfile.write_text('bootcmd=bootipq\nimage='+str(1-slot if fault=='image-conflict' else slot)+'\nethaddr=synthetic-preserved\n')
+   envfile=work/'env';envfile.write_text('bootcount='+('8' if fault=='counter-eight' else '9')+'\nbootcmd=bootipq\nimage='+str(1-slot if fault=='image-conflict' else slot)+'\nethaddr=synthetic-preserved\n')
    cache=work/'cache';cache.mkdir();payload=cache/'kernel.itb';payload.write_bytes(b'Actual synthetic kernel bytes\0'+bytes(range(64)));digest=hashlib.sha256(payload.read_bytes()).hexdigest();size=payload.stat().st_size
    if fault=='volume-too-small' or fault.startswith('resize-'):payload.write_bytes(b'x'*126977);digest=hashlib.sha256(payload.read_bytes()).hexdigest();size=payload.stat().st_size
    ubi=sysroot/'sys/class/ubi/ubi7';ubi.mkdir();(sysroot/'dev/ubi7').write_bytes(b'synthetic-control');(ubi/'avail_eraseblocks').write_text('0\n' if fault=='resize-no-space' else '3\n');(ubi/'mtd_num').write_text(str(2 if 1-slot==0 else 3)+'\n');child=sysroot/'sys/class/ubi/ubi7_0';child.mkdir()
@@ -35,7 +35,9 @@ with tempfile.TemporaryDirectory(prefix='cheetah-components.') as temp:
 . "$ADAPTER"
 fw_printenv(){
  if [ "$#" = 2 ];then cat "$TEST_ENV";return;fi
- awk -F= -v key="$4" '$1==key{print substr($0,index($0,"=")+1);n++}END{exit n!=1}' "$TEST_ENV"
+ [ "$FAULT:$4" != env-readback:bootcount ] || { echo 9; return 0; }
+ awk -F= -v key="$4" '$1==key{print substr($0,index($0,"=")+1);n++}END{exit n!=1}' "$TEST_ENV" || return 1
+ [ "$FAULT:$4" != env-read-error:bootcount ]
 }
 wc(){
  if [ "$FAULT" = padded-byte-count ] && [ "$1" = -c ];then
@@ -53,7 +55,19 @@ ubirsvol(){
  [ "$FAULT" != resize-bad-readback ] || return 0
  printf '%s\\n' "$(( $5 / 126976 ))" > "$OEM_SYS_ROOT/sys/class/ubi/ubi7_0/reserved_ebs"
 }
-fw_setenv(){ printf forbidden-env >> "$TRACE";return 99; }
+fw_setenv(){
+ [ "$FAULT" != env-write ] || return 1
+ [ "$3" = -s ] || return 99
+ python3 - "$TEST_ENV" "$4" <<'PY'
+import sys
+from pathlib import Path
+p=Path(sys.argv[1]);s=dict(row.split('=',1) for row in p.read_text().splitlines())
+for row in Path(sys.argv[2]).read_text().splitlines():
+ k,v=row.split(' ',1);assert k in ('bootcount','image','bootcmd');s[k]=v
+p.write_text(''.join(k+'='+v+'\\n' for k,v in s.items()))
+PY
+}
+sync(){ [ "$FAULT" != env-sync ]; }
 curl(){ printf forbidden-network >> "$TRACE";return 99; }
 wget(){ printf forbidden-network >> "$TRACE";return 99; }
 oem_adapter_inspect || exit 11
@@ -63,8 +77,11 @@ oem_cheetah_update_local_child 0 kernel "$PAYLOAD" "$SIZE" "$DIGEST" || exit 13
 ''')
    env={**os.environ,'COMMON':str(common),'ADAPTER':str(base/'adapters/cheetah.sh'),'OEM_FAMILY':'cheetah','OEM_MODEL':'XV2-21X','OEM_SKU':'00000023','OEM_SYS_ROOT':str(sysroot),'OEM_WORK':str(work),'OEM_SUPPORTED_RELEASE':'older-version' if fault=='wrong-version' else 'fixture-oem-7.1.1','TEST_ENV':str(envfile),'FAULT':fault,'TRACE':str(trace),'PAYLOAD':str(payload),'SIZE':str(size),'DIGEST':'0'*64 if fault=='bad-payload-hash' else digest,'OEM_PROTECTED_RANGES':str(inventory),'OEM_WRITE_PLAN':str(plan),'OEM_CHEETAH_TARGET_MTD':str(2 if parent==3 else 3) if fault in ['wrong-parent','resize-wrong-parent'] else str(parent),'OEM_CHEETAH_TARGET_UBI':'ubi7'}
    p=subprocess.run(shlex.split(os.environ.get('OEM_TEST_SHELL','sh'))+[str(driver)],env=env,capture_output=True,text=True)
-   success=fault in ['none','padded-byte-count','server-gone','resize-success'];assert (p.returncode==0)==success,(slot,fault,p.returncode,p.stderr)
-   assert envfile.read_bytes()==envbefore and {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in protected.iterdir()}==before
+   success=fault in ['none','counter-eight','padded-byte-count','server-gone','resize-success'];assert (p.returncode==0)==success,(slot,fault,p.returncode,p.stderr)
+   after=dict(row.split('=',1) for row in envfile.read_text().splitlines());prior=dict(row.split('=',1) for row in envbefore.decode().splitlines())
+   assert after['bootcount'] in ('8','9','0') and {k:v for k,v in after.items() if k!='bootcount'}=={k:v for k,v in prior.items() if k!='bootcount'}
+   assert {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in protected.iterdir()}==before
+   if success:assert after['bootcount']=='0'
    ops=trace.read_text() if trace.exists() else '';assert 'forbidden' not in ops
    if success:assert target.read_bytes()==payload.read_bytes() and ops==('resize\nwrite\n' if fault=='resize-success' else 'write\n')
    elif fault not in ['writer-error','short-readback','corrupt-readback','resize-writer-error','resize-bad-readback']:assert not trace.exists()

@@ -5,6 +5,11 @@
 # COS_BOOT_QUALIFIED and COS_TARGET_FIT after matching the actual signed FIT.
 # COS_OEM_BOOT_COMMAND must be the reviewed original source-bank command,
 # including source image selection. Never render an OpenWiFi command for OEM.
+cos_env_value() {
+    local value
+    value=$(fw_printenv -c "$COS_ENV_CONFIG" -n "$1" 2>/dev/null) || return 1
+    printf '%s\n' "$value"
+}
 cos_boot_preflight() {
     [ "${COS_BOOT_QUALIFIED:-}" = qualified ] || return 1
     [ -r "${COS_ENV_CONFIG:-}" ] && [ ! -L "$COS_ENV_CONFIG" ] || return 1
@@ -15,15 +20,15 @@ cos_boot_preflight() {
     [ -n "${COS_OEM_BOOT_COMMAND:-}" ] || return 1
     # The source capability contract owns this exact command. Require the
     # original command's source bank selection, not a user-provided script.
-    [ "$COS_OEM_BOOT_COMMAND" = "setenv image $OW_EXPECT_SOURCE; bootipq" ] || return 1
+    [ "$COS_OEM_BOOT_COMMAND" = "setenv bootcount 0 && setenv image $OW_EXPECT_SOURCE && bootipq" ] || return 1
     for COS_CHECK_TOOL in fw_printenv fw_setenv mktemp chmod rm rmdir sync; do
         command -v "$COS_CHECK_TOOL" >/dev/null 2>&1 || return 1
     done
-    [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n image 2>/dev/null)" = "$OW_EXPECT_SOURCE" ] || return 1
-    case "$(fw_printenv -c "$COS_ENV_CONFIG" -n bootcmd 2>/dev/null)" in
+    [ "$(cos_env_value image 2>/dev/null)" = "$OW_EXPECT_SOURCE" ] || return 1
+    case "$(cos_env_value bootcmd 2>/dev/null)" in
         bootipq) ;;
         "run sage_boot$OW_EXPECT_SOURCE")
-            [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "sage_boot$OW_EXPECT_SOURCE" 2>/dev/null)" = "$COS_OEM_BOOT_COMMAND" ] || return 1 ;;
+            [ "$(cos_env_value "sage_boot$OW_EXPECT_SOURCE" 2>/dev/null)" = "$COS_OEM_BOOT_COMMAND" ] || return 1 ;;
         *) return 1 ;;
     esac
 }
@@ -36,17 +41,17 @@ cos_persist_source() (
     umask 077
     work=$(mktemp -d /tmp/cambium-oem-source.XXXXXX) || exit 1
     trap 'rm -f "$work/environment"; rmdir "$work"' EXIT
-    printf 'sage_boot%s %s\nbootcmd run sage_boot%s\nimage %s\nsage_storage_pending %s\n' \
+    printf 'bootcount 0\nsage_boot%s %s\nbootcmd run sage_boot%s\nimage %s\nsage_storage_pending %s\n' \
         "$OW_EXPECT_SOURCE" "$COS_OEM_BOOT_COMMAND" "$OW_EXPECT_SOURCE" "$OW_EXPECT_SOURCE" "$journal" > "$work/environment" || exit 1
     fw_setenv -c "$COS_ENV_CONFIG" -s "$work/environment" && sync || exit 1
     while read -r key value; do
-        [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "$key" 2>/dev/null)" = "$value" ] || exit 1
+        [ "$(cos_env_value "$key" 2>/dev/null)" = "$value" ] || exit 1
     done < "$work/environment"
     cos_boot_preflight
 )
 cos_native_target_command() {
     local slot=$OW_EXPECT_TARGET id=$((2 * OW_EXPECT_TARGET + 1))
-    printf '%s\n' "setenv image $slot; setenv bootargs \"mtdparts=spi0.1:128M(fs) ubi.mtd=fs ubi.block=0,rootfs$slot root=/dev/ubiblock0_$id rootfstype=squashfs ro rootwait fstools_overlay_name=rootfs_data$slot cambium_sage_slot=$slot clk_ignore_unused\"; nand device 1 && setenv mtdids nand1=nand1 && setenv mtdparts \"mtdparts=nand1:0x8000000@0x0(fs)\" && ubi part fs && ubi read 0x84000000 linux$slot && bootm 0x84000000#$COS_TARGET_FIT"
+    printf '%s\n' "setenv bootcount 0 && setenv image $slot && setenv bootargs \"mtdparts=spi0.1:128M(fs) ubi.mtd=fs ubi.block=0,rootfs$slot root=/dev/ubiblock0_$id rootfstype=squashfs ro rootwait fstools_overlay_name=rootfs_data$slot cambium_sage_slot=$slot clk_ignore_unused\" && nand device 1 && setenv mtdids nand1=nand1 && setenv mtdparts \"mtdparts=nand1:0x8000000@0x0(fs)\" && ubi part fs && ubi read 0x84000000 linux$slot && bootm 0x84000000#$COS_TARGET_FIT"
 }
 cos_arm() (
     local image=$1 work target trial key value
@@ -55,7 +60,8 @@ cos_arm() (
     # Restore only the previous working boot, never a stable command which
     # could fall through to the still-unconfirmed candidate on the next reset.
     # Failure of any environment command or save must skip candidate loading.
-    trial="setenv bootcmd run sage_boot$OW_EXPECT_SOURCE && setenv image $OW_EXPECT_SOURCE && setenv sage_ab_state trial-started && saveenv && run sage_boot$OW_EXPECT_TARGET; run sage_boot$OW_EXPECT_SOURCE"
+    [ "$(cos_env_value bootcount 2>/dev/null)" = 0 ] || exit 1
+    trial="if setenv bootcount 0 && setenv bootcmd run sage_boot$OW_EXPECT_SOURCE && setenv image $OW_EXPECT_SOURCE && setenv sage_ab_state trial-started && saveenv; then run sage_boot$OW_EXPECT_TARGET; run sage_boot$OW_EXPECT_SOURCE; fi"
     umask 077
     work=$(mktemp -d /tmp/cambium-oem-arm.XXXXXX) || exit 1
     trap 'rm -f "$work/environment"; rmdir "$work"' EXIT
@@ -73,10 +79,10 @@ cos_arm() (
     chmod 600 "$work/environment" || exit 1
     fw_setenv -c "$COS_ENV_CONFIG" -s "$work/environment" && sync || exit 1
     while read -r key value; do
-        [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n "$key" 2>/dev/null)" = "$value" ] || exit 1
+        [ "$(cos_env_value "$key" 2>/dev/null)" = "$value" ] || exit 1
     done < "$work/environment"
     # Never activate after a failed metadata readback. The first candidate boot
     # durably restores the source fallback before loading the candidate kernel.
     fw_setenv -c "$COS_ENV_CONFIG" bootcmd "$trial" && sync || exit 1
-    [ "$(fw_printenv -c "$COS_ENV_CONFIG" -n bootcmd 2>/dev/null)" = "$trial" ] || exit 1
+    [ "$(cos_env_value bootcmd 2>/dev/null)" = "$trial" ] || exit 1
 )

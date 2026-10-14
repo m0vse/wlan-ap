@@ -1,0 +1,85 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] ath12k: keep failed firmware power readback unavailable
+
+Do not return the default link's configured limit as a successful firmware
+measurement. Invalidate the bounded firmware cache when power/TPE changes.
+Keep the existing five-second request throttle to avoid flooding firmware.
+
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -7322,6 +7322,7 @@
+ 
+ 	if (changed & BSS_CHANGED_6GHZ_POWER_MODE ||
+ 	    changed & BSS_CHANGED_TPE) {
++		ar->chan_tx_pwr = ATH12K_PDEV_TX_POWER_INVALID;
+ 		if (WARN_ON(ath12k_mac_vif_link_chan(ahvif->vif, link_id, &def))) {
+ 			ath12k_warn(ar->ab, "Failed to fetch chandef");
+ 			return;
+@@ -7610,6 +7611,7 @@
+ 	}
+ 
+ 	if (changed & BSS_CHANGED_TXPOWER) {
++		ar->chan_tx_pwr = ATH12K_PDEV_TX_POWER_INVALID;
+ 		ath12k_dbg_level(ar->ab, ATH12K_DBG_MAC, ATH12K_DBG_L2,
+ 				"mac vdev_id %i txpower %d\n", arvif->vdev_id,
+ 				info->txpower);
+@@ -8178,8 +8180,10 @@
+ 	 * until firmware completes sending all the events.
+ 	 */
+ 	time_left = wait_for_completion_timeout(&ar->fw_stats_done, 3 * HZ);
+-	if (!time_left)
++	if (!time_left) {
+ 		ath12k_dbg(ab, ATH12K_DBG_MAC, "time out while waiting for fw stats done\n");
++		return -ETIMEDOUT;
++	}
+ 
+ 	return 0;
+ }
+@@ -8212,8 +8216,10 @@
+ 
+ 	ar = arvif->ar;
+ 	ab = ar->ab;
+-	if (ah->state != ATH12K_HW_STATE_ON)
++	if (ah->state != ATH12K_HW_STATE_ON) {
++		ret = -ENETDOWN;
+ 		goto err_fallback;
++	}
+ 
+ 	if (test_bit(ATH12K_FLAG_CAC_RUNNING, &ar->dev_flags))
+ 		return -EAGAIN;
+@@ -8239,6 +8245,7 @@
+ 					struct ath12k_fw_stats_pdev, list);
+ 	if (!pdev) {
+ 		spin_unlock_bh(&ar->data_lock);
++		ret = -ENODATA;
+ 		goto err_fallback;
+ 	}
+ 
+@@ -8254,11 +8261,9 @@
+ 	return 0;
+ 
+ err_fallback:
+-	/* We didn't get txpower from FW. Hence, relying on vif->bss_conf.txpower */
+-	*dbm = vif->bss_conf.txpower;
+-	ath12k_dbg_level(ar->ab, ATH12K_DBG_MAC, ATH12K_DBG_L3,
+-			"txpower from firmware NaN, reported %d dBm\n", *dbm);
+-	return 0;
++	/* No readback is safer than attributing another link's configured limit. */
++	ar->chan_tx_pwr = ATH12K_PDEV_TX_POWER_INVALID;
++	return ret;
+ }
+ EXPORT_SYMBOL(ath12k_mac_op_get_txpower);
+ 
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -5,6 +5,10 @@
+  */
+ 
+ #include <linux/module.h>
++/* Read-only capability: failed firmware power queries never return a limit. */
++static bool txpower_readback_strict = true;
++module_param_named(txpower_readback_strict, txpower_readback_strict, bool, 0444);
++MODULE_PARM_DESC(txpower_readback_strict, "Strict firmware TX-power readback (cache at most 5 seconds)");
+ #include <linux/slab.h>
+ #include <linux/remoteproc.h>
+ #include <linux/panic_notifier.h>

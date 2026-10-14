@@ -82,8 +82,9 @@ oem_adapter_inspect() {
       END{exit bad || !seen["image"] || !seen["bootcmd"]}' || return 1
     case "$thor_mode" in
     source)
-    [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$thor_slot" ] &&
-        [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^bootcmd=//p')" = 'aq_load_fw&&bootipq' ] || return 1
+    [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$thor_slot" ] || return 1
+    case "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^bootcmd=//p')" in
+        'aq_load_fw&&bootipq'|'setenv bootcount 0 && aq_load_fw && bootipq') ;; *) return 1 ;; esac
     ;;
     restored-oem)
         [ "$(printf '%s\n' "$thor_env_dump" | sed -n 's/^image=//p')" = "$((1-thor_slot))" ] &&
@@ -314,6 +315,7 @@ oem_thor_prepare_native_layout() (
     ab_step() {
         local thor_desc=$1 thor_cmd thor_ubi_now thor_n thor_p
         shift; thor_cmd=$1; shift
+        oem_thor_source_saved || return 1
         oem_adapter_inspect && oem_context_check || return 1
         [ "$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT:$OEM_SOURCE_MTD:$OEM_TARGET_MTD" = "$AB_ACTIVE:$AB_TARGET:$AB_ACTIVE_MTD:$AB_TARGET_MTD" ] || return 1
         oem_physical_inventory "$thor_profile" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$thor_map" || return 1
@@ -507,9 +509,22 @@ oem_adapter_preflight() {
     done
 }
 
+oem_thor_env_value() {
+    local value
+    value=$(fw_printenv -c "$THOR_ENV_CONFIG" -n "$1" 2>/dev/null) || return 1
+    printf '%s\n' "$value"
+}
+oem_thor_source_saved() {
+    local counter image command
+    counter=$(oem_thor_env_value bootcount) && image=$(oem_thor_env_value image) &&
+        command=$(oem_thor_env_value bootcmd) || return 1
+    [ "$counter" = 0 ] && [ "$image" = "$OEM_SOURCE_SLOT" ] &&
+        [ "$command" = 'setenv bootcount 0 && aq_load_fw && bootipq' ]
+}
 oem_adapter_boot_preflight() {
-    [ "$(fw_printenv -c "$THOR_ENV_CONFIG" -n bootcmd)" = 'aq_load_fw&&bootipq' ] &&
-        [ "$(fw_printenv -c "$THOR_ENV_CONFIG" -n image)" = "$OEM_SOURCE_SLOT" ] || return 1
+    case "$(oem_thor_env_value bootcmd)" in
+        'aq_load_fw&&bootipq'|'setenv bootcount 0 && aq_load_fw && bootipq') ;; *) return 1 ;; esac
+    [ "$(oem_thor_env_value image)" = "$OEM_SOURCE_SLOT" ] || return 1
     OEM_BOOT_PRIOR_SLOT=$OEM_SOURCE_SLOT OEM_BOOT_TARGET_SLOT=$OEM_TARGET_SLOT
     OEM_BOOT_MODE=persist-prior-before-load OEM_BOOT_WATCHDOG=manual-reset
 }
@@ -541,7 +556,7 @@ oem_thor_environment_batch() {
     local thor_name thor_value
     fw_setenv -c "$THOR_ENV_CONFIG" -s "$1" && sync || return 1
     while read -r thor_name thor_value; do
-        [ "$(fw_printenv -c "$THOR_ENV_CONFIG" -n "$thor_name")" = "$thor_value" ] || return 1
+        [ "$(oem_thor_env_value "$thor_name")" = "$thor_value" ] || return 1
     done < "$1"
     oem_thor_critical_check
 }
@@ -572,6 +587,7 @@ oem_thor_build_vault() {
 
 oem_thor_forward_write_boundary() {
     local thor_profile thor_source thor_serial=$OEM_SERIAL thor_parent=$OEM_TARGET_MTD thor_active=$OEM_SOURCE_MTD thor_ubi=$OEM_TARGET_UBI thor_id thor_name thor_slots=$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT
+    oem_thor_source_saved || return 1
     oem_adapter_inspect && oem_context_check || return 1
     [ "$OEM_SERIAL:$OEM_SOURCE_MTD:$OEM_TARGET_MTD:$OEM_SOURCE_SLOT:$OEM_TARGET_SLOT" = "$thor_serial:$thor_active:$thor_parent:$thor_slots" ] || return 1
     thor_source=$(oem_bundle_member profiles/XV3-8/source.tsv) || return 1
@@ -621,7 +637,7 @@ oem_thor_arm_forward() {
     case "$thor_boot" in 'aq_load_fw; '*) thor_boot="aq_load_fw && ${thor_boot#aq_load_fw; }" ;; 'aq_load_fw && '*) ;; *) return 1 ;; esac
     thor_batch=$OEM_WORK/thor-arm.tsv
     {
-        printf 'changing_bootcmd 1\nthor_boot%s setenv image %s && aq_load_fw && bootipq\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT"
+        printf 'bootcount 0\nchanging_bootcmd 1\nthor_boot%s setenv bootcount 0 && setenv image %s && aq_load_fw && bootipq\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT"
         printf 'thor_boot%s %s\nthor_stable%s run thor_boot%s; run thor_boot%s\n' "$OEM_TARGET_SLOT" "$thor_boot" "$OEM_TARGET_SLOT" "$OEM_TARGET_SLOT" "$OEM_SOURCE_SLOT"
         printf 'thor_restore_state\nthor_restore_target\nthor_restore_prior\nthor_restore_oem\nthor_ab_version\nthor_migration_oem_slot %s\nthor_ab_confirmed %s\nthor_ab_state armed\nthor_ab_target %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT"
         printf 'thor_installer_target %s\nthor_installer_job %s\nthor_installer_image %s\n' "$OEM_TARGET_SLOT" "$OW_EXPECT_JOB" "$(oem_sha "$THOR_IMAGE")"
@@ -630,10 +646,13 @@ oem_thor_arm_forward() {
     # The prior-only default is durable before the candidate load, exactly
     # once. No converted flag is manufactured for the retained OEM bank.
     thor_trial=$(ab_trial_command "$OEM_SOURCE_SLOT" "$OEM_TARGET_SLOT") || return 1
-    [ "$thor_trial" = "setenv bootcmd run thor_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv thor_ab_state trial-started && saveenv && run thor_boot$OEM_TARGET_SLOT; run thor_boot$OEM_SOURCE_SLOT" ] || return 1
+    case "$thor_trial" in
+        "setenv bootcmd run thor_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv thor_ab_state trial-started && saveenv && run thor_boot$OEM_TARGET_SLOT; run thor_boot$OEM_SOURCE_SLOT"|"if setenv bootcount 0 && setenv bootcmd run thor_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv thor_ab_state trial-started && saveenv; then run thor_boot$OEM_TARGET_SLOT; run thor_boot$OEM_SOURCE_SLOT; fi") ;; *) return 1 ;; esac
+    thor_trial="if setenv bootcount 0 && setenv bootcmd run thor_boot$OEM_SOURCE_SLOT && setenv image $OEM_SOURCE_SLOT && setenv thor_ab_state trial-started && saveenv; then run thor_boot$OEM_TARGET_SLOT; run thor_boot$OEM_SOURCE_SLOT; fi"
+    [ "$(oem_thor_env_value bootcount)" = 0 ] || return 1
     printf 'bootcmd %s\n' "$thor_trial" > "$thor_batch" || return 1
     if ! oem_thor_environment_batch "$thor_batch"; then
-        printf 'bootcmd aq_load_fw&&bootipq\nimage %s\n' "$OEM_SOURCE_SLOT" > "$thor_batch"
+        printf 'bootcount 0\nbootcmd setenv bootcount 0 && aq_load_fw && bootipq\nimage %s\n' "$OEM_SOURCE_SLOT" > "$thor_batch"
         oem_thor_environment_batch "$thor_batch" || :
         return 1
     fi
@@ -646,7 +665,7 @@ oem_adapter_migrate() (
     umask 077
     oem_adapter_preflight && oem_adapter_boot_preflight || exit 1
     oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
-    printf '%s\n' bootcmd image changing_bootcmd thor_restore_state thor_restore_target thor_restore_prior thor_restore_oem thor_ab_version thor_boot0 thor_boot1 thor_stable0 thor_stable1 thor_migration_oem_slot thor_ab_confirmed thor_ab_state thor_ab_target thor_installer_target thor_installer_job thor_installer_image > "$OEM_WORK/thor-env-allowed" || exit 1
+    printf '%s\n' bootcount bootcmd image changing_bootcmd thor_restore_state thor_restore_target thor_restore_prior thor_restore_oem thor_ab_version thor_boot0 thor_boot1 thor_stable0 thor_stable1 thor_migration_oem_slot thor_ab_confirmed thor_ab_state thor_ab_target thor_installer_target thor_installer_job thor_installer_image > "$OEM_WORK/thor-env-allowed" || exit 1
     oem_thor_critical_check || exit 1
     [ "${THOR_RETURN_SOURCE:-0}" = 1 ] || oem_thor_build_vault || exit 1
     thor_job=$(oem_read_hex "${OEM_SYS_ROOT:-}/dev/urandom" 32) || exit 1
@@ -665,8 +684,9 @@ oem_adapter_migrate() (
     ow_settings_prepare "$OEM_WORK/thor-binding.tsv" "$OEM_WORK/thor-est.json" "$OEM_WORK/thor-gateway.json" "$credential" "$OEM_WORK/thor-seed" || exit 1
     credential=
     # Persist and read back the actual working OEM source, before any erase.
-    printf 'bootcmd aq_load_fw&&bootipq\nimage %s\n' "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-source.tsv" || exit 1
+    printf 'bootcount 0\nbootcmd setenv bootcount 0 && aq_load_fw && bootipq\nimage %s\n' "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-source.tsv" || exit 1
     oem_thor_environment_batch "$OEM_WORK/thor-source.tsv" || exit 1
+    oem_adapter_boot_preflight && [ "$(oem_thor_env_value bootcount)" = 0 ] || exit 1
     if [ "${THOR_RETURN_SOURCE:-0}" = 1 ]; then
         oem_thor_target_attachment after-source-save && oem_thor_prepare_reused_layout || exit 1
     else OEM_TARGET_UBI=$(oem_thor_prepare_native_layout "$THOR_IMAGE") || exit 1; fi
@@ -755,6 +775,7 @@ oem_thor_target_parent_node() {
 
 oem_thor_prepare_reused_layout() {
     local thor_id thor_name thor_parent thor_node thor_kbytes thor_rbytes
+    oem_thor_source_saved || return 1
     oem_thor_target_namespace && [ "$THOR_TARGET_KIND" = retired-native ] || return 1
     thor_parent=$(oem_thor_target_parent_node) || return 1
     oem_thor_local_payload kernel || return 1;thor_kbytes=$THOR_PAYLOAD_BYTES

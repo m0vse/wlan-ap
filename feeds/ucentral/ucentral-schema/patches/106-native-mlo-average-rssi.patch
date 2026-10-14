@@ -1,0 +1,15 @@
+--- a/renderer/wifi/station.uc
++++ b/renderer/wifi/station.uc
+@@ -101,7 +101,11 @@
+ 		if (authorized !== null)
+ 			assoc.authorized = authorized;
+ 		let mlo = negotiated_mlo(sta, authorized);
+-		if (mlo) assoc.mlo = mlo;
++		if (mlo) {
++			assoc.mlo = mlo;
++			if (type(sta.sta_info?.signal_avg) in ['int', 'double'])
++				assoc.rssi_avg = sta.sta_info.signal_avg;
++		}
+ 		else if (authorized === true && length(wif.mlo_links || []) > 1 && length(negotiated_peer_links(sta, authorized)) == 1)
+ 			assoc.mlo_link_id = sta.mlo_links[0].link_id;
+ 		if (global.tid_stats)
