@@ -29,8 +29,10 @@ def prepare_thor(repo: Path, root: Path):
             continue
         selected = root / 'selected.patch'
         selected.write_text(''.join(sections))
-        subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(selected)],
-                       cwd=root, check=True, capture_output=True, text=True)
+        result = subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(selected)],
+                                cwd=root, capture_output=True, text=True)
+        if result.returncode:
+            raise RuntimeError(f'{patch.name}:\n{result.stdout}{result.stderr}')
         applied.append(patch.name)
     (root / 'selected.patch').unlink(missing_ok=True)
     for relative in ('cambium-ab/files/cambium-ab.sh',
