@@ -1,0 +1,212 @@
+--- a/renderer/libs/wiphy.uc
++++ b/renderer/libs/wiphy.uc
+@@ -89,18 +89,21 @@
+ 		 * Returns the UCI section name of a specific PHY
+ 		 */
+ 		path_to_section: function(path, radio_index) {
+-			let sid = null;
+-
++			// Board metadata can append a band and a logical-radio suffix.
++			let wanted = replace(path, /:(2G|5G|6G|5G-lower|5G-upper|HaLow|60G)$/, '');
++			let candidates = [];
+ 			cursor.load("wireless");
+ 			cursor.foreach("wireless", "wifi-device", (s) => {
+-				if ((s.path == path || (s.radio && (s.radio == radio_index))) && s.scanning != 1) {
+-					sid = s['.name'];
+-
+-					return false;
+-				}
++				if (s.scanning == 1 || !s.path) return;
++				let indexed = type(radio_index) == 'int' && radio_index >= 0;
++				let logical_path = s.path + (indexed ? '+' + radio_index : '');
++				if (s.path != wanted && logical_path != wanted) return;
++				if (indexed && (!exists(s, 'radio') ||
++				    !match('' + s.radio, /^[0-9]+$/) || +s.radio != radio_index)) return;
++				if (!indexed && exists(s, 'radio') && +s.radio >= 0) return;
++				push(candidates, s['.name']);
+ 			});
+-
+-			return sid;
++			return length(candidates) == 1 ? candidates[0] : null;
+ 		},
+ 
+ 		/**
+--- a/renderer/wifi/phy.uc
++++ b/renderer/wifi/phy.uc
+@@ -81,97 +81,57 @@
+ 
+ function lookup_board() {
+ 	let board = fs.readfile('/etc/board.json');
+-	if (board)
+-		board = json(board);
+-	if (!length(board?.wlan))
+-		return null;
+-
+-	let nl_phys;
+-	let mlo = mlo_capability.collect(phy_get());
+-
++	board = board ? json(board) : null;
++	if (!length(board?.wlan)) return null;
++	let snapshot = phy_get() || [];
++	let mlo = mlo_capability.collect(snapshot);
++	let nl_phys = {};
++	for (let phy in snapshot)
++		if (exists(phy, 'wiphy')) nl_phys[phy_name(phy)] = phy;
+ 	let ret = {};
+-	for (let name, phy in board?.wlan) {
+-		if (!length(phy.info?.radios))
+-			continue;
+-		for (let band, data in phy.info.bands) {
+-			let radio_index = -1;
+-			let channels = [];
+-			let frequencies = [];
+-			let dfs_channels = [];
+-			let matched_radio;
+-
+-			for (let radio in phy.info.radios)
+-				if (radio.bands[band]) {
+-					radio_index = radio.index;
+-					matched_radio = radio;
+-					if (length(radio.bands[band].frequencies)) {
+-						frequencies = radio.bands[band].frequencies;
+-						channels = radio.bands[band].channels;
++	for (let name, phy in board.wlan) {
++		if (!length(phy.info?.radios)) continue;
++		let physical_name = phy.info.wiphy_name || name;
++		for (let radio in phy.info.radios) {
++			for (let band, data in phy.info.bands) {
++				if (!radio.bands[band]) continue;
++				let frequencies = radio.bands[band].frequencies || [];
++				let channels = radio.bands[band].channels || [];
++				let dfs_channels = [];
++				if (!length(frequencies)) {
++					for (let nl_band in nl_phys[physical_name]?.wiphy_bands || []) {
++						for (let f in nl_band.freqs || []) {
++							if (f.disabled) continue;
++							let actual_band = f.freq > 50000 ? '60G' : f.freq > 5900 ? '6G' :
++								f.freq > 4000 ? '5G' : f.freq > 2000 ? '2G' : 'HaLow';
++							if (actual_band != band) continue;
++							if (!length(filter(radio.freq_ranges || [], range =>
++								f.freq * 1000 >= range[0] && f.freq * 1000 <= range[1]))) continue;
++							push(frequencies, f.freq);
++							push(channels, freq2channel(f.freq));
++							if (f.radar) push(dfs_channels, freq2channel(f.freq));
++						}
+ 					}
+ 				}
+-
+-			// New-schema board.json: per-radio info has freq_ranges (kHz)
+-			// only, no enumerated frequencies/channels arrays. Derive them
+-			// by intersecting NL80211 freqs with the radio's freq_ranges.
+-			if (matched_radio && !length(frequencies)) {
+-				if (!nl_phys) {
+-					nl_phys = {};
+-					for (let p in phy_get() || [])
+-						if (exists(p, 'wiphy'))
+-							nl_phys[phy_name(p)] = p;
+-				}
+-
+-				for (let nl_band in nl_phys[name]?.wiphy_bands || [])
+-					for (let f in nl_band?.freqs || []) {
+-						if (f.disabled)
+-							continue;
+-						let khz = f.freq * 1000;
+-						let in_range = false;
+-						for (let r in matched_radio.freq_ranges || [])
+-							if (khz >= r[0] && khz <= r[1]) {
+-								in_range = true;
+-								break;
+-							}
+-						if (!in_range)
+-							continue;
+-						let ch = freq2channel(f.freq);
+-						push(frequencies, f.freq);
+-						push(channels, ch);
+-						if (f.radar)
+-							push(dfs_channels, ch);
+-					}
+-			}
+-
+-			if (!length(frequencies))
+-				continue;
+-
+-			let entry = {
+-				mlo_support: mlo.by_name[phy.info.wiphy_name || name]?.supported === true,
+-				wiphy_name: phy.info.wiphy_name || name,
+-				radio_index_source: phy.info.radio_index_source,
+-				tx_ant: phy.info.antenna_tx,
+-				rx_ant: phy.info.antenna_rx,
+-				tx_ant_avail: phy.info.antenna_tx,
+-				rx_ant_avail: phy.info.antenna_rx,
+-				no_reconf: phy.info.reconf ? false : true,
+-				htmode: data.modes,
+-				band: [ band ],
+-				radio_index,
+-				frequencies,
+-				channels,
+-			};
+-			if (length(dfs_channels))
+-				entry.dfs_channels = dfs_channels;
+-			ret[`${phy.path}:${band}`] = entry;
++				if (!length(frequencies)) continue;
++				let entry = {
++					tx_ant:phy.info.antenna_tx,rx_ant:phy.info.antenna_rx,
++					tx_ant_avail:phy.info.antenna_tx,rx_ant_avail:phy.info.antenna_rx,
++					no_reconf:!phy.info.reconf,htmode:data.modes,band:[band],
++					radio_index:radio.index,frequencies,channels,
++					mlo_support:mlo.by_name[physical_name]?.supported === true,
++					wiphy_name:physical_name,radio_index_source:phy.info.radio_index_source,
++					hardware_radio_bands:keys(radio.bands),
++					hardware_radios:map(phy.info.radios, r => ({index:r.index,bands:keys(r.bands)}))
++				};
++				if (length(dfs_channels)) entry.dfs_channels = dfs_channels;
++				ret[`${phy.path}+${radio.index}:${band}`] = entry;
++			}
+ 		}
+-		if (!length(ret))
+-			return null;
+-		return ret;
+-	}
+-	return null;
+-}
+-
+-// mapping 5G to S1G(HaLow)
++	}
++	return length(ret) ? ret : null;
++}
++
+ function map5GToS1G() {
+     // format: 5G channel -> { s1g_channel, s1g_freq }
+     let mappingTable = {
+@@ -305,15 +265,8 @@
+ }
+ 
+ function lookup_phys() {
+-	let ret = lookup_board();
+-	if (ret) {
+-		// board.json declares the PCIe wlan, but the USB HaLow (Morse) dongle
+-		// is not in board.json - scan for it and merge it in.
+-		let morse = scan_morse_phys();
+-		for (let path, phy in morse)
+-			ret[path] = phy;
+-		return ret;
+-	}
++	let board_phys = lookup_board();
++	let ret = {};
+ 	lookup_paths();
+ 
+ 	let phys = phy_get();
+@@ -450,6 +403,13 @@
+ 			delete p.dfs_channels;
+ 		ret[path] = p;
+ 	}
++	// Overlay native logical-radio entries only for their physical WIPHY.
++	// Preserve unrelated ordinary and Morse radios from the fallback provider.
++	let grouped = {};
++	for (let path, entry in board_phys || {}) grouped[entry.wiphy_name] = true;
++	for (let path, entry in ret)
++		if (grouped[entry.wiphy_name]) delete ret[path];
++	for (let path, entry in board_phys || {}) ret[path] = entry;
+ 	for (let path in ret) {
+ 		system("logger 'phy: PHY path:" + path + ", bands:" + join(',', ret[path].band) + "'");
+ 	}

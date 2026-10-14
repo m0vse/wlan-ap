@@ -50,7 +50,11 @@ while :; do
 		fail 'Capability detection failed'
 	fi
 	[ "$(cat /etc/ucentral/platform 2>/dev/null)" = ap ] || break
-	grep -q '"wifi"' /etc/ucentral/capabilities.json && break
+	if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'cambiumnetworks,x7-35x' ]; then
+		/usr/libexec/miami-radio-ready && break
+	else
+		grep -q '"wifi"' /etc/ucentral/capabilities.json && break
+	fi
 	tries=$((tries - 1))
 	[ "$tries" -gt 0 ] || fail 'Radio capabilities unavailable'
 	sleep 1

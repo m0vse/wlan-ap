@@ -1,0 +1,118 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi: ath12k: allow a coherent low memory profile at module load
+
+Add mem_profile=auto|low for selection through /etc/modules.conf. Auto
+preserves the SDK build-time default; low selects the 512 MiB firmware
+mode with 128 stations and nine VDEVs per radio. Derive peers and TIDs
+from that budget and cap admission, interface combinations and MBSSID
+advertising consistently. Linux retains the board's full RAM.
+
+The operator reports both stock profiles proven. Hardware qualification
+of this different SDK driver and firmware remains pending.
+The SDK differs from stock: auto retains its existing build-time choice.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -48,4 +48,8 @@
+ #endif
+ 
++static char *ath12k_mem_profile = "auto";
++module_param_named(mem_profile, ath12k_mem_profile, charp, 0444);
++MODULE_PARM_DESC(mem_profile, "Firmware memory profile: auto (SDK default) or low (512 MiB)");
++
+ #define ATH12K_NUM_POOL_PPEDS_TX_DESC_DEFAULT 0x8000
+ #define ATH12K_PPEDS_HOTLIST_LEN_MAX_DEFAULT 1024
+@@ -865,6 +869,14 @@
+ }
+ 
++/* Keep firmware and host resource budgets in the same selected mode. */
++bool ath12k_core_uses_low_memory_profile(void)
++{
++	return ath12k_mem_profile && !strcmp(ath12k_mem_profile, "low");
++}
++
+ u32 ath12k_core_get_max_station_per_radio(struct ath12k_base *ab)
+ {
++	if (ath12k_core_uses_low_memory_profile())
++		return 128;
+ 	if (ab->num_radios == 2)
+ 		return TARGET_NUM_STATIONS_DBS;
+@@ -876,4 +888,6 @@
+ u32 ath12k_core_get_max_peers_per_radio(struct ath12k_base *ab)
+ {
++	if (ath12k_core_uses_low_memory_profile())
++		return 128 + ath12k_core_get_total_num_vdevs(ab);
+ 	if (ab->num_radios == 2)
+ 		return TARGET_NUM_PEERS_PDEV_DBS;
+@@ -886,4 +900,8 @@
+ u32 ath12k_core_get_max_num_tids(struct ath12k_base *ab)
+ {
++	if (ath12k_core_uses_low_memory_profile())
++		return 2 * ab->num_radios *
++			ath12k_core_get_max_peers_per_radio(ab) +
++			4 * ath12k_core_get_total_num_vdevs(ab) + 8;
+ 	if (ab->num_radios == 2)
+ 		return TARGET_NUM_TIDS(DBS);
+@@ -2092,4 +2110,6 @@
+ u8 ath12k_core_get_total_num_vdevs(struct ath12k_base *ab)
+ {
++	if (ath12k_core_uses_low_memory_profile())
++		return 9;
+ 	if (ab->ag && ab->ag->num_devices >= ATH12K_MIN_NUM_DEVICES_NLINK)
+ 		return TARGET_NUM_VDEVS + TARGET_NUM_BRIDGE_VDEVS;
+@@ -2111,4 +2131,7 @@
+ 	num_created_vdevs = ar->num_created_vdevs;
+ 	num_created_bridge_vdevs = ar->num_created_bridge_vdevs;
++	if (ath12k_core_uses_low_memory_profile())
++		return is_bridge_vdev ||
++		       num_created_vdevs + num_created_bridge_vdevs >= total_num_vdevs;
+ 
+ 	if (total_num_vdevs == ATH12K_MAX_NUM_VDEVS_NLINK) {
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -2162,4 +2162,5 @@
+ 						    const char *filename);
+ void ath12k_core_issue_bug_on(struct ath12k_base *ab);
++bool ath12k_core_uses_low_memory_profile(void);
+ u32 ath12k_core_get_max_station_per_radio(struct ath12k_base *ab);
+ u32 ath12k_core_get_max_peers_per_radio(struct ath12k_base *ab);
+--- a/drivers/net/wireless/ath/ath12k/qmi.c
++++ b/drivers/net/wireless/ath/ath12k/qmi.c
+@@ -6090,4 +6090,6 @@
+ 
+ 	ab->qmi.target_mem_mode = ATH12K_QMI_TARGET_MEM_MODE;
++	if (ath12k_core_uses_low_memory_profile())
++		ab->qmi.target_mem_mode = ATH12K_QMI_TARGET_MEM_MODE_512M;
+ 
+ 	ret = ath12k_hif_set_qrtr_endpoint_id(ab);
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -254,5 +254,6 @@
+ #define ATH12K_SCAN_CHANNEL_SWITCH_WMI_EVT_OVERHEAD	10 /* in msecs */
+ #define ATH12K_MAX_NUM_BRIDGE_PER_MLD 2
+-#define BRIDGE_IN_RANGE(ar) (ar->num_created_bridge_vdevs < TARGET_NUM_BRIDGE_VDEVS)
++#define BRIDGE_IN_RANGE(ar) (!ath12k_core_uses_low_memory_profile() && \
++	(ar->num_created_bridge_vdevs < TARGET_NUM_BRIDGE_VDEVS))
+ #define ATH12K_MAX_AR_LINK_IDX	5
+ #define ATH12K_SCAN_ROC_CLEANUP_TIMEOUT_MS 3000  /* Timeout for ROC cleanup after scan */
+@@ -22370,4 +22371,7 @@
+ 	}
+ 
++	if (ath12k_core_uses_low_memory_profile() && max_interfaces > 9)
++		max_interfaces = 9;
++
+ 	limits = kcalloc(n_limits, sizeof(*limits), GFP_KERNEL);
+ 	if (!limits)
+@@ -22929,5 +22933,8 @@
+ 			mac_addr = ar->mac_addr;
+ 
+-		mbssid_max_interfaces += TARGET_NUM_VDEVS;
++		if (ath12k_core_uses_low_memory_profile())
++			mbssid_max_interfaces += ath12k_core_get_total_num_vdevs(ar->ab);
++		else
++			mbssid_max_interfaces += TARGET_NUM_VDEVS;
+ 	}
+ 
+--
+2.43.0

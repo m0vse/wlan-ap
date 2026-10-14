@@ -154,7 +154,7 @@
 + let statuses={};
 + for(let name in expected){
 +  report.sections[name]=1;let s=config[name],r=config[s.device],group=config[s.mld];
-+  if(group?.['.type']!='wifi-mld'||group.ifname!=s.ifname||group.ssid!=s.ssid||s.mld!=s.ifname)continue;
++  if(group?.['.type']!='wifi-mld'||(group.ifname ?? s.mld)!=s.ifname||group.ssid!=s.ssid||s.mld!=s.ifname)continue;
 +  let roots=filter(interfaces||[],i=>i.ifname==s.ifname&&i.iftype==3&&i.ssid==s.ssid);
 +  if(length(roots)!=1)continue;let root=roots[0],expected_phy=resolve_radio(r),radio=number(''+r.radio);
 +  if(expected_phy==null||root.wiphy!=expected_phy||radio==null||!mac(root.mac)||!length(root.mlo_links)||length(root.mlo_links)>16)continue;

@@ -1,0 +1,25 @@
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -4727,6 +4727,22 @@
+ 
+ 	lockdep_assert_held(&ag->mutex);
+ 
++	/* Miami's retained IPQ5332 AHB firmware must stay in its qualified
++	 * non-MLO mode. API1 firmware skips the SDK MLO feature-bit check;
++	 * the ordinary 2 GHz AP crashed with host MLO enabled.
++	 * Independent QCN9274 PCI groups retain the native SDK policy.
++	 */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		for (i = 0; i < ag->num_devices; i++) {
++			ab = ag->ab[i];
++			if (ab && ab->hif.bus == ATH12K_BUS_AHB &&
++			    ab->hw_rev == ATH12K_HW_IPQ5332_HW10) {
++				ag->mlo_capable = false;
++				return;
++			}
++		}
++	}
++
+ 	/* If more than one devices are grouped, then inter MLO
+ 	 * functionality can work still independent of whether internally
+ 	 * each device supports single_chip_mlo or not.

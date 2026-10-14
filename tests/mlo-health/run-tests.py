@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run actual health/DFS code; prepared schema must precede patch104; no AP access."""
 from pathlib import Path
-import shutil,subprocess,sys,tempfile
+import os,re,shutil,subprocess,sys,tempfile
 repo,baseline,runtime=map(lambda s:Path(s).resolve(),sys.argv[1:]);tests=Path(__file__).resolve().parent
 with tempfile.TemporaryDirectory(prefix='native-mlo-health-') as temp:
  w=Path(temp);source=w/'source';shutil.copytree(baseline/'system',source/'system')
@@ -12,7 +12,11 @@ with tempfile.TemporaryDirectory(prefix='native-mlo-health-') as temp:
  for name in ('dfs_cac.uc','mlo_health.uc'):shutil.copy2(source/'system'/name,fixture/name)
  shutil.copy2(w/'dfs_cac.uc',fixture/'dfs_base.uc');shutil.copy2(source/'system/health.uc',w/'health-fixed.uc')
  for name in ('test-mlo-health.uc','test-health-golden.py'):shutil.copy2(tests/name,w/name)
- subprocess.run([str(runtime),'-L',str(fixture/'*.uc'),str(w/'test-mlo-health.uc')],check=True)
+ ssid=(baseline/'renderer/templates/interface/ssid.uc').read_text()
+ group=re.search(r'{% if \(mlo_plan\): %}\nset wireless\.{{ mlo_plan\.group }}=wifi-mld\n.*?{% endif %}',ssid,re.S)
+ assert group,'Actual rendered MLD group block missing from the prepared schema'
+ group_template=w/'mld-group.uc';group_template.write_text(group[0])
+ subprocess.run([str(runtime),'-L',str(fixture/'*.uc'),str(w/'test-mlo-health.uc')],check=True,env={**os.environ,'MLO_GROUP_TEMPLATE':str(group_template)})
  subprocess.run([str(runtime),'-L',str(fixture/'*.uc'),str(repo/'tests/dfs-cac/test-dfs-cac.uc')],check=True)
  subprocess.run([sys.executable,str(w/'test-health-golden.py'),str(runtime)],check=True)
  print('PASS: exact package patch104 applied without fuzz; ordinary reporting and genuine failures preserved')

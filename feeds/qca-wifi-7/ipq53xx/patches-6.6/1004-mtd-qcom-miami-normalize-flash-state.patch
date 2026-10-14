@@ -1,0 +1,171 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] mtd: qcom: normalize Miami SPI-NAND modes before BBT scan
+
+Mirror stock OTP/ECC/QE initialization for X7-35X and MX35UF2GE4AD.
+Preserve CONT and unrelated configuration bits; reject reserved bits set high. Select and verify the existing
+24MHz clock before READID/features/BBT, not only after nand_scan. Verify mode
+readback and fail before BBT scanning/MTD registration. Balance the Miami IO
+clock enable on probe failure/removal. Other boards retain existing behavior.
+No array, OTP-programming, block-lock, training or boot-environment writes.
+This is an experimental state-normalization candidate, not a proven remedy.
+
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -2937,6 +2937,10 @@
+ NAND_ECC_CAPS_SINGLE(qcom_nandc_ecc_caps, qcom_nandc_calc_ecc_bytes,
+ 		     NANDC_STEP_SIZE, 4, 8);
+ 
++static int qspi_miami_device_config(struct qcom_nand_controller *nandc,
++				    struct qcom_nand_host *host,
++				    struct mtd_info *mtd);
++
+ static int qcom_nand_attach_chip(struct nand_chip *chip)
+ {
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+@@ -3125,6 +3129,10 @@
+ 		host->cfg0, host->cfg1, host->ecc_buf_cfg, host->ecc_bch_cfg,
+ 		host->cw_size, host->cw_data, ecc->strength, ecc->bytes,
+ 		cwperpage);
++
++	/* Normalize volatile flash modes before core scans bad-block markers. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		return qspi_miami_device_config(nandc, host, mtd);
+ 
+ 	return 0;
+ }
+@@ -3605,11 +3613,72 @@
+ 	}
+ }
+ 
++/* Match stock SPI-NAND initialization for this exact Miami flash geometry.
++ * RESET does not clear Macronix configuration modes; only power cycling does.
++ * SET_FEATURE changes volatile configuration, never array/OTP contents.
++ */
++static int qspi_miami_device_config(struct qcom_nand_controller *nandc,
++				    struct qcom_nand_host *host,
++				    struct mtd_info *mtd)
++{
++	struct nand_chip *chip = &host->chip;
++	const u8 mode_mask = BIT(6) | BIT(4) | BIT(0);
++	u8 before, wanted, after;
++	int ret;
++
++	if (!nandc->props->is_serial_nand || chip->id.len < 2 ||
++	    chip->id.data[0] != 0xc2 || chip->id.data[1] != 0xa6 ||
++	    mtd->size != SZ_256M || mtd->writesize != SZ_2K ||
++	    mtd->oobsize != 128 || chip->ecc.strength != 8 ||
++	    chip->ecc.size != NANDC_STEP_SIZE)
++		return -ENODEV;
++
++	ret = qcom_serial_get_feature(nandc, host, SPI_FLASH_FEATURE_REG);
++	if (ret < 0)
++		return ret;
++	before = (ret >> 8) & 0xff;
++	/* Macronix reserves B0 bits 5, 3 and 1; never write them high. */
++	if (before & (BIT(5) | BIT(3) | BIT(1))) {
++		dev_err(nandc->dev, "Miami: invalid NAND CFG 0x%02x\n", before);
++		return -EIO;
++	}
++	/* Stock clears OTP and on-die ECC, then selects the required QE state.
++	 * Preserve continuous-read and all other bits for this narrow experiment.
++	 */
++	wanted = before & ~mode_mask;
++	if (nandc->props->quad_mode)
++		wanted |= SPI_FLASH_QUAD_MODE;
++	dev_info(nandc->dev, "Miami: NAND CFG before=0x%02x wanted=0x%02x\n",
++		 before, wanted);
++	if (wanted != before) {
++		ret = qcom_serial_set_feature(nandc, host, SPI_FLASH_FEATURE_REG,
++					      wanted);
++		if (ret)
++			return ret;
++	}
++	ret = qcom_serial_get_feature(nandc, host, SPI_FLASH_FEATURE_REG);
++	if (ret < 0)
++		return ret;
++	after = (ret >> 8) & 0xff;
++	dev_info(nandc->dev, "Miami: NAND CFG after=0x%02x\n", after);
++	if (after != wanted) {
++		dev_err(nandc->dev, "Miami: NAND configuration readback failed\n");
++		return -EIO;
++	}
++	host->check_qe_bit = true;
++	host->quad_mode = !!(after & SPI_FLASH_QUAD_MODE);
++	return 0;
++}
++
+ static int qspi_nand_device_config(struct qcom_nand_controller *nandc,
+ 				   struct qcom_nand_host *host, struct mtd_info *mtd)
+ {
+ 	int status = 0;
+ 	u8 buf_bit_pos = 0;
++	/* Exact Miami state was configured and verified before BBT scanning. */
++	if (of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		return 0;
++
+ 	nandc->buf_count = 4;
+ 	memset(nandc->reg_read_buf, 0x0, nandc->buf_count);
+ 	/* Configure BUF bit for SPI Nand device
+@@ -4214,6 +4283,7 @@
+ 	struct device *dev = &pdev->dev;
+ 	struct resource *res;
+ 	int ret;
++	bool miami_iomacro_enabled = false;
+ 
+ 	nandc = devm_kzalloc(&pdev->dev, sizeof(*nandc), GFP_KERNEL);
+ 	if (!nandc)
+@@ -4243,9 +4313,22 @@
+ 		if (IS_ERR(nandc->iomacro_clk))
+ 			return PTR_ERR(nandc->iomacro_clk);
+ 
+-		ret =  clk_set_rate(nandc->iomacro_clk, 200000000);
+-		if (ret)
+-			return ret;
++		if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++			unsigned long rate;
++
++			/* READID, feature commands and BBT reads precede training. */
++			ret = clk_set_rate(nandc->iomacro_clk, 24000000);
++			if (ret)
++				return ret;
++			rate = clk_get_rate(nandc->iomacro_clk);
++			if (!rate || rate > IO_MACRO_50_MHZ)
++				return -ERANGE;
++			dev_info(dev, "Miami: probe feedback clock %luHz\n", rate);
++		} else {
++			ret = clk_set_rate(nandc->iomacro_clk, 200000000);
++			if (ret)
++				return ret;
++		}
+ 	}
+ 
+ 	ret = qcom_nandc_parse_dt(pdev);
+@@ -4276,6 +4359,8 @@
+ 		ret = clk_prepare_enable(nandc->iomacro_clk);
+ 		if (ret)
+ 			goto err_setup;
++		miami_iomacro_enabled =
++			of_machine_is_compatible("cambiumnetworks,x7-35x");
+ 	}
+ 
+ 	ret = qcom_nandc_alloc(nandc);
+@@ -4309,6 +4394,8 @@
+ err_setup:
+ 	qcom_nandc_unalloc(nandc);
+ err_nandc_alloc:
++	if (miami_iomacro_enabled)
++		clk_disable_unprepare(nandc->iomacro_clk);
+ 	clk_disable_unprepare(nandc->aon_clk);
+ err_aon_clk:
+ 	clk_disable_unprepare(nandc->core_clk);
+@@ -4337,6 +4424,10 @@
+ 		sysfs_remove_file(&pdev->dev.kobj, &dev_attr_boot_layout.attr);
+ 
+ 	qcom_nandc_unalloc(nandc);
++
++	if (nandc->props->is_serial_nand &&
++	    of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		clk_disable_unprepare(nandc->iomacro_clk);
+ 
+ 	clk_disable_unprepare(nandc->aon_clk);
+ 	clk_disable_unprepare(nandc->core_clk);
