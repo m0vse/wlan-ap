@@ -92,7 +92,11 @@ oem_restore_confirm_preflight && oem_restore_confirm
    result=self.invoke(fixture);self.assertEqual(result.returncode,0,result.stderr)
    self.assertEqual(protected,{p:p.read_bytes() for p in protected})
    values=dict(row.split('=',1) for row in (case.r/'env-snapshot').read_text().splitlines())
-   self.assertEqual(values['bootcmd'],'bootipq');self.assertEqual(values['image'],str(1-source));self.assertEqual(values['serial#'],'keep-factory')
+   # OEM confirmation retains the counter reset on every native boot, rather
+   # than restoring the unsafe bare bootipq command from before that fix.
+   self.assertEqual(values['bootcmd'],'setenv bootcount 0 && bootipq')
+   self.assertEqual(values['bootcount'],'0')
+   self.assertEqual(values['image'],str(1-source));self.assertEqual(values['serial#'],'keep-factory')
    self.assertNotIn('sage_oem_restore_state',values);self.assertEqual((case.r/'operations').read_text().splitlines(),['ENV_BATCH'])
    self.assertIn('Separate explicit factory-reset action',result.stdout)
    self.assertIn('Clean re-enrollment is NOT ready',result.stdout)

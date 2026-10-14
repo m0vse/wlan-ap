@@ -92,19 +92,25 @@ cos_arm image
         self.assertEqual(writes, [])
 
     def test_source_only_default_and_journal_precede_writer_for_both_models_slots(self):
+        # cnMaestro-upgraded OEM devices can legitimately arrive at nine.
+        # Persist that reset before the writer; do not require operator edits.
         for source in (0, 1):
             for model in ('E410', 'E410B'):
                 result, state, writes = self.run_arm(source, model, persist=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(writes, ['batch', 'writer', 'batch', 'bootcmd'])
+                self.assertEqual(state['bootcount'], '0')
                 self.assertEqual(state[f'sage_boot{source}'], f'setenv bootcount 0 && setenv image {source} && bootipq')
                 self.assertTrue(state['sage_storage_pending'].startswith(f'install:{source}:{1-source}:'))
 
     def test_source_batch_sync_and_readback_faults_never_reach_writer(self):
-        for fault in ('batch', 'source_sync', 'source_readback', 'counter_readback'):
-            result, state, writes = self.run_arm(fault=fault, persist=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertNotIn('writer', writes)
-            self.assertNotIn('sage_boot1', state)
+        for source in (0, 1):
+            for model in ('E410', 'E410B'):
+                for fault in ('batch', 'source_sync', 'source_readback', 'counter_readback'):
+                    with self.subTest(source=source, model=model, fault=fault):
+                        result, state, writes = self.run_arm(source, model, fault=fault, persist=True)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertNotIn('writer', writes)
+                        self.assertNotIn(f'sage_boot{1-source}', state)
 
 if __name__ == '__main__': unittest.main()
