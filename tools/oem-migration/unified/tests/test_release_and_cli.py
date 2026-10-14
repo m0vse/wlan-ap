@@ -72,6 +72,15 @@ class PatchedRuntimeTests(unittest.TestCase):
         original='\n'.join(r[1:] for r in section.splitlines() if r.startswith('+') and not r.startswith('+++'))+'\n'
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);target=root/'package/cambium/cambium-ab/files/cambium-ab.sh';target.parent.mkdir(parents=True);target.write_text(original)
+            # Replay the real prerequisites, including changes to ab_hook;
+            # applying183 directly to the original124 core is not a release.
+            relative='package/cambium/cambium-ab/files/cambium-ab.sh'
+            for patch in sorted((repo/'patches-25.12').glob('*.patch')):
+                if 124 < int(patch.name[:4]) < 183:
+                    subprocess.run(['git','apply','--include='+relative,str(patch)],cwd=root,check=True,capture_output=True)
+            patch_source=(repo/'patches-25.12/0183-cambium-ab-readonly-upgrade-readiness.patch').read_text()
+            context='\n'.join(line[1:] for line in patch_source.splitlines() if line.startswith(' '))+'\n'
+            self.assertIn(context,target.read_text())
             result=subprocess.run(['patch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0183-cambium-ab-readonly-upgrade-readiness.patch')],cwd=root,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             for family in ('sage','jaguar','cheetah','thor','miami','gambit'):
