@@ -8,6 +8,18 @@ let root={ifname:'ml0_0',iftype:3,ssid:'Fixture',wiphy:9,mac:'90:00:00:00:00:01'
 function status(id){return m.fields('state=ENABLED\nphy=phy09.'+(id?7:3)+'\nfreq='+(id?6135:5765)+'\nbss[0]=ml0_0\nbssid[0]='+(id?'92':'90')+':00:00:00:00:01\nssid[0]=Fixture\nmld_addr[0]=90:00:00:00:00:01\nmld_link_id[0]='+id+'\ncac_time_seconds=60\ncac_time_left_seconds=N/A\n');}
 function run(c,raw,q){return m.collect(c||cfg,q||((ifname,id)=>status(id)),raw||[root],name=>name=='phy09'?9:10,r=>r.path=='pci'?9:null);}
 let ready=run();check(ready.sections.s5==0&&ready.sections.s6==0,'both exact links healthy');
+let template=getenv('MLO_GROUP_TEMPLATE');assert(template,'actual SSID group template required');
+let generated=render(template,{mlo_plan:{group:'ml0_0'},ssid:{name:'Fixture',encryption:{key:'synthetic-test-only'}},s:v=>sprintf("'%s'",v)});
+let generated_group={};
+for(let line in split(generated,'\n')){
+ if(line=='set wireless.ml0_0=wifi-mld')generated_group['.type']='wifi-mld';
+ let field=match(line,/^set wireless\.ml0_0\.([a-z_]+)='(.*)'$/);
+ if(field)generated_group[field[1]]=field[2];
+}
+check(generated_group['.type']=='wifi-mld'&&generated_group.ssid=='Fixture'&&!exists(generated_group,'ifname'),'actual template emits implicit group name, not a fabricated ifname');
+let rendered_cfg={...cfg,ml0_0:generated_group},rendered_ready=run(rendered_cfg);
+check(rendered_ready.sections.s5==0&&rendered_ready.sections.s6==0,'actual rendered MLD group accepted on both links');
+check(run({...rendered_cfg,ml0_0:{...generated_group,ifname:'another'}}).sections.s6==1,'explicit contradictory group name still refused');
 check(ready.links.s5.radio_index==3&&ready.links.s6.radio_index==7&&ready.links.s6.link_id==1,'link ID not assumed radio index');
 check(!length(ready.pending.sections),'enabled links never CAC');
 let primary={...root,mlo_links:[root.mlo_links[0]]};check(run(null,[primary]).sections.s6==1,'missing secondary not credited primary');

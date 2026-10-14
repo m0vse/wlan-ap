@@ -1,0 +1,138 @@
+--- a/renderer/ucentral.uc
++++ b/renderer/ucentral.uc
+@@ -131,12 +131,6 @@
+ }
+ 
+ try {
+-	for (let cmd in [ 'rm -rf /tmp/ucentral',
+-			  'mkdir /tmp/ucentral',
+-			  'rm /tmp/dnsmasq.conf',
+-			  '/etc/init.d/spotfilter stop',
+-			  'touch /tmp/dnsmasq.conf' ])
+-		system(cmd);
+ 
+ 	let state = schemareader.validate(inputjson, logs);
+ 
+@@ -149,7 +143,14 @@
+ 
+ 	fs.stdout.write("Log messages:\n" + join("\n", logs) + "\n\n");
+ 
+-	if (state) {
++	if (state && length(batch) && !length(filter(logs, message => substr(message, 0, 3) == "[E]"))) {
++		for (let cmd in [ 'rm -rf /tmp/ucentral',
++				  'mkdir /tmp/ucentral',
++				  'rm /tmp/dnsmasq.conf',
++				  '/etc/init.d/spotfilter stop',
++				  'touch /tmp/dnsmasq.conf' ])
++			system(cmd);
++
+ 		fs.stdout.write("UCI batch output:\n" + batch + "\n");
+ 
+ 		let outputjson = fs.open("/tmp/ucentral.uci", "w");
+--- a/renderer/wifi/mlo.uc
++++ b/renderer/wifi/mlo.uc
+@@ -18,6 +18,17 @@
+ 	assert(!('captive' in (ssid.services || [])), 'MLO captive interface naming is not yet supported');
+ 	assert(length(phys) == 2 && phys[0].section != phys[1].section,
+ 	       'MLO requires two distinct enabled operating radios');
++	// Require the actual live driver flag on both selected logical radios.
++	// QCA combines an MLO hardware group under one WIPHY.
++	for (let phy in phys)
++		assert(phy.mlo_support === true, 'MLO is not advertised by the active driver');
++	for (let phy in phys)
++		assert(phy.radio_index_source == 'driver' && type(phy.radio_index) == 'int' && phy.radio_index >= 0,
++		       'MLO requires genuine driver radio indices');
++	assert(phys[0].radio_index != phys[1].radio_index, 'MLO requires two different hardware radios');
++	assert(type(phys[0].wiphy_name) == 'string' && length(phys[0].wiphy_name) &&
++	       phys[0].wiphy_name == phys[1].wiphy_name,
++	       'MLO links must belong to the same advertised hardware WIPHY');
+ 	let selected = {};
+ 	for (let phy in phys) {
+ 		let active = operating?.[phy.section];
+--- /dev/null
++++ b/renderer/wifi/mlo_capability.uc
+@@ -0,0 +1,22 @@
++// Merge real GET_WIPHY dump fragments by numeric WIPHY identity.
++// EHT support and model names are not evidence of driver MLO support.
++function collect(snapshot) {
++	let by_id = {};
++	for (let phy in snapshot || []) {
++		if (!exists(phy, 'wiphy')) continue;
++		let item = by_id[phy.wiphy] ?? { supported: false };
++		if (type(phy.wiphy_name) == 'string' && length(phy.wiphy_name))
++			item.name = phy.wiphy_name;
++		if (phy.mlo_support === true)
++			item.supported = true;
++		by_id[phy.wiphy] = item;
++	}
++	let by_name = {};
++	for (let id, item in by_id) {
++		item.name ??= 'phy' + id;
++		by_name[item.name] = item;
++	}
++	return { by_id, by_name };
++}
++
++return { collect };
+--- a/renderer/wifi/phy.uc
++++ b/renderer/wifi/phy.uc
+@@ -3,6 +3,7 @@
+ let cursor = uci ? uci.cursor() : null;
+ let nl = require("nl80211");
+ let def = nl.const;
++let mlo_capability = require("wifi.mlo_capability");
+ 
+ function freq2channel(freq) {
+ 	if (freq == 2484)
+@@ -86,6 +87,7 @@
+ 		return null;
+ 
+ 	let nl_phys;
++	let mlo = mlo_capability.collect(phy_get());
+ 
+ 	let ret = {};
+ 	for (let name, phy in board?.wlan) {
+@@ -144,6 +146,9 @@
+ 				continue;
+ 
+ 			let entry = {
++				mlo_support: mlo.by_name[phy.info.wiphy_name || name]?.supported === true,
++				wiphy_name: phy.info.wiphy_name || name,
++				radio_index_source: phy.info.radio_index_source,
+ 				tx_ant: phy.info.antenna_tx,
+ 				rx_ant: phy.info.antenna_rx,
+ 				tx_ant_avail: phy.info.antenna_tx,
+@@ -231,6 +236,7 @@
+ 	lookup_paths();
+ 
+ 	let phys = phy_get();
++	let mlo = mlo_capability.collect(phys);
+ 	let ret = {};
+ 	let s1gMapping = map5GToS1G();
+ 
+@@ -248,6 +254,8 @@
+ 			continue;
+ 
+ 		let p = {};
++		p.mlo_support = mlo.by_id[phy.wiphy]?.supported === true;
++		p.wiphy_name = mlo.by_id[phy.wiphy]?.name || phyname;
+ 		p.is_morse_phy = true;
+ 
+ 		let temp = get_hwmon(phy_name(phy));
+@@ -309,6 +317,7 @@
+ 	lookup_paths();
+ 
+ 	let phys = phy_get();
++	let mlo = mlo_capability.collect(phys);
+ 	ret = {};
+ 
+ 	// get 5G to S1G mapping table
+@@ -331,6 +340,8 @@
+ 			isMorse = true;
+ 
+ 		let p = {};
++		p.mlo_support = mlo.by_id[phy.wiphy]?.supported === true;
++		p.wiphy_name = mlo.by_id[phy.wiphy]?.name || phyname;
+ 
+ 		p.is_morse_phy = isMorse;  // save result in is_morse_phy
+ 
