@@ -8,8 +8,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 ---
 --- a/package/cambium/cambium-ab/files/cambium-ab.sh
 +++ b/package/cambium/cambium-ab/files/cambium-ab.sh
-@@ -116,6 +116,18 @@
- ab_hook() {
+@@ -117,6 +117,18 @@ ab_hook() {
  	[ -n "${AB_FAMILY:-}" ] && command -v "ab_${AB_FAMILY}_$1" >/dev/null 2>&1
  }
  
@@ -27,3 +26,4 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +
  # The slot named by ubi.mtd= on the kernel command line.
  ab_running_slot() {
+ 	local arg found slot=

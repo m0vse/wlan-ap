@@ -8,6 +8,7 @@ import argparse, pathlib, subprocess, tempfile, re
 p=argparse.ArgumentParser();p.add_argument('--source',type=pathlib.Path,required=True)
 p.add_argument('--ucode-prefix',type=pathlib.Path,required=True)
 p.add_argument('--startup-source',type=pathlib.Path)
+p.add_argument('--without-eht',action='store_true',help='Compile legacy layout without EHT-only struct members')
 p.add_argument('--negative-control',action='store_true');a=p.parse_args()
 source=(a.startup_source or a.source/'src/ap/ucode.c').read_text()
 start=source.index('static void\nuc_hostapd_restore_channel(') if 'uc_hostapd_restore_channel(' in source else source.index('static uc_value_t *\nuc_hostapd_iface_start(')
@@ -30,7 +31,10 @@ harness=r'''
 #define uc_fn_arg(n) fixture_info()
 #define NL80211_REG_NUM_POWER_MODES 4
 enum { HAPD_IFACE_DISABLED, HAPD_IFACE_ENABLED, HAPD_IFACE_DFS };
-struct hostapd_config { int hw_mode,channel,op_class,secondary_channel,acs,punct_bitmap;
+struct hostapd_config { int hw_mode,channel,op_class,secondary_channel,acs;
+#ifdef CONFIG_IEEE80211BE
+ int punct_bitmap;
+#endif
  int ieee80211n,ieee80211ac,ieee80211ax,ieee80211be,enable_edmg,edmg_channel;
  int bandwidth_device,center_freq_device,enable_best_power_mode,he_6ghz_reg_pwr_type;
  int width,seg0,seg1; };
@@ -94,7 +98,9 @@ int main(void){
  reset();put("oper_chwidth",CONF_OPER_CHWIDTH_80MHZ);put("center_seg0_idx",7);put("op_class",133);
  assert(run());assert(calls==2&&beacons==2&&config.width==CONF_OPER_CHWIDTH_80MHZ);
  reset();put("center_seg0_idx",47);assert(run());assert(calls==2&&beacons==2);
+#ifdef CONFIG_IEEE80211BE
  reset();put("punct_bitmap",2);assert(run());assert(calls==2&&config.punct_bitmap==2);
+#endif
  reset();put("op_class",133);assert(run());assert(calls==2); /* opclass-only update cannot no-op */
  reset();put("frequency",2412);put("channel",1);put("op_class",81);put("hw_mode",HOSTAPD_MODE_IEEE80211G);put("oper_chwidth",0);put("center_seg0_idx",0);
  assert(run());assert(calls==2&&iface.freq==2412); /* same channel number, different band */
@@ -102,13 +108,19 @@ int main(void){
  assert(run());assert(calls==2&&config.hw_mode==HOSTAPD_MODE_IEEE80211B); /* zero-valued legacy enum is valid */
  reset();put("frequency",5765);put("channel",153);put("op_class",125);put("oper_chwidth",0);put("center_seg0_idx",153);
  assert(run());assert(calls==2&&beacons==2&&config.channel==153); /* legacy band */
- reset();put("punct_bitmap",2);fail_call=1;assert(!run());assert(calls==1&&beacons==0&&disabled==1&&config.punct_bitmap==0);
- reset();put("punct_bitmap",2);fail_call=2;assert(!run());assert(calls==2&&beacons==0&&disabled==1);
- reset();put("punct_bitmap",2);fail_beacon=1;assert(!run());assert(calls==2&&beacons==1&&disabled==1);
+ reset();put("op_class",133);fail_call=1;assert(!run());assert(calls==1&&beacons==0&&disabled==1&&config.op_class==134);
+ reset();put("op_class",133);fail_call=2;assert(!run());assert(calls==2&&beacons==0&&disabled==1);
+ reset();put("op_class",133);fail_beacon=1;assert(!run());assert(calls==2&&beacons==1&&disabled==1);
  reset();iface.state=HAPD_IFACE_DISABLED;put("frequency",6115);put("channel",33);put("center_seg0_idx",47);enable_ret=-1;assert(!run());assert(beacons==0&&disabled==1&&config.channel==1&&iface.freq==5955&&iface.state==HAPD_IFACE_DISABLED);
  reset();iface.state=HAPD_IFACE_DISABLED;assert(run());assert(iface.state==HAPD_IFACE_ENABLED);
  reset();ucv_put(info);info=NULL;iface.state=HAPD_IFACE_DISABLED;enable_ret=-1;assert(!run()); /* no-info initialization */
- ucv_put(info);puts("PASS 20 actual startup-function controls with real libucode values; mocked driver/beacon/lifecycle");return 0;
+ ucv_put(info);
+#ifdef CONFIG_IEEE80211BE
+ puts("PASS 20 actual startup-function controls with EHT layout; real libucode; mocked driver/beacon/lifecycle");
+#else
+ puts("PASS 19 actual startup-function controls without EHT-only fields; real libucode; mocked driver/beacon/lifecycle");
+#endif
+ return 0;
 }
 '''
 if a.negative_control:
@@ -120,7 +132,8 @@ int main(void){reset();put("punct_bitmap",2);fail_call=1;
 with tempfile.TemporaryDirectory(prefix='hostapd-channel-state-') as temp:
  root=pathlib.Path(temp); c=root/'test.c';binary=root/'test'
  c.write_text(harness+'\n'+conversion+'\n'+body+'\n'+checks)
- subprocess.run(['gcc','-std=gnu11','-Werror=implicit-function-declaration','-I'+str(a.source/'src'),'-I'+str(a.ucode_prefix/'include'),'-I'+str(a.ucode_prefix.parent/'host/include'),str(c),'-L'+str(a.ucode_prefix/'lib'),'-Wl,-rpath,'+str(a.ucode_prefix/'lib'),'-lucode','-o',str(binary)],check=True)
+ flags=[] if a.without_eht else ['-DCONFIG_IEEE80211BE']
+ subprocess.run(['gcc','-std=gnu11','-Werror=implicit-function-declaration',*flags,'-I'+str(a.source/'src'),'-I'+str(a.ucode_prefix/'include'),'-I'+str(a.ucode_prefix.parent/'host/include'),str(c),'-L'+str(a.ucode_prefix/'lib'),'-Wl,-rpath,'+str(a.ucode_prefix/'lib'),'-lucode','-o',str(binary)],check=True)
  result=subprocess.run([str(binary)],capture_output=True,text=True)
  if a.negative_control:
   assert result.returncode != 0,'Old startup unexpectedly passed the regression';print('PASS negative control: unmodified startup fails actual-function regression')
