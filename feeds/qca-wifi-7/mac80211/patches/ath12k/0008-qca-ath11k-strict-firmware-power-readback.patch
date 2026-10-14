@@ -1,0 +1,55 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] QSDK ath11k: never disguise failed firmware power readback
+
+The QSDK package applies patches/ath12k to its complete backports source,
+including its selected ath11k variant. Preserve its existing firmware API.
+
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -11875,8 +11875,10 @@
+ 	 */
+ 	mutex_lock(&ar->conf_mutex);
+ 
+-	if (ar->state != ATH11K_STATE_ON)
++	if (ar->state != ATH11K_STATE_ON) {
++		ret = -ENETDOWN;
+ 		goto err_fallback;
++	}
+ 
+ 	/* Firmware doesn't provide Tx power during CAC hence no need to fetch
+ 	 * the stats.
+@@ -11900,6 +11902,7 @@
+ 					struct ath11k_fw_stats_pdev, list);
+ 	if (!pdev) {
+ 		spin_unlock_bh(&ar->data_lock);
++		ret = -ENODATA;
+ 		goto err_fallback;
+ 	}
+ 
+@@ -11915,11 +11918,8 @@
+ 
+ err_fallback:
+ 	mutex_unlock(&ar->conf_mutex);
+-	/* We didn't get txpower from FW. Hence, relying on vif->bss_conf.txpower */
+-	*dbm = vif->bss_conf.txpower;
+-	ath11k_dbg(ar->ab, ATH11K_DBG_MAC, "txpower from firmware NaN, reported %d dBm\n",
+-		   *dbm);
+-	return 0;
++	/* A configured limit is not successful firmware power readback. */
++	return ret;
+ }
+ 
+ int ath11k_mac_ap_ps_recalc(struct ath11k *ar)
+--- a/drivers/net/wireless/ath/ath11k/core.c
++++ b/drivers/net/wireless/ath/ath11k/core.c
+@@ -5,6 +5,10 @@
+  */
+ 
+ #include <linux/module.h>
++/* Read-only capability: no configured fallback on failed firmware queries. */
++static bool txpower_readback_strict = true;
++module_param_named(txpower_readback_strict, txpower_readback_strict, bool, 0444);
++MODULE_PARM_DESC(txpower_readback_strict, "Strict firmware TX-power readback");
+ #include <linux/slab.h>
+ #include <linux/remoteproc.h>
+ #include <linux/firmware.h>
