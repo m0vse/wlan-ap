@@ -61,9 +61,16 @@ function inspect(radio, iface, observed, status, provenance) {
 	if (radio.channel != null) result.channel.requested = radio.channel;
 	if (radio.htmode != null) result.width.requested = radio.htmode;
 	if (!observed || !status) return result;
-	if (status.state == 'DFS') { result.status = 'pending'; result.reason = 'dfs_cac'; return result; }
+	if (observed.mlo_link_disabled === true) { result.status = 'failed'; result.reason = 'not_enabled'; return result; }
+	if (status.state == 'DFS') {
+		let duration = number(status.cac_time_seconds), remaining = number(status.cac_time_left_seconds);
+		if (duration > 0 && duration <= 4294967295 && remaining > 0 && remaining <= duration) {
+			result.status = 'pending'; result.reason = 'dfs_cac';
+		} else result.reason = 'dfs_state_unconfirmed';
+		return result;
+	}
 	let freq = number(observed.wiphy_freq), actual_channel = channel(freq);
-	if (status.state != 'ENABLED' || observed.mlo_link_disabled === true) { result.status = 'failed'; result.reason = 'not_enabled'; return result; }
+	if (status.state != 'ENABLED') { result.status = 'failed'; result.reason = 'not_enabled'; return result; }
 	if (freq == 0) { result.status = 'failed'; result.reason = 'no_channel'; return result; }
 	if (freq > 0 && (freq < 2400 || freq > 7200)) { result.reason = 'band_readback_unsupported'; return result; }
 	if (freq != null && actual_channel != null) {
