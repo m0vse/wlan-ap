@@ -33,6 +33,8 @@ an unsafe OEM selector. After a successful save, both paths persist the previous
 slot before attempting the candidate. Tests inject the actual named state key
 (not its former positional index), bootcount where present, each selector and
 save failure. An ungated-save mutation demonstrates the unsafe candidate load.
+The single runner also executes the retained Jaguar, Cheetah and Thor counter
+regressions; their standalone tests must not be omitted from migration checks.
 
 Network cases must cover failed resolution/connection/header/body, truncated
 or wrong data, stalls and reset; valid cached objects are accepted without
