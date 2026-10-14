@@ -25,6 +25,15 @@ for every failure. Later failures retain the writing journal and never report
 an armed candidate. This models persisted state versus temporary state; it is
 not a physical power-cut guarantee.
 
+The rendered-command regression distinguishes native OpenWiFi fallback from
+the reviewed OEM counter safeguard. Native trial failures fall back directly
+to the previous OpenWiFi slot. OEM entry/return counter or default-save failures
+must hold at the boot prompt, without loading either bank or resetting through
+an unsafe OEM selector. After a successful save, both paths persist the previous
+slot before attempting the candidate. Tests inject the actual named state key
+(not its former positional index), bootcount where present, each selector and
+save failure. An ungated-save mutation demonstrates the unsafe candidate load.
+
 Network cases must cover failed resolution/connection/header/body, truncated
 or wrong data, stalls and reset; valid cached objects are accepted without
 contacting a vanished provider. No real external network is used by the
