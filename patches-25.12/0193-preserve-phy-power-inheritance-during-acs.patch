@@ -1,0 +1,56 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] wifi-scripts: retain PHY power inheritance for secondary AP BSS
+
+Successful PHY-level power setting establishes local->user_power_level.
+mac80211 initializes subsequently created interfaces from that value. ACS/CAC
+can leave secondary BSS absent when netifd runs the per-interface power loop.
+Do not turn a redundant secondary-BSS write into a fatal startup failure.
+
+Require acceptance during this setup, AP mode, and equivalent effective power.
+Keep primary and differing per-interface requests strict. A differing explicit
+override on a not-yet-created BSS remains a rejected setup, not a false success;
+this patch does not introduce a deferred override worker or weaken readback.
+All unrelated channel-state, MLO, NAND and A/B changes are retained.
+
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -1 +1 @@
+-PKG_RELEASE:=5
++PKG_RELEASE:=6
+--- a/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
++++ b/package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+@@ -895,9 +895,17 @@
+ 	json_select config
+ 	json_get_var ifname _ifname
+-	json_get_vars vif_txpower
++	json_get_vars vif_txpower mode
+ 	json_select ..
+ 
+ 	set_default vif_txpower "$txpower"
++	# mac80211 copies the accepted PHY power to subsequently created VIFs.
++	# ACS/CAC can leave secondary AP BSS interfaces uncreated at this point.
++	# Only omit a redundant write after this setup accepted the PHY request.
++	if [ "$phy_txpower_accepted" = 1 ] && [ "$mode" = ap ] &&
++	   [ -n "$ap_ifname" ] && [ "$ifname" != "$ap_ifname" ] &&
++	   [ "${vif_txpower%%.*}" = "${txpower%%.*}" ]; then
++		return 0
++	fi
+ 	if [ -n "$vif_txpower" ]; then
+ 		iw dev "$ifname" set txpower fixed "${vif_txpower%%.*}00" || {
+ 			txpower_failed=1
+@@ -1228,6 +1236,7 @@
+ 	wdev_tool "$phy$phy_suffix" set_config "$(json_dump)" $active_ifnames
+ 	json_set_namespace "$prev"
+ 
++	local phy_txpower_accepted=0
+ 	[ -z "$phy_suffix" ] && {
+ 		if [ -n "$txpower" ]; then
+ 			iw phy "$phy" set txpower fixed "${txpower%%.*}00" || {
+@@ -1240,6 +1249,7 @@
+ 				return 1
+ 			}
+ 		fi
++		phy_txpower_accepted=1
+ 	}
+ 
+ 	txpower_failed=0
