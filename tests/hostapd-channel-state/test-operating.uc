@@ -15,7 +15,9 @@ check(inspect({ ...actual, center_freq1: 6105 }).width.status == 'mismatch', 'wr
 check(inspect(null, { ...status, state: 'DISABLED' }).status == 'failed', 'disabled not green');
 check(inspect({ ...actual, mlo_link_disabled: true }).status == 'failed', 'disabled link not credited');
 check(inspect({ ...actual, wiphy_freq: 0 }).status == 'failed', 'explicit no-channel not healthy');
-check(inspect(null, { ...status, state: 'DFS' }).status == 'pending', 'DFS is pending, not confirmation or hardware fault');
+check(inspect(null, { ...status, state: 'DFS', cac_time_seconds:'60',cac_time_left_seconds:'45' }).status == 'pending', 'only fresh positive CAC is pending');
+for(let remaining in ['0','N/A','61','-1'])check(inspect(null,{...status,state:'DFS',cac_time_seconds:'60',cac_time_left_seconds:remaining}).status=='unconfirmed','invalid or expired CAC cannot claim pending');
+check(inspect({...actual,mlo_link_disabled:true},{...status,state:'DFS',cac_time_seconds:'60',cac_time_left_seconds:'45'}).status=='failed','disabled link is not exempted by CAC');
 check(inspect({ ...actual, wiphy_tx_power_level: null }).power.status == 'unconfirmed', 'missing readback is not zero');
 let zero = inspect({ ...actual, wiphy_tx_power_level: 0 }, null, null, { ...radio, txpower: '0' });
 check(zero.power.status == 'confirmed' && zero.power.reported_dbm == 0, 'real zero dBm preserved');
