@@ -1,0 +1,32 @@
+#!/bin/sh
+# Bounded continuation after native early_boot supplies country. Do not
+# generate wireless UCI, enable SSIDs or substitute an enrollment worker.
+. /lib/functions/system.sh
+[ "$(board_name)" = "cambiumnetworks,x7-35x" ] || exit 0
+exec 9>/var/lock/miami-radio.lock
+flock -n 9 || exit 0
+# A bound radio may be reading the published files. Never restage/reprobe it.
+# Initial provisioning must be complete before the first probe on a clean boot.
+for p in /sys/bus/platform/devices/c000000.wifi /sys/bus/pci/devices/0001:01:00.0; do
+	if [ -L "$p/driver" ]; then
+		logger -t miami-radio 'radio already bound; leaving firmware publication intact'
+		exit 0
+	fi
+done
+tries=0
+while [ "$tries" -lt 20 ]; do
+	if /usr/sbin/miami-board-data provision; then
+		# Modules may already have seen the held devices. Probe only the
+		# exact now-provisioned endpoints through their native bus.
+		for pair in platform:c000000.wifi pci:0001:01:00.0; do
+			bus=${pair%%:*}; device=${pair#*:}
+			p=/sys/bus/$bus/devices/$device
+			[ ! -d "$p" ] || [ -L "$p/driver" ] || echo "$device" > /sys/bus/$bus/drivers_probe
+		done
+		exit 0
+	fi
+	tries=$((tries + 1))
+	[ "$tries" -ge 20 ] || sleep 3
+done
+logger -t miami-radio 'own-unit staging unavailable; radios remain held'
+exit 1

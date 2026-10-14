@@ -6,14 +6,14 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=wifi-scripts
 PKG_VERSION:=1.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 include $(INCLUDE_DIR)/package.mk
 
 define Package/wifi-scripts
   SECTION:=utils
   CATEGORY:=Base system
-  DEPENDS:=+ucode +ucode-mod-nl80211 +ucode-mod-rtnl +ucode-mod-ubus +ucode-mod-uci
+  DEPENDS:=+coreutils-timeout +ucode +ucode-mod-nl80211 +ucode-mod-rtnl +ucode-mod-ubus +ucode-mod-uci
   TITLE:=Wi-Fi configuration scripts
   PKGARCH:=all
 endef

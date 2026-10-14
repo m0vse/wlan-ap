@@ -110,3 +110,7 @@ Miami must still use its qualified retained tree, not generic main: its private
 source history and build inputs are not published by this check. Never replace
 those inputs just to satisfy a generic shared build. Private settings, device
 data and credentials are excluded from the public ledger.
+
+QSDK shared-PHY power lifecycle (reviewed Miami candidate):
+A normalized uniform cap across every enabled logical device on the same physical wiphy is checked and requested before hostapd/link creation, including mlo_add_flag1. New kernel links inherit local->user_power_level. Distinct per-BSS caps are explicitly unsupported by this narrow path, even for currently existing BSSes, because recreation would lose the override. Kernel acceptance is not firmware confirmation; strict driver/readback/health remains required. coreutils-timeout is explicit; -k1 bounds a TERM-ignoring command at approximately6s. Physical identity, unknown-peer, genuine request failure and conflicting-cap checks stay strict. No callback ABI/metadata/workers introduced.
+Offline regression evidence: actual candidate functions, existing22 setter controls, complete drv_mac80211_setup under target ash with real jshn/libconfig/for_each_interface and mocked hardware/UCIexport. Mapping is a fixture; never claim live hardware MLO acceptance.

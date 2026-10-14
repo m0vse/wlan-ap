@@ -1,0 +1,20 @@
+Miami public source integration
+
+This source-only promotion starts at public193 and imports selected regular
+source bodies from reviewed Miami b541, without importing its private history,
+build settings, credentials, calibration, device defaults or image artifacts.
+Existing public shared patch bodies and family package versions remain intact.
+0194 adds the retained Miami changes after the public shared chain; common
+cambium-ab advances20 to24, above retained privateMiami23. It preserves Thor
+preflight and Jaguar/Cheetah OEM-return handling. Slot DTs, the radio package,
+A/B image/profile and combined image builder are now present in public source.
+Unused thin-bridge variants are excluded from this promotion.
+
+The published miami-2026.10.14.2-b541cffb image remains immutable and uses its
+qualified private source and package23. This public promotion has no new
+firmware build or AP acceptance. The existing private-parent preservation
+check still requires6cc and is not bypassed. test-miami-public-source.py is an
+additive source-byte/provenance check, not private ancestry or hardware proof.
+QSDK setup tests can use TEST_SDK to supply an existing prepared SDK for real
+jshn/libfunctions; the supplied source checkout remains the actual candidate.
+The historical negative control uses public193, with no private Git objects.

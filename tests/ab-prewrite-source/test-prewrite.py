@@ -8,7 +8,7 @@ from pathlib import Path
 import argparse,json,os,subprocess,tempfile
 
 repo=Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser();p.add_argument('--core',type=Path);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--core',type=Path);p.add_argument('--prepared',action='store_true',help='Use the already reconstructed current upgrade file without replaying0184');p.add_argument('--generated-source',type=Path,help='Current reconstructed family package source');a=p.parse_args()
 
 def reconstruct_upgrade(root):
  """Replay only this file's real repository hunks; no SDK/private input."""
@@ -35,8 +35,9 @@ with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
  core=files/'cambium-ab-upgrade.sh';core.write_text(original)
  recipe=files.parent/'Makefile'
  recipe.write_text('include $(TOPDIR)/rules.mk\n\nPKG_NAME:=cambium-ab\nPKG_RELEASE:=18\nPKG_LICENSE:=GPL-2.0-only\nPKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>\n\n')
- subprocess.run(['patch','--batch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0184-cambium-ab-preserve-working-source-before-write.patch')],cwd=root,check=True,capture_output=True)
- assert 'PKG_RELEASE:=19\n' in recipe.read_text()
+ if not a.prepared:
+  subprocess.run(['patch','--forward','--batch','--fuzz=0','-p1','-i',str(repo/'patches-25.12/0184-cambium-ab-preserve-working-source-before-write.patch')],cwd=root,check=True,capture_output=True)
+  assert 'PKG_RELEASE:=19\n' in recipe.read_text()
  (root/'empty').write_text('')
  modules={}
  for family,prefix in [('jaguar','0124-'),('cheetah','0125a-'),('thor','0141-'),('gambit','0140-')]:
@@ -44,6 +45,9 @@ with tempfile.TemporaryDirectory(prefix='ab-prewrite-') as td:
   marker=f'+++ b/package/cambium/cambium-{family}-support/files/cambium-ab-{family}.sh\n'
   section=patch.split(marker,1)[1].split('\ndiff --git ',1)[0]
   source=root/(family+'.sh');source.write_text(''.join(x[1:]+'\n' for x in section.splitlines() if x.startswith('+')))
+  if a.generated_source:
+   source=a.generated_source/f'package/cambium/cambium-{family}-support/files/cambium-ab-{family}.sh'
+   assert source.is_file(),source
   modules[family]=source
  # Test-only frozen renderer: the shared main tree does not admit Miami
  # firmware profiles. Prefer actual port source when it is present.
@@ -149,7 +153,7 @@ cambium_ab_do_upgrade "$LOCAL_IMAGE"
     count+=1
  # Negative control: the actual old writer reaches target without prior-only
  # persistence and is rejected by the target boundary assertion.
- old=root/'old-upgrade.sh';old.write_text(original)
+ old=root/'old-upgrade.sh';old.write_text(reconstruct_upgrade(root/'negative-control-source') if a.prepared else original)
  r,trace,_=execute(old,'jaguar',0,'actual source command','')
  assert r.returncode!=0 and 'target' in trace and 'set:bootcmd' not in trace
  print(f'PASS: {count} ordered source-preservation fault/trace cases with actual family boot renderers; old writer negative control rejected')

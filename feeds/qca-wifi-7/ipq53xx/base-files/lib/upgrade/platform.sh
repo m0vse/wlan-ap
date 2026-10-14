@@ -1,7 +1,9 @@
 . /lib/functions/system.sh
 
-RAMFS_COPY_BIN='fw_printenv fw_setenv'
-RAMFS_COPY_DATA='/etc/fw_env.config /var/lock/fw_printenv.lock'
+RAMFS_COPY_BIN="${RAMFS_COPY_BIN:-} head tr readlink fw_printenv fw_setenv sha256sum cmp mktemp openssl jsonfilter ubiformat ubiattach ubidetach ubimkvol ubiupdatevol"
+[ ! -f /lib/functions/cambium-ab.sh ] || . /lib/functions/cambium-ab.sh
+[ ! -f /lib/upgrade/cambium-ab.sh ] || . /lib/upgrade/cambium-ab.sh
+RAMFS_COPY_DATA="${RAMFS_COPY_DATA:-} /etc/fw_env.config /var/lock/fw_printenv.lock /lib/functions/cambium-ab.sh /lib/functions/cambium-ab-miami.sh /lib/upgrade/cambium-ab.sh /lib/upgrade/cambium-ab-certificates.sh /usr/sbin/miami-board-data"
 
 extract_version_number() {
 	local content="$1"
@@ -178,6 +180,11 @@ emmc_do_upgrade() {
 }
 
 platform_check_image() {
+	if [ "$(board_name)" = "cambiumnetworks,x7-35x" ]; then
+		command -v ab_family >/dev/null && ab_family || return 1
+		cambium_ab_check_image "$1"
+		return $?
+	fi
 	local magic_long="$(get_magic_long "$1")"
 
 	board=$(board_name)
@@ -258,6 +265,11 @@ platform_check_image() {
 }
 
 platform_do_upgrade() {
+	if [ "$(board_name)" = "cambiumnetworks,x7-35x" ]; then
+		command -v ab_family >/dev/null && ab_family || return 1
+		cambium_ab_do_upgrade "$1"
+		return $?
+	fi
 	CI_UBIPART="rootfs"
 	CI_ROOTPART="ubi_rootfs"
 	CI_IPQ807X=1
@@ -332,4 +344,18 @@ platform_do_upgrade() {
 		nand_upgrade_tar "$1"
 		;;
 	esac
+}
+
+# Snapshot after native services stop and before the ordinary sysupgrade RAM
+# stage. Preserve the bank-local identity even for a configuration reset.
+platform_pre_upgrade() {
+ [ "$(board_name)" = "cambiumnetworks,x7-35x" ] || return 0
+ ab_identity && ab_miami_upgrade_preflight || {
+  echo 'Miami A/B preflight failed; no bank was written' >&2
+  exit 1
+ }
+ ab_certificate_export || {
+  echo 'Miami A/B certificate snapshot failed; no bank was written' >&2
+  exit 1
+ }
 }

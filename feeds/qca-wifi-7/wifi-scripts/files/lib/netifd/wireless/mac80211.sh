@@ -1884,16 +1884,119 @@ get_link_id() {
 	echo ""
 }
 
+# Keep existing QSDK integer-dBm truncation; canonicalize 14/14.0/014.
+mac80211_power_normalize() {
+	local value="$1"
+	[ -n "$value" ] || { printf 'auto'; return 0; }
+	case "$value" in *[!0-9.]*|*.*.*|.*|*.) return 1;; esac
+	value=${value%%.*}
+	while [ "${#value}" -gt 1 ] && [ "${value#0}" != "$value" ]; do value=${value#0}; done
+	printf '%s' "$value"
+}
+
+# Resolve the actual wiphy object, not a logical radio/band suffix.
+mac80211_power_phy_identity() {
+	local section="$1" candidate path disabled
+	config_get disabled "$section" disabled 0
+	[ "$disabled" = 0 ] || return 2
+	if [ "$section" = "$device" ]; then
+		candidate="$phy"
+	else
+		config_get candidate "$section" phy
+		if [ -z "$candidate" ]; then
+			config_get path "$section" path
+			[ -n "$path" ] || return 1
+			candidate=$(miami_phy_by_path "$path") || candidate=$(iwinfo nl80211 phyname "path=$path") || return 1
+		fi
+	fi
+	candidate=${candidate%%:*}
+	[ -d "/sys/class/ieee80211/$candidate" ] || return 1
+	readlink -f "/sys/class/ieee80211/$candidate"
+}
+
+mac80211_power_peer() {
+	local section="$1" type identity value rc
+	config_get type "$section" type
+	[ "$type" = mac80211 ] || return 0
+	identity=$(mac80211_power_phy_identity "$section"); rc=$?
+	[ "$rc" != 2 ] || return 0
+	[ "$rc" = 0 ] || { txpower_uniform_failed=1; return 1; }
+	[ "$identity" = "$txpower_phy_identity" ] || return 0
+	config_get value "$section" txpower
+	value=$(mac80211_power_normalize "$value") || { txpower_uniform_failed=1; return 1; }
+	[ "$value" = "$txpower_default" ] || { txpower_uniform_failed=1; return 1; }
+	txpower_uniform_count=$((txpower_uniform_count+1))
+}
+
+# QSDK cfg.c stores local->user_power_level; link.c copies it on creation.
+# This verifies kernel acceptance of a common ceiling, not fresh FW power.
+mac80211_prepare_inherited_txpower() {
+	local power
+	power=$(mac80211_power_normalize "$txpower") || { wireless_setup_failed TXPOWER_INVALID; return 1; }
+	txpower_default="$power"
+	txpower_failed=0
+	config_load wireless
+	txpower_phy_identity=$(mac80211_power_phy_identity "$device") || {
+		wireless_setup_failed TXPOWER_PHY_IDENTITY_UNAVAILABLE
+		return 1
+	}
+	txpower_uniform_failed=0
+	txpower_uniform_count=0
+	config_foreach mac80211_power_peer wifi-device
+	if [ "$txpower_uniform_failed" = 1 ] || [ "$txpower_uniform_count" -lt 1 ]; then
+		wireless_setup_failed TXPOWER_SHARED_PHY_CAP_UNPROVEN
+		return 1
+	fi
+	if [ "$power" != auto ]; then
+		timeout -k 1 5 iw phy "$phy" set txpower fixed "${power}00" || {
+			wireless_setup_failed TXPOWER_PHY_SET_FAILED
+			return 1
+		}
+	else
+		timeout -k 1 5 iw phy "$phy" set txpower auto || {
+			wireless_setup_failed TXPOWER_PHY_SET_FAILED
+			return 1
+		}
+	fi
+	inherited_txpower_ready=1
+}
+
+mac80211_check_inherited_ap_txpower() {
+	local name="$1" mode override
+	json_select config
+	json_get_vars mode vif_txpower
+	json_select ..
+	# Distinct per-BSS limits cannot safely be programmed while ACS/CAC
+	# has not created the VIF/link. Never silently use link zero instead.
+	if [ -n "$vif_txpower" ]; then
+		override=$(mac80211_power_normalize "$vif_txpower") || override=invalid
+		local default=$(mac80211_power_normalize "$txpower")
+		[ "$override" = "$default" ] && return 0
+		txpower_failed=1
+		wireless_setup_vif_failed TXPOWER_LATE_OVERRIDE_UNSUPPORTED
+		return 1
+	fi
+}
+
 mac80211_set_vif_txpower() {
 	local name="$1"
+	local mode
 
 	json_select config
 	json_get_var ifname _ifname
 	json_get_var ppe_vp _ppe_vp
-	json_get_vars vif_txpower mld
+	json_get_vars vif_txpower mld mode
 	json_select ..
 
 	set_default vif_txpower "$txpower"
+
+	if [ "$mode" = ap ] && [ "$inherited_txpower_ready" = 1 ]; then
+		# No device/link request here: existing and future AP links inherit
+		# the checked shared PHY default before hostapd creates them.
+		# Do not advertise this as firmware-confirmed per-link power.
+		[ -d "/sys/class/net/$ifname" ] && iw dev "$ifname" set_intf_offload type "$ppe_vp"
+		return 0
+	fi
 
 	local link_id=""
 	case "$htmode" in
@@ -2249,6 +2352,12 @@ drv_mac80211_setup() {
 	}
 
 	mac80211_set_suffix
+
+	inherited_txpower_ready=0
+	txpower_failed=0
+	for_each_interface "ap" mac80211_check_inherited_ap_txpower
+	[ "$txpower_failed" != 1 ] || return 1
+	mac80211_prepare_inherited_txpower || return 1
 
 	set_default ifname_prefix "$phy$vif_phy_suffix"
 
