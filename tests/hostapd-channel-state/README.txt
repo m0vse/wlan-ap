@@ -84,3 +84,19 @@ private package counters/SDK fixes, unrelated settings and old immutable images.
 Commit reviewed source/tests before final package verification as Phil Taylor
 <phil@m0vse.uk>; exclude artifacts, credentials, calibration and device data.
 All builds use effective nproc CPUs, with only one family compiler at a time.
+
+Before each family build, run the read-only preservation check in its retained
+tree (replace FAMILY with sage, jaguar, cheetah, thor or miami):
+
+  python3 tests/hostapd-channel-state/test-source-preservation.py --family FAMILY
+
+It requires the qualified family parent and exact reviewed critical source
+blobs, including NAND, MLO, channel/power and Miami's supplementary A/B ABI.
+It checks working files too, so an uncommitted replacement cannot hide behind
+Git ancestry. No reset, fetch, AP operation or bypass is provided. Intentional
+changes require source review and a ledger update. Passing is not hardware
+acceptance and does not replace target compilation or the runtime regressions.
+Miami must still use its qualified retained tree, not generic main: its private
+source history and build inputs are not published by this check. Never replace
+those inputs just to satisfy a generic shared build. Private settings, device
+data and credentials are excluded from the public ledger.
