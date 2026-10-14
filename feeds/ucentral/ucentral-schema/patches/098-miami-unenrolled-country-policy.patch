@@ -1,0 +1,24 @@
+--- a/system/capabilities.uc
++++ b/system/capabilities.uc
+@@ -49,7 +49,20 @@
+ 	capa.country_codes = countries;
+ } 
+ 
+-if (fs.stat('/tmp/squashfs')) {
++// Persistent Miami keeps an unenrolled certificate volume truly empty.
++// The native identity worker will publish durable country under its validated
++// transaction later; capability discovery must not create that transaction.
++let miami_storage = trim(fs.readfile('/tmp/sysinfo/board_name') || '') == 'cambiumnetworks,x7-35x' &&
++    fs.stat('/proc/device-tree/cambium-platform/storage-slot');
++if (miami_storage) {
++    let pipe = fs.popen('/usr/libexec/miami-country-defaults');
++    let selected = trim(pipe?.read('all') || '');
++    if (!pipe || pipe.close() || !match(selected, /^[A-Z]{2}$/))
++        die('Validated Miami deployment country unavailable\n');
++    default_config = {country:selected};
++    if (!fs.writefile('/etc/ucentral/ucentral.defaults', default_config))
++        die('Cannot stage Miami runtime country defaults\n');
++} else if (fs.stat('/tmp/squashfs')) {
+ 	let pipe = fs.popen('fw_printenv -n country');
+ 	let country = replace(pipe.read("all"), '\n', '');
+ 	pipe.close();

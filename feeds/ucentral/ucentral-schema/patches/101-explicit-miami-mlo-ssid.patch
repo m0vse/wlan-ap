@@ -1,0 +1,148 @@
+--- a/renderer/templates/interface/ssid.uc
++++ b/renderer/templates/interface/ssid.uc
+@@ -180,6 +180,17 @@
+ 	// Variables declaration (declare early for function access)
+ 	let certificates;
+ 
++	// Validate MLO before purpose normalization or any SSID output.
++	function phys_for_mlo() {
++		if (ssid.mlo !== true) return [];
++		let radios = [];
++		for (let band in ssid.wifi_bands)
++			for (let phy in wiphy.lookup_by_band(band, true))
++				if (phy.section) push(radios, phy);
++		return radios;
++	}
++	let mlo_plan = require("wifi.mlo").plan(ssid, phys_for_mlo(), wiphy.operating_bands, capab, location, interface);
++
+ 	// Setup and validation
+ 	if (PURPOSE_CONFIGS[ssid.purpose])
+ 		ssid = PURPOSE_CONFIGS[ssid.purpose];
+@@ -349,6 +360,7 @@
+ 	}
+ 
+ 	function match_sae_pwe(band) {
++		if (mlo_plan) return 1;
+ 		if (band == "6G")
+ 			return 1;
+ 		return '';
+@@ -482,6 +494,11 @@
+ 		uci_set_string(output, `wireless.${section}.ucentral_path`, location);
+ 		uci_set_string(output, `wireless.${section}.uci_section`, section);
+ 		uci_set_string(output, `wireless.${section}.device`, phy.section);
++		if (mlo_plan) {
++			uci_set_string(output, `wireless.${section}.mld`, mlo_plan.group);
++			// hostapd joins MLD links by conf->iface, not by mld_ap alone.
++			uci_set_string(output, `wireless.${section}.ifname`, mlo_plan.group);
++		}
+ 
+ 		if (has_captive_service())
+ 			uci_set_string(output, `wireless.${section}.ifname`, ifname);
+@@ -1065,6 +1082,13 @@
+ %}
+ 
+ # Wireless configuration
++{% if (mlo_plan): %}
++set wireless.{{ mlo_plan.group }}=wifi-mld
++set wireless.{{ mlo_plan.group }}.ssid={{ s(ssid.name) }}
++set wireless.{{ mlo_plan.group }}.encryption=sae
++set wireless.{{ mlo_plan.group }}.key={{ s(ssid.encryption.key) }}
++set wireless.{{ mlo_plan.group }}.sae_pwe=1
++{% endif %}
+ {% for (let n, phy in phys): %}
+ {%   let band_index = get_radio_index(phy.band[0]); %}
+ {%   let basename = name + '_' + count; %}
+--- a/renderer/templates/radio.uc
++++ b/renderer/templates/radio.uc
+@@ -407,7 +407,7 @@
+     per output line would repeat the same warning for a single radio. #}
+ {%  let resolved_chan = match_channel(phy, radio) %}
+ {%  wiphy.operating_bands ??= {} %}
+-{%  wiphy.operating_bands[phy.section] = {band:lc(band_channels.base_band(radio.band)),disabled:radio.enable==false} %}
++{%  wiphy.operating_bands[phy.section] = {band:lc(band_channels.base_band(radio.band)),disabled:radio.enable==false,htmode} %}
+ set wireless.{{ phy.section }}.disabled={{ exists(radio, 'enable') ? b(!radio.enable) : 0 }}
+ set wireless.{{ phy.section }}.ucentral_path={{ s(location) }}
+ {%  if (radio.band != "HaLow"): %}
+--- /dev/null
++++ b/renderer/wifi/mlo.uc
+@@ -0,0 +1,41 @@
++// Initial MLO qualification: Miami, pure SAE, one enabled EHT PHY per band.
++// Disabled configurations remain independent BSSs on every platform.
++function plan(ssid, phys, operating, capab, location, parent) {
++	if (ssid.mlo !== true)
++		return null;
++	assert(capab.compatible == 'cambium_x7-35x', 'MLO is not qualified on this model');
++	assert((ssid.purpose || 'user-defined') == 'user-defined' && ssid.bss_mode == 'ap',
++	       'MLO requires a user-defined AP SSID');
++	let bands = ssid.wifi_bands || [];
++	assert(length(bands) == 2 && '5G' in bands && '6G' in bands,
++	       'MLO requires exactly the 5G and 6G bands');
++	assert(ssid.encryption?.proto == 'sae' && ssid.encryption?.ieee80211w == 'required' &&
++	       type(ssid.encryption?.key) == 'string' && length(ssid.encryption.key),
++	       'MLO requires SAE with a key and required protected management frames');
++	assert(!ssid.roaming && ssid.multi_psk !== true && !length(ssid.multi_psk || []) && !length(ssid.hostapd_bss_raw || []),
++	       'MLO does not yet support roaming, multi-PSK or raw hostapd overrides');
++	assert(!length(parent?.hostapd_bss_raw || []), 'MLO cannot inherit raw hostapd overrides');
++	assert(!('captive' in (ssid.services || [])), 'MLO captive interface naming is not yet supported');
++	assert(length(phys) == 2 && phys[0].section != phys[1].section,
++	       'MLO requires two distinct enabled operating radios');
++	let selected = {};
++	for (let phy in phys) {
++		let active = operating?.[phy.section];
++		assert(active && !active.disabled && match(active.htmode || '', /^EHT/) &&
++		       length(filter(phy.htmode || [], mode => match(mode, /^EHT/))),
++		       'MLO requires enabled EHT configuration and EHT hardware support on both radios');
++		assert(active.band in ['5g', '6g'] && !selected[active.band],
++		       'MLO requires one enabled radio in each selected band');
++		selected[active.band] = true;
++	}
++	assert(selected['5g'] && selected['6g'], 'MLO requires both operating bands');
++	// Config location is unique across networks/VLANs and stable across re-renders.
++	// Keep this short: the vendor driver may prefix it with the PHY name.
++	let index = match(location, /^\/interfaces\/([0-9]+)\/ssids\/([0-9]+)$/);
++	assert(index, 'MLO requires an unambiguous SSID configuration location');
++	let group = sprintf('ml%d_%d', +index[1], +index[2]);
++	assert(length(group) <= 8, 'MLO group identifier exceeds driver interface-name limit');
++	return { group };
++}
++
++return { plan };
+--- a/schema/interface.ssid.yml
++++ b/schema/interface.ssid.yml
+@@ -20,6 +20,13 @@
+     type: string
+     maxLength: 32
+     minLength: 1
++  mlo:
++    description:
++      Enable Multi-Link Operation for this SSID. Initially qualified for Miami
++      5G and 6G AP links using pure SAE and required protected management frames.
++      Both operating radios must be enabled and configured for EHT.
++    type: boolean
++    default: false
+   wifi-bands:
+     description:
+       The band that the SSID should be broadcasted on. The configuration layer
+--- a/schemareader.uc
++++ b/schemareader.uc
+@@ -5657,6 +5657,20 @@
+ 			obj.name = parseName(location + "/name", value["name"], errors);
+ 		}
+ 
++		function parseMlo(location, value, errors) {
++			if (type(value) != "bool")
++				push(errors, [ location, "must be of type boolean" ]);
++
++			return value;
++		}
++
++		if (exists(value, "mlo")) {
++			obj.mlo = parseMlo(location + "/mlo", value["mlo"], errors);
++		}
++		else {
++			obj.mlo = false;
++		}
++
+ 		function parseWifiBands(location, value, errors) {
+ 			if (type(value) == "array") {
+ 				function parseItem(location, value, errors) {
