@@ -47,11 +47,13 @@ function freq_to_channel(freq) {
 	return 0;
 }
 
-function radio_exists(path, macaddr, phy) {
+function radio_exists(path, macaddr, phy, radio) {
 	for (let name, s in config) {
 		if (s[".type"] != "wifi-device")
 			continue;
-		if (s.macaddr & lc(s.macaddr) == lc(macaddr))
+		if (radio != null && (!exists(s, 'radio') || +s.radio != radio))
+			continue;
+		if (s.macaddr && lc(s.macaddr) == lc(macaddr))
 			return true;
 		if (s.phy == phy)
 			return true;
@@ -202,32 +204,30 @@ for (let phy_name, phy in board.wlan) {
 		return;
 
 	let macaddr = trim(readfile(`/sys/class/ieee80211/${phy_name}/macaddress`));
-	if (radio_exists(phy.path, macaddr, phy_name)) {
-		idx++;
-		continue;
-	}
 
 	id = `phy='${phy_name}'`;
 	if (match(phy_name, /^phy[0-9]/))
 		id = `path='${phy.path}'`;
 
-	if (phy.multi_radio)
-		single_wiphy = true;
+	single_wiphy = length(phy.multi_radio || {}) > 0;
 
 	if (single_wiphy) {
 		let multi_radio = phy.multi_radio;
-		let hw_idx;
+		let hw_idx = 0;
 		for (let radio_name in multi_radio ) {
 			let radio_idx = multi_radio[radio_name];
 			name = "radio" + idx + "_band" + hw_idx++;
+			if (radio_exists(phy.path, macaddr, phy_name, radio_idx.idx)) continue;
 			generate_config(info, name, single_wiphy, id, radio_idx);
+			commit = true;
 		}
 	} else {
+		if (radio_exists(phy.path, macaddr, phy_name, null)) { idx++; continue; }
 		name = "radio" + idx;
 		generate_config(info, name, single_wiphy, id, NULL);
+		commit = true;
 	}
 	idx++;
-	commit = true;
 }
 
 if (commit)

@@ -1,0 +1,55 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] mtd: qcom: use an attainable Miami feedback clock
+
+The IPQ5332 IO macro clock provider offers 24, 100, 200 and 320MHz.
+A successful 50MHz request rounds up to 100MHz, above the driver's
+untrained feedback threshold. Use the existing 24MHz rate on X7-35X
+and verify the achieved rate. Preserve the no-training-write rule.
+
+This corrects an observed clock contract mismatch. It has not yet been
+hardware tested as a remedy for the reported upper-row ECC failures.
+Other machines retain their existing clock and training paths.
+
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3716,9 +3716,22 @@
+ 
+ 	/* Recovery must not erase/program OEM training data during probe. */
+ 	if (of_machine_is_compatible("cambiumnetworks,x7-35x")) {
++		unsigned long rate;
++
++		/* IPQ5332 cannot provide 50MHz: it rounds that request to
++		 * 100MHz. Use its existing 24MHz rate below the training
++		 * threshold, without writing the OEM training partition.
++		 */
++		ret = clk_set_rate(nandc->iomacro_clk, 24000000);
++		if (ret)
++			return ret;
++		rate = clk_get_rate(nandc->iomacro_clk);
++		if (!rate || rate > IO_MACRO_50_MHZ)
++			return -ERANGE;
+ 		dev_info(nandc->dev,
+-			 "Miami: preserve NAND training data, use 50MHz feedback clock\n");
+-		return clk_set_rate(nandc->iomacro_clk, IO_MACRO_50_MHZ);
++			 "Miami: preserve NAND training data, feedback clock %luHz\n",
++			 rate);
++		return 0;
+ 	}
+ 
+ 	/* Read the training offset patched from u-boot */
+@@ -4060,9 +4073,13 @@
+ 				"Skip serial training in boot layout\n");
+ 			} else {
+ 				ret = qspi_execute_training(nandc, host, mtd);
+-				if (ret)
++				if (ret) {
+ 					dev_err(nandc->dev,
+-					"failed to enable serial training\n");
++						"failed to enable serial training\n");
++					/* Do not register Miami flash with an unsafe clock. */
++					if (of_machine_is_compatible("cambiumnetworks,x7-35x"))
++						goto err;
++				}
+ 			}
+ 		}
+ 	}

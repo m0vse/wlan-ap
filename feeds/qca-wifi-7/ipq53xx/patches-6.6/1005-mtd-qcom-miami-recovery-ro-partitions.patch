@@ -1,0 +1,198 @@
+Subject: mtd: qcom: enforce Miami RAM recovery partition protection
+
+OEM boot-time partition fixups may leave an empty fixed-partitions
+container and legacy siblings without read-only properties. An explicit
+recovery policy validates the six known physical entries, enforces master
+read-only after NAND scan, and registers only masked read-only partitions.
+Normal persistent and other-board parser paths remain separate.
+
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -3984,6 +3984,126 @@
+ }
+ 
+ 
++/* Recovery policy is explicit; persistent/AB/bridge trees do not carry it. */
++static int qcom_miami_recovery_ro(void)
++{
++	struct device_node *np = of_find_node_by_path("/cambium-platform");
++	bool enabled = of_property_read_bool(np, "cambium,recovery-read-only");
++	u32 slot;
++	int ret;
++
++	if (!of_machine_is_compatible("cambiumnetworks,x7-35x"))
++		ret = enabled ? -EINVAL : 0;
++	else if (enabled)
++		ret = of_find_property(np, "storage-slot", NULL) ? -EINVAL : 1;
++	else
++		ret = !of_property_read_u32(np, "storage-slot", &slot) && slot <= 1 ? 0 : -EINVAL;
++
++	of_node_put(np);
++	return ret;
++}
++
++static const char * const miami_recovery_probes[] = { NULL };
++
++static const struct mtd_partition miami_recovery_parts[] = {
++	{ .name = "0:TRAINING", .offset = 0, .size = 0x80000, .mask_flags = MTD_WRITEABLE },
++	{ .name = "0:LICENSE", .offset = 0x80000, .size = 0x40000, .mask_flags = MTD_WRITEABLE },
++	{ .name = "rootfs", .offset = 0xc0000, .size = 0x6000000, .mask_flags = MTD_WRITEABLE },
++	{ .name = "rootfs_1", .offset = 0x60c0000, .size = 0x6000000, .mask_flags = MTD_WRITEABLE },
++	{ .name = "0:NVRAM", .offset = 0xc0c0000, .size = 0x2f40000, .mask_flags = MTD_WRITEABLE },
++	{ .name = "crashLog", .offset = 0xf000000, .size = 0x1000000, .mask_flags = MTD_WRITEABLE },
++};
++
++static int qcom_miami_recovery_cells(struct device_node *np)
++{
++	u32 cells;
++
++	if (of_property_read_u32(np, "#address-cells", &cells) || cells != 1 ||
++	    of_property_read_u32(np, "#size-cells", &cells) || cells != 1)
++		return -EINVAL;
++	return 0;
++}
++
++static int qcom_miami_recovery_part(struct device_node *np, unsigned int *seen)
++{
++	const char *label;
++	u32 reg[2];
++	unsigned int i;
++	int len;
++
++	if (of_property_read_string(np, "label", &label) ||
++	    !of_get_property(np, "reg", &len) || len != (int)sizeof(reg) ||
++	    of_property_read_u32_array(np, "reg", reg, ARRAY_SIZE(reg)))
++		return -EINVAL;
++	for (i = 0; i < ARRAY_SIZE(miami_recovery_parts); i++) {
++		const struct mtd_partition *part = &miami_recovery_parts[i];
++
++		if (strcmp(label, part->name))
++			continue;
++		if ((*seen & BIT(i)) || reg[0] != part->offset || reg[1] != part->size)
++			return -EINVAL;
++		*seen |= BIT(i);
++		return 0;
++	}
++	return -EINVAL;
++}
++
++/* Accept the original container or OEM legacy entries, including its empty
++ * leftover container. Reject missing, duplicate, mixed or altered layouts.
++ * RO comes from the master flag and static masks, not mutable OF properties.
++ */
++static int qcom_miami_recovery_layout(struct device_node *dn)
++{
++	struct device_node *np, *part;
++	unsigned int seen = 0;
++	bool container_entries = false, direct_entries = false;
++	int ret;
++
++	if (qcom_miami_recovery_cells(dn))
++		return -EINVAL;
++	for_each_child_of_node(dn, np) {
++		if (!of_node_name_eq(np, "partitions")) {
++			direct_entries = true;
++			ret = qcom_miami_recovery_part(np, &seen);
++		} else {
++			ret = qcom_miami_recovery_cells(np);
++			if (!of_device_is_compatible(np, "fixed-partitions"))
++				ret = -EINVAL;
++			if (!ret) {
++				for_each_child_of_node(np, part) {
++					container_entries = true;
++					ret = qcom_miami_recovery_part(part, &seen);
++					if (ret) {
++						of_node_put(part);
++						break;
++					}
++				}
++			}
++		}
++		if (ret) {
++			of_node_put(np);
++			return ret;
++		}
++	}
++	if (container_entries && direct_entries)
++		return -EINVAL;
++	return seen == GENMASK(ARRAY_SIZE(miami_recovery_parts) - 1, 0) ? 0 : -EINVAL;
++}
++
++static int qcom_miami_recovery_geometry(struct nand_chip *chip)
++{
++	struct mtd_info *mtd = nand_to_mtd(chip);
++
++	if (chip->id.len < 2 || chip->id.data[0] != 0xc2 || chip->id.data[1] != 0xa6 ||
++	    mtd->size != 0x10000000 || mtd->erasesize != 0x20000 ||
++	    mtd->writesize != 2048 || mtd->oobsize != 128 ||
++	    chip->ecc.strength != 8 || chip->ecc.size != 512 ||
++	    !(chip->options & NAND_SKIP_BBTSCAN) ||
++	    (chip->bbt_options & NAND_BBT_USE_FLASH))
++		return -EINVAL;
++	return 0;
++}
++
+ static const char * const probes[] = { "cmdlinepart", "ofpart", "qcomsmem", NULL };
+ 
+ static int qcom_nand_host_parse_boot_partitions(struct qcom_nand_controller *nandc,
+@@ -4061,13 +4181,23 @@
+ 	struct nand_chip *chip = &host->chip;
+ 	struct mtd_info *mtd = nand_to_mtd(chip);
+ 	struct device *dev = nandc->dev;
++	int recovery_ro = qcom_miami_recovery_ro();
+ 	int ret;
++
++	if (recovery_ro < 0)
++		return recovery_ro;
++	if (recovery_ro &&
++	    (!nandc->props->is_serial_nand || qcom_miami_recovery_layout(dn)))
++		return -EINVAL;
+ 
+ 	ret = of_property_read_u32(dn, "reg", &host->cs);
+ 	if (ret) {
+ 		dev_err(dev, "can't get chip-select\n");
+ 		return -ENXIO;
+ 	}
++
++	if (recovery_ro && host->cs != 0)
++		return -EINVAL;
+ 
+ 	nand_set_flash_node(chip, dn);
+ 	mtd->name = devm_kasprintf(dev, GFP_KERNEL, "qcom_nand.%d", host->cs);
+@@ -4115,6 +4245,17 @@
+ 	if (ret) {
+ 		dev_err(nandc->dev, "nand scan returned error\n");
+ 		return ret;
++	}
++
++	/* nanddev_init resets flags during scan; enforce RO afterwards.
++	 * Nothing has been registered, and NAND_SKIP_BBTSCAN prevents a
++	 * scan-time flash BBT. Miami training never writes the NAND array.
++	 */
++	if (recovery_ro) {
++		mtd->flags &= ~MTD_WRITEABLE;
++		ret = qcom_miami_recovery_geometry(chip);
++		if (ret)
++			goto err;
+ 	}
+ 
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope) {
+@@ -4153,9 +4294,18 @@
+ 		}
+ 	}
+ 
++	if (recovery_ro) {
++		dev_info(dev, "Miami recovery: registering six read-only NAND partitions\n");
++		ret = mtd_device_parse_register(mtd, miami_recovery_probes, NULL,
++				miami_recovery_parts, ARRAY_SIZE(miami_recovery_parts));
++	} else {
+ 	ret = mtd_device_parse_register(mtd, probes, NULL, NULL, 0);
++	}
+ 	if (ret)
+ 		goto err;
++
++	if (recovery_ro)
++		return 0;
+ 
+ 	if (nandc->props->use_codeword_fixup) {
+ 		ret = qcom_nand_host_parse_boot_partitions(nandc, host, dn);

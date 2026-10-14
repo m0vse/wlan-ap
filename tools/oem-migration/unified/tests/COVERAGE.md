@@ -54,8 +54,17 @@ converted restoration adapter. E430 variants do not inherit E410 geometry.
 python3 tools/oem-migration/unified/tests/run.py
 ```
 
-The runner prints individual layers and exits nonzero on a failure. Linux
-OverlayFS requires an isolated mount namespace and suitable privileges; an
+The runner prints individual layers and exits nonzero on a failure. Default
+source-only runs explicitly report the four Thor actual-data transaction tests
+as NOT RUN unless `--thor-inputs /private/path/inputs.json` is supplied. Their
+private manifest must contain `runtime_root` and `provider` directories plus
+the reviewed `image`, `bdf`, `settings`, `kernel` and `rootfs` files. Relative
+paths resolve against the manifest directory. These inputs must describe the
+same retained provider/release; do not invent image or calibration bytes to make
+the tests pass. A source-only result does not qualify those missing layers or
+enable any unsupported model. Keep private manifests and assets out of Git.
+
+Linux OverlayFS requires an isolated mount namespace and suitable privileges; an
 unavailable platform is reported explicitly. Sandbox restrictions on terminal
 ioctls can prevent the real hidden-prompt test: run that isolated source test
 with the host permission needed for a test PTY, never by changing AP settings.
