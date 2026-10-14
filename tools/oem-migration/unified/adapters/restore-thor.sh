@@ -50,12 +50,12 @@ oem_restore_thor_payloads() {
 oem_restore_boot_preflight() {
     local thor_stored thor_expected
     oem_thor_environment > "$OEM_WORK/thor-restore-env-check" || return 1
-    [ "$(ab_getenv changing_bootcmd)" = 1 ] &&
-        [ "$(ab_getenv thor_ab_confirmed)" = "$OEM_SOURCE_SLOT" ] &&
-        [ "$(ab_getenv thor_ab_state)" = confirmed ] || return 1
-    case "$(ab_getenv bootcmd)" in "run thor_stable$OEM_SOURCE_SLOT"|"run thor_boot$OEM_SOURCE_SLOT") ;; *) return 1 ;; esac
+    [ "$(oem_thor_env_value changing_bootcmd)" = 1 ] &&
+        [ "$(oem_thor_env_value thor_ab_confirmed)" = "$OEM_SOURCE_SLOT" ] &&
+        [ "$(oem_thor_env_value thor_ab_state)" = confirmed ] || return 1
+    case "$(oem_thor_env_value bootcmd)" in "run thor_stable$OEM_SOURCE_SLOT"|"run thor_boot$OEM_SOURCE_SLOT") ;; *) return 1 ;; esac
     thor_expected=$(ab_thor_boot_command "$OEM_SOURCE_SLOT") || return 1
-    thor_stored=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || return 1
+    thor_stored=$(oem_thor_env_value "thor_boot$OEM_SOURCE_SLOT") || return 1
     case "$thor_expected" in 'aq_load_fw; '*) thor_expected="aq_load_fw && ${thor_expected#aq_load_fw; }" ;; esac
     [ "$thor_stored" = "$thor_expected" ] || [ "$thor_stored" = "aq_load_fw; ${thor_expected#aq_load_fw && }" ] || return 1
     # Actual 7.2 S03fwenv_cleanup resets the whole ENV and reboots when
@@ -110,6 +110,9 @@ oem_restore_recovery() { oem_adapter_recovery; }
 
 oem_restore_thor_boundary() {
     local thor_profile
+    [ "$(oem_thor_env_value bootcount)" = 0 ] &&
+        [ "$(oem_thor_env_value image)" = "$OEM_SOURCE_SLOT" ] &&
+        [ "$(oem_thor_env_value bootcmd)" = "run thor_boot$OEM_SOURCE_SLOT" ] || return 1
     thor_profile=$(oem_bundle_member "profiles/XV3-8/mtd-openwifi-slot$OEM_TARGET_SLOT.tsv") || return 1
     oem_physical_inventory "$thor_profile" "$AB_MTD_SYS" "$OEM_PROTECTED_RANGES" &&
         oem_write_boundary "$OEM_PROTECTED_RANGES" "$OEM_WRITE_PLAN" &&
@@ -137,9 +140,9 @@ oem_restore_thor_final_candidate() {
     local thor_id thor_name thor_node thor_bytes thor_sha thor_key thor_value
     oem_restore_thor_payloads && oem_restore_thor_boundary || return 1
     [ -f "$OEM_WORK/thor-restore-identities-before" ] || return 1
-    [ "$(ab_getenv "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
-        [ "$(ab_getenv bootcmd)" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
-        [ "$(ab_getenv image)" = "$OEM_SOURCE_SLOT" ] || return 1
+    [ "$(oem_thor_env_value "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
+        [ "$(oem_thor_env_value bootcmd)" = "run thor_boot$OEM_SOURCE_SLOT" ] &&
+        [ "$(oem_thor_env_value image)" = "$OEM_SOURCE_SLOT" ] || return 1
     for thor_id in 0 1; do
         if [ "$thor_id" = 0 ]; then
             thor_name=kernel thor_bytes=3905000 thor_sha=9650712dc69a82342ebe2dee753110805dd6154024f305db80ae91d1165a93aa
@@ -151,7 +154,7 @@ oem_restore_thor_final_candidate() {
         [ "$(head -c "$thor_bytes" "$thor_node" | sha256sum | awk '{print $1}')" = "$thor_sha" ] || return 1
     done
     while read -r thor_key thor_value; do
-        [ "$(ab_getenv "$thor_key")" = "$thor_value" ] || return 1
+        [ "$(oem_thor_env_value "$thor_key")" = "$thor_value" ] || return 1
     done < "$OEM_WORK/thor-restore-metadata.tsv"
 }
 
@@ -160,10 +163,10 @@ oem_restore_migrate() (
     umask 077
     oem_restore_inspect && oem_restore_preflight || exit 1
     oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
-    printf '%s\n' "thor_stable$OEM_SOURCE_SLOT" bootcmd image thor_restore_prior thor_restore_oem thor_restore_state thor_restore_target > "$OEM_WORK/thor-env-allowed" || exit 1
+    printf '%s\n' "thor_stable$OEM_SOURCE_SLOT" bootcount bootcmd image thor_restore_prior thor_restore_oem thor_restore_state thor_restore_target > "$OEM_WORK/thor-env-allowed" || exit 1
     oem_thor_critical_check || exit 1
     # Read back the working source default before changing the inactive bank.
-    printf 'thor_stable%s run thor_boot%s\nbootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-restore-source.tsv" || exit 1
+    printf 'bootcount 0\nthor_stable%s run thor_boot%s\nbootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$OEM_WORK/thor-restore-source.tsv" || exit 1
     oem_thor_environment_batch "$OEM_WORK/thor-restore-source.tsv" || exit 1
     oem_thor_target_attachment after-source-save && oem_restore_preflight || exit 1
     oem_restore_thor_identity_snapshot > "$OEM_WORK/thor-restore-identities-before" || exit 1
@@ -192,19 +195,19 @@ oem_restore_migrate() (
         [ "$(head -c "$thor_bytes" "$thor_prior" | sha256sum | awk '{print $1}')" = "$thor_sha" ] || exit 1
     done
     oem_restore_thor_boundary && oem_restore_boot_preflight || exit 1
-    thor_prior=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || exit 1
+    thor_prior=$(oem_thor_env_value "thor_boot$OEM_SOURCE_SLOT") || exit 1
     thor_batch=$OEM_WORK/thor-restore-metadata.tsv
     {
-        printf 'thor_restore_prior %s\nthor_restore_oem setenv image %s && aq_load_fw && bootipq\n' "$thor_prior" "$OEM_TARGET_SLOT"
+        printf 'bootcount 0\nthor_restore_prior %s\nthor_restore_oem setenv bootcount 0 && setenv image %s && aq_load_fw && bootipq\n' "$thor_prior" "$OEM_TARGET_SLOT"
         printf 'thor_restore_state armed\nthor_restore_target %s\n' "$OEM_TARGET_SLOT"
     } > "$thor_batch" || exit 1
     oem_thor_environment_batch "$thor_batch" || exit 1
-    thor_trial="setenv bootcmd run thor_restore_prior && setenv image $OEM_SOURCE_SLOT && setenv thor_restore_state trial-started && saveenv && run thor_restore_oem; run thor_restore_prior"
+    thor_trial="if setenv bootcount 0 && setenv bootcmd run thor_restore_prior && setenv image $OEM_SOURCE_SLOT && setenv thor_restore_state trial-started && saveenv; then run thor_restore_oem; run thor_restore_prior; fi"
     thor_batch=$OEM_WORK/thor-restore-selector.tsv
     printf 'bootcmd %s\n' "$thor_trial" > "$thor_batch" || exit 1
     oem_restore_thor_final_candidate || exit 1
     if ! oem_thor_environment_batch "$thor_batch"; then
-        printf 'bootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$thor_batch"
+        printf 'bootcount 0\nbootcmd run thor_boot%s\nimage %s\n' "$OEM_SOURCE_SLOT" "$OEM_SOURCE_SLOT" > "$thor_batch"
         oem_thor_environment_batch "$thor_batch" || :
         exit 1
     fi
@@ -232,12 +235,12 @@ oem_restore_confirm_preflight() {
     AB_ENV_CONFIG=$THOR_ENV_CONFIG
     thor_expected=$(ab_thor_boot_command "$OEM_SOURCE_SLOT") || return 1
     case "$thor_expected" in 'aq_load_fw; '*) thor_expected="aq_load_fw && ${thor_expected#aq_load_fw; }" ;; esac
-    thor_saved=$(ab_getenv "thor_boot$OEM_SOURCE_SLOT") || return 1
+    thor_saved=$(oem_thor_env_value "thor_boot$OEM_SOURCE_SLOT") || return 1
     [ "$thor_saved" = "$thor_expected" ] || [ "$thor_saved" = "aq_load_fw; ${thor_expected#aq_load_fw && }" ] || return 1
-    [ "$(ab_getenv thor_restore_prior)" = "$thor_saved" ] &&
-        [ "$(ab_getenv thor_restore_oem)" = "setenv image $OEM_TARGET_SLOT && aq_load_fw && bootipq" ] &&
-        [ "$(ab_getenv thor_ab_confirmed)" = "$OEM_SOURCE_SLOT" ] &&
-        [ "$(ab_getenv "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] || return 1
+    [ "$(oem_thor_env_value thor_restore_prior)" = "$thor_saved" ] &&
+        [ "$(oem_thor_env_value thor_restore_oem)" = "setenv bootcount 0 && setenv image $OEM_TARGET_SLOT && aq_load_fw && bootipq" ] &&
+        [ "$(oem_thor_env_value thor_ab_confirmed)" = "$OEM_SOURCE_SLOT" ] &&
+        [ "$(oem_thor_env_value "thor_stable$OEM_SOURCE_SLOT")" = "run thor_boot$OEM_SOURCE_SLOT" ] || return 1
     thor_file=$(oem_bundle_member "profiles/XV3-8/mtd-slot$OEM_TARGET_SLOT.tsv") || return 1
     OEM_PROTECTED_RANGES=$OEM_WORK/thor-confirm-ranges.tsv;OEM_WRITE_PLAN=$OEM_WORK/thor-confirm-plan.tsv
     oem_physical_inventory "$thor_file" "${OEM_SYS_ROOT:-}/sys/class/mtd" "$OEM_PROTECTED_RANGES" || return 1
@@ -269,13 +272,14 @@ oem_restore_confirm() (
     oem_restore_confirm_inspect && [ "$(oem_context_fingerprint)" = "$thor_context" ] && oem_restore_confirm_preflight || exit 1
     umask 077
     oem_thor_environment > "$OEM_WORK/thor-env-before" || exit 1
-    printf '%s\n' bootcmd image thor_restore_state thor_ab_state thor_ab_target > "$OEM_WORK/thor-env-allowed" || exit 1
+    printf '%s\n' bootcount bootcmd image thor_restore_state thor_ab_state thor_ab_target > "$OEM_WORK/thor-env-allowed" || exit 1
     : > "$OEM_WORK/thor-confirm-rollback.tsv" || exit 1
     for thor_key in bootcmd image thor_restore_state thor_ab_state thor_ab_target; do
         thor_value=$(fw_printenv -c "$THOR_ENV_CONFIG" -n "$thor_key") || thor_value=
         printf '%s %s\n' "$thor_key" "$thor_value" >> "$OEM_WORK/thor-confirm-rollback.tsv" || exit 1
     done
-    printf 'image %s\nbootcmd aq_load_fw&&bootipq\nthor_restore_state confirmed\nthor_ab_state confirmed\nthor_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/thor-confirm.tsv" || exit 1
+    printf 'bootcount 0\n' >> "$OEM_WORK/thor-confirm-rollback.tsv" || exit 1
+    printf 'bootcount 0\nimage %s\nbootcmd setenv bootcount 0 && aq_load_fw && bootipq\nthor_restore_state confirmed\nthor_ab_state confirmed\nthor_ab_target\n' "$OEM_TARGET_SLOT" > "$OEM_WORK/thor-confirm.tsv" || exit 1
     if ! oem_thor_environment_batch "$OEM_WORK/thor-confirm.tsv"; then
         oem_thor_environment_batch "$OEM_WORK/thor-confirm-rollback.tsv" ||
             oem_fail 'confirmation selector rollback is uncertain; source firmware was not erased'

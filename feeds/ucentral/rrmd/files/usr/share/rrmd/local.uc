@@ -306,9 +306,13 @@ return {
 			if (v.bssid != lc(bssid))
 				continue;
 			let iface = global.nl80211.request(global.nl80211.const.NL80211_CMD_GET_INTERFACE, 0, { dev: bss });
-			return iface.wiphy_tx_power_level;
+			if (length(iface?.mlo_links)) {
+				let links = filter(iface.mlo_links, link => lc(link.mac || '') == lc(bssid));
+				return length(links) == 1 ? links[0].wiphy_tx_power_level : null;
+			}
+			return iface?.wiphy_tx_power_level;
 		}
-		return 0;
+		return null;
 	},
 
 	lookup: function(phy) {

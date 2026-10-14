@@ -114,15 +114,16 @@ csr_preflight() {
     [ "$1" = "/dev/mtd$idx" ] || return 1
     case "$2:$3:$4:${5:-1}" in 0x0:0x10000:0x10000:1|0x0:0x00010000:0x00010000:1) ;; *) return 1 ;; esac
     snapshot=$(fw_printenv -c "$CSR_ENV_CONFIG" 2>&1) || return 1
-    printf '%s\n' "$snapshot" | awk -F= -v active="$CSR_ACTIVE" -v deferred="$deferred" -v writing="${CSR_DEFERRED_WRITING:-0}" '
+    printf '%s\n' "$snapshot" | awk -F= -v active="$CSR_ACTIVE" -v deferred="$deferred" -v writing="${CSR_DEFERRED_WRITING:-0}" -v saved="${CSR_SOURCE_SAVED:-0}" '
         {i=index($0,"=");k=substr($0,1,i-1);if(!i || k!~/^[A-Za-z0-9_#.-]+$/ || keys[k]++)bad=1}
         $1=="sage_installer_target" || $1=="sage_installer_job" || $1=="sage_installer_image" {if(seen[$1]++ || NF!=2 || length($2))bad=1}
         $1=="sage_oem_restore_target" {if(!deferred || writing!=1 || NF!=2 || $2!=1-active)bad=1;targets++}
         $1=="sage_oem_restore_state" {if(!deferred || writing!=1 || NF!=2 || $2!="writing")bad=1;journals++}
         $1=="image" {images++;if(NF!=2 || $2!=active)bad=1}
-        $1=="bootcmd" {commands++;if(NF!=2 || ($2!="run sage_stable" active && !(deferred && writing==1 && $2=="run sage_boot" active)))bad=1}
+        $1=="bootcount" {if(saved==1 && $2!=0)bad=1;counters++}
+        $1=="bootcmd" {commands++;if(NF!=2 || ($2!="run sage_stable" active && !((saved==1 || (deferred && writing==1)) && $2=="run sage_boot" active)))bad=1}
         $1=="sage_ab_state" {states++;if(NF!=2 || $2!="confirmed")bad=1}
-        END {exit bad || images!=1 || commands!=1 || states!=1 || (deferred && writing==1 && (targets!=1 || journals!=1))}' || return 1
+        END {exit bad || images!=1 || commands!=1 || states!=1 || (saved==1 && counters!=1) || (deferred && writing==1 && (targets!=1 || journals!=1))}' || return 1
     for payload in flash_erase ubiupdatevol sync sha256sum head awk; do command -v "$payload" >/dev/null 2>&1 || return 1; done
     csr_recovery_check || return 1
     # Actual source-bank validation and exact inactive candidate readback.
@@ -135,7 +136,8 @@ csr_preflight() {
     csp_readback "$CSR_ROOT" "$CSP_DEV/ubi0_$((2 * CSP_TARGET + 1))"
 }
 csr_reset_shared() (
-    CSR_ALLOW_CHANGED_ENV=0
+    CSR_ALLOW_CHANGED_ENV=${CSR_SOURCE_SAVED:-0}
+    [ "${CSR_SOURCE_SAVED:-0}" != 1 ] || csr_source_selector_check || exit 1
     # Caller holds exclusive execution. Preflight repeats immediately before
     # writes; source firmware, calibration, mfg, ENV and certificates are not reset.
     csr_preflight || exit 1
