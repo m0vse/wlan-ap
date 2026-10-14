@@ -7,11 +7,11 @@ import tempfile
 
 p = argparse.ArgumentParser()
 p.add_argument('--source', type=pathlib.Path, required=True)
-p.add_argument('--kind', choices=['ath11k', 'ath12k'], required=True)
+p.add_argument('--kind', choices=['ath11k', 'ath12k', 'qca-ath11k'], required=True)
 p.add_argument('--negative-control', action='store_true')
 a = p.parse_args()
 source = a.source.read_text()
-name = a.kind + '_mac_op_get_txpower'
+name = ('ath12k' if a.kind == 'ath12k' else 'ath11k') + '_mac_op_get_txpower'
 begin = source.rfind('\n', 0, source.index('int ' + name)) + 1
 brace = source.index('{', begin)
 depth = 1
@@ -82,18 +82,21 @@ int main(void){
 else:
     prefix += r'''
 #define ATH11K_CAC_RUNNING 0
+#define ATH11K_STATE_ON 1
 #define ath11k_dbg(...) ((void)0)
 #define ath11k_warn(...) ((void)0)
 struct ath11k_base {int unused;};
 struct ath11k_fw_stats_pdev {int chan_tx_power;};
 struct pdev {int pdev_id;};
-struct ath11k {struct ath11k_base *ab;struct pdev *pdev;};
+struct ath11k {struct ath11k_base *ab;struct pdev *pdev;int state;};
+struct stats_request_params {int pdev_id,vdev_id,stats_id;};
 static struct ath11k_fw_stats_pdev sample;
 static int ath11k_mac_get_fw_stats(struct ath11k*a,int p,int v,int stats){fw_calls++;return fw_ret;}
+static int ath11k_fw_stats_request(struct ath11k*a,struct stats_request_params*p){fw_calls++;return fw_ret;}
 '''
     checks = r'''
 int main(void){
- struct pdev pd={.pdev_id=3};struct ath11k ar={.pdev=&pd};struct ieee80211_hw hw={.priv=&ar};struct ieee80211_vif vif={.bss_conf.txpower=99};
+ struct pdev pd={.pdev_id=3};struct ath11k ar={.pdev=&pd,.state=1};struct ieee80211_hw hw={.priv=&ar};struct ieee80211_vif vif={.bss_conf.txpower=99};
  int dbm=777;have_pdev=1;sample.chan_tx_power=41;
  fw_ret=-ETIMEDOUT;assert(ath11k_mac_op_get_txpower(&hw,&vif,0,&dbm)==-ETIMEDOUT);assert(dbm==777);
  fw_ret=0;have_pdev=0;assert(ath11k_mac_op_get_txpower(&hw,&vif,0,&dbm)==-ENODATA);assert(dbm==777);
@@ -103,6 +106,8 @@ int main(void){
  puts("PASS 5 actual ath11k getter controls; mocked firmware/locks; no hardware I/O");
 }
 '''
+    if a.kind == 'qca-ath11k':
+        checks = checks.replace(' puts("PASS 5 actual ath11k', ' cac=0;ar.state=0;assert(ath11k_mac_op_get_txpower(&hw,&vif,0,&dbm)==-ENETDOWN);\n puts("PASS 6 actual QSDK ath11k')
 with tempfile.TemporaryDirectory(prefix='radio-driver-power-') as tmp:
     c = pathlib.Path(tmp) / 'power.c'
     binary = c.with_suffix('')
