@@ -42,6 +42,7 @@ Readback and actual generated configuration (use the SDK's native UCODE):
 
   python3 tests/hostapd-channel-state/test-driver-power.py --kind ath12k --source PREPARED_BACKPORTS/drivers/net/wireless/ath/ath12k/mac.c
   python3 tests/hostapd-channel-state/test-driver-power.py --kind ath11k --source PREPARED_REGULAR_BACKPORTS/drivers/net/wireless/ath/ath11k/mac.c
+  python3 tests/hostapd-channel-state/test-driver-power.py --kind qca-ath11k --source PREPARED_QSDK_BACKPORTS/drivers/net/wireless/ath/ath11k/mac.c
   python3 tests/hostapd-channel-state/test-rrm-power.py --repo REPO --ucode UCODE
   UCODE -L 'REPLAY/system/*.uc' tests/hostapd-channel-state/test-operating.uc
   python3 tests/hostapd-channel-state/test-health-operating.py --health REPLAY/system/health.uc --modules REPLAY/system --ucode UCODE
