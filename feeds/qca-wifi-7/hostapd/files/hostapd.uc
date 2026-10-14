@@ -189,7 +189,7 @@ function iface_add(phy, config, phy_status)
 
 	let freq_info = iface_freq_info(iface, config, phy_status);
 
-	return iface.start(freq_info) >= 0;
+	return iface.start(freq_info) == true;
 }
 
 function iface_config_macaddr_list(config)
@@ -958,7 +958,7 @@ let main_obj = {
 			} else {
 				ret = iface.start(freq_info);
 			}
-			if (!ret)
+			if (ret != true)
 				return libubus.STATUS_UNKNOWN_ERROR;
 
 			return 0;
