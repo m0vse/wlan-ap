@@ -92,6 +92,7 @@ function wiphy_detect() {
 		let name = phy.wiphy_name;
 		let path = phy_path(name);
 		let info = {
+			wiphy_name: name,
 			antenna_rx: phy.wiphy_antenna_avail_rx,
 			antenna_tx: phy.wiphy_antenna_avail_tx,
 			reconf: true,
@@ -212,63 +213,46 @@ function wiphy_detect() {
 			if (band_name == "6G" && (eht_phy_cap & 0x2))
 				push(modes, "EHT320");
 		}
-		if (phy.radios) {
-			let radios = phy.radios;
-			sort(radios, (a, b) => a.freq_ranges[0].start - b.freq_ranges[0].start);
-
-			for (let i=0; i< length(radios) ; i++) {
-				let range = radios[i];
-				let radio_name = "radio" + i;
-				for (let j=0; j < length(range.freq_ranges); j++) {
-					let freq_range = range.freq_ranges[j];
-					let start_freq = (range.freq_ranges[0]["start"] / 1000) + 10;
-					let end_freq = (range.freq_ranges[0]["end"] / 1000) - 10;
-					start_freq_list[i] = start_freq;
-					end_freq_list[i] = end_freq;
-				}
-				multi_radio[radio_name] = {
-					"idx" : range.index,
-					"first_freq" : start_freq_list[i],
-					"last_freq" : end_freq_list[i],
-				};
-
-			}
-		}
-
 		let entry = wiphy_get_entry(name, path);
 		entry.info = info;
-
-		let synth_multi = {};
-		let synth_radios = [];
-		if (length(keys(band_freq_data)) > 1) {
-			// Synthesize multi_radio for multi-band phy when driver does not
-			// support NL80211_ATTR_WIPHY_RADIOS (e.g., older ath12k firmware)
-			let band_order = [ '2G', '5G', '6G', '60G' ];
-			let r_idx = 0;
-			for (let bn in band_order) {
-				if (!(bn in band_freq_data))
-					continue;
-				let fi = band_freq_data[bn];
-				synth_multi['radio' + r_idx] = {
-					idx: r_idx,
-					first_freq: fi.min,
-					last_freq: fi.max,
-				};
-				push(synth_radios, {
-					index: r_idx,
-					bands: { [bn]: { frequencies: fi.freqs, channels: fi.chans } },
-				});
-				r_idx++;
+		if (length(phy.radios || [])) {
+			// Keep the actual driver index; never replace it with band ordering.
+			info.radios = [];
+			info.radio_index_source = 'driver';
+			for (let radio in phy.radios) {
+				let radio_bands = {};
+				let supported = [];
+				for (let bn, fi in band_freq_data) {
+					let freqs = filter(fi.freqs, freq => length(filter(radio.freq_ranges || [],
+						range => freq * 1000 >= range.start && freq * 1000 <= range.end)));
+					if (!length(freqs)) continue;
+					radio_bands[bn] = { frequencies: freqs, channels: map(freqs, freq_to_channel) };
+					push(supported, ...freqs);
+				}
+				if (!length(supported)) continue;
+				push(info.radios, {index:radio.index, bands:radio_bands,
+					freq_ranges:map(radio.freq_ranges, range => [range.start,range.end])});
+				multi_radio['radio' + radio.index] = {idx:radio.index,
+					first_freq:min(...supported),last_freq:max(...supported)};
 			}
-			if (r_idx > 1)
-				entry.info.radios = synth_radios;
-		}
-
-		if (phy.radios) {
 			entry.multi_radio = multi_radio;
 		} else if (length(keys(band_freq_data)) > 1) {
+			// Preserve the legacy non-MLO discovery path, explicitly unqualified.
+			let synth_multi = {};
+			let synth_radios = [];
+			let r_idx = 0;
+			for (let bn in ['2G','5G','6G','60G']) {
+				if (!(bn in band_freq_data)) continue;
+				let fi = band_freq_data[bn];
+				synth_multi['radio' + r_idx] = {idx:r_idx,first_freq:fi.min,last_freq:fi.max};
+				push(synth_radios,{index:r_idx,bands:{[bn]:{frequencies:fi.freqs,channels:fi.chans}}});
+				r_idx++;
+			}
+			info.radios = synth_radios;
+			info.radio_index_source = 'synthesized';
 			entry.multi_radio = synth_multi;
 		}
+
 	}
 }
 

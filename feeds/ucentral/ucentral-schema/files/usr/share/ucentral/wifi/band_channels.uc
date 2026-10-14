@@ -44,7 +44,7 @@ export function select_band(phy, band) {
 	}
 	channels = uniq(sort(channels, (a,b) => a-b));
 	if (!length(channels)) return null;
-	return { ...phy, hardware_band: [...phy.band], band: [base],
+	return { ...phy, hardware_band: [...(phy.hardware_radio_bands || phy.band)], band: [base],
 		frequencies: uniq(sort(frequencies, (a,b) => a-b)), channels,
 		dfs_channels: base == '6G' ? [] :
 			filter(phy.dfs_channels || [], ch => ch in channels) };
@@ -56,8 +56,27 @@ export function reserve_switchable(phys, band, radios) {
 	// 5G PHYs remain usable. Disabled 6G does not reserve hardware.
 	let enabled6 = length(filter(radios || [], r => r.band == '6G' && r.enable != false));
 	let enabled5 = length(filter(radios || [], r => base_band(r.band) == '5G' && r.enable != false));
+	// A genuine multi-radio WIPHY can contain two switchable hardware radios.
+	// Allocate distinct reported radio indices to simultaneous 5G and 6G.
+	let genuine_groups = {};
+	if (enabled5 && enabled6 && base_band(band) in ['5G','6G']) {
+		phys = filter(phys, phy => {
+			if (phy.radio_index_source != 'driver' || length(phy.hardware_radios || []) < 2)
+				return true;
+			let hardware = sort([...phy.hardware_radios], (a,b) => a.index-b.index);
+			for (let five in hardware) {
+				if (!('5G' in five.bands)) continue;
+				for (let six in hardware) {
+					if (!('6G' in six.bands) || five.index == six.index) continue;
+					genuine_groups[phy.wiphy_name] = true;
+					return phy.radio_index == (base_band(band) == '5G' ? five.index : six.index);
+				}
+			}
+			return true;
+		});
+	}
 	if (base_band(band) == '5G' && enabled6)
-		return filter(phys, phy => !('6G' in (phy.hardware_band || phy.band || [])));
+		return filter(phys, phy => genuine_groups[phy.wiphy_name] || !('6G' in (phy.hardware_band || phy.band || [])));
 	// Do not let a later disabled6G section disable a PHY already allocated
 	// to enabled5G. A lone disabled6G section still explicitly disables it.
 	if (band == '6G' && !enabled6 && enabled5)
