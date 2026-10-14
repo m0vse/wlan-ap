@@ -33,6 +33,16 @@ Hardware acceptance must follow the soak with operator authorization.
 Power setter regression (local shell, no AP):
 
   python3 tests/hostapd-channel-state/test-txpower.py --source feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh
+  python3 tests/hostapd-channel-state/test-acs-power.py --source PREPARED_REGULAR_MAC80211_SH
+
+The regular ACS lifecycle regression runs the actual startup tail and setter
+with three/four BSS, delayed secondary creation, automatic/fixed channel and
+CAC lifecycle actors. The pre-correction source must fail its negative control.
+Equivalent secondary AP power inherits a successful PHY request in mac80211;
+the primary setter, failed PHY request and differing per-BSS override remain
+strict. A differing override before its BSS exists is still rejected, not
+reported applied. This does not add deferred override support or demonstrate
+physical radio acceptance. QSDK/MLO per-link semantics are not exempted.
 
 Its 22 QSDK controls (6 regular controls) cover legacy and per-link MLO, fixed and automatic power,
 successful setting, rejection and invalid argument. A successful offload call
