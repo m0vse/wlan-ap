@@ -8,6 +8,7 @@ from pathlib import Path
 import argparse
 import importlib.util
 import os
+import re
 import subprocess
 import tempfile
 
@@ -76,15 +77,31 @@ run() {
             assert reboot_calls == ['prior'], reboot_calls
         return calls, saved
 
-def check_command(script, prior):
+def check_command(script, prior, guarded_oem=False):
     count = 0
-    for failure in ('bootcmd', 'image', 'state', 'save', 'load', ''):
-        # State key differs by family; map its exact rendered name for faulting.
-        state = script.split('setenv ')[3].split()[0]
+    state_match = re.search(r'\bsetenv ([A-Za-z0-9_]+_ab_state) trial-started\b', script)
+    assert state_match, script
+    state = state_match[1]
+    if guarded_oem:
+        # The reviewed bootcount contract deliberately holds at the prompt if
+        # counter/default persistence fails. Calling bootipq in that state can
+        # switch to the wrong bank. This is distinct from the native core's
+        # direct OpenWiFi prior-slot fallback; do not weaken that assertion.
+        assert script.startswith('if setenv bootcount 0 && '), script
+        assert '&& saveenv; then run sage_boot' in script, script
+        assert script.endswith('; fi'), script
+    failures = (('bootcount',) if 'setenv bootcount ' in script else ()) + ('bootcmd', 'image', 'state', 'save', 'load', '')
+    for failure in failures:
         fail = state if failure == 'state' else failure
         calls, saved = run_script(script, prior, fail, reset=True)
-        if failure in ('bootcmd','image','state','save'):
-            assert 'candidate' not in calls and calls[-1] == 'prior', (failure, calls)
+        if failure in ('bootcount','bootcmd','image','state','save'):
+            checkpoint = 'save' if failure == 'save' else 'set:' + fail
+            assert checkpoint in calls, (failure, calls)
+            assert 'candidate' not in calls, (failure, calls)
+            if guarded_oem:
+                assert 'prior' not in calls and calls[-1] == checkpoint, (failure, calls)
+            else:
+                assert calls[-1] == 'prior', (failure, calls)
             assert not saved, (failure, saved)
         else:
             assert calls.index('save') < calls.index('candidate'), calls
@@ -131,7 +148,12 @@ def main():
                 result, state, _ = arm.run_arm(prior, model)
                 assert result.returncode == 0, result.stderr
                 assert state['sage_stable'+str(prior)] == 'run sage_boot'+str(prior)
-                total += check_command(state['bootcmd'], prior)
+                total += check_command(state['bootcmd'], prior, guarded_oem=True)
+                # A real failed setter must not be hidden by an independently
+                # successful save. Keep this mutation as a negative control.
+                unsafe = state['bootcmd'].replace('&& saveenv; then', '; saveenv; then')
+                unsafe_calls, unsafe_saved = run_script(unsafe, prior, 'bootcmd')
+                assert 'candidate' in unsafe_calls and unsafe_saved, unsafe_calls
         # Actual reverse armer: mock only its already separately tested physical
         # preflights and environment I/O, and preserve its rendered script.
         for prior in (0,1):
@@ -140,6 +162,7 @@ def main():
 . "$LIB"
 CSR_ACTIVE=$PRIOR CSR_ENV_CONFIG=fixture
 csr_preflight(){ :; }; csr_boot_preflight(){ :; }; csr_configuration_empty_check(){ :; }
+csr_source_selector_check(){ :; }
 fw_setenv(){ shift 2; if [ "$1" = -s ]; then
  while read -r key value; do printf '%s' "$value" > "$ENV/$key"; done < "$2"
  else printf '%s' "$2" > "$ENV/$1"; fi; }
@@ -151,8 +174,8 @@ cat "$ENV/bootcmd"
             env = dict(os.environ, LIB=str(REPO/'tools/oem-migration/recovery/scripts/lib/cambium-sage-oem-recovery.sh'), ENV=str(envdir), PRIOR=str(prior))
             rendered = subprocess.check_output(['sh','-c',script], env=env, text=True).strip()
             assert (envdir/f'sage_stable{prior}').read_text() == f'run sage_boot{prior}'
-            total += check_command(rendered, prior)
-    print(f'PASS: {total} rendered-script cases; save failure skips candidate; next reset boots only prior slot')
+            total += check_command(rendered, prior, guarded_oem=True)
+    print(f'PASS: {total} rendered-script cases; native fallback or guarded OEM safe stop; successful save restores prior-only next boot')
     print('Scope: mocked shell/environment/load boundaries; not real U-Boot, watchdog or physical power-cut proof')
 
 if __name__ == '__main__': main()
