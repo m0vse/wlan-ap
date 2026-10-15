@@ -6,7 +6,9 @@ build settings, credentials, calibration, device defaults or image artifacts.
 Existing public shared patch bodies and family package versions remain intact.
 0194 adds the retained Miami changes after the public shared chain; common
 cambium-ab advances20 to24, above retained privateMiami23. It preserves Thor
-preflight and Jaguar/Cheetah OEM-return handling. Slot DTs, the radio package,
+preflight and Jaguar/Cheetah OEM-return handling. Configuration restore uses
+the resolved-UBI helper only for exact miami:X7-35X; every other family/model
+retains CI_UBIPART=$AB_TARGET_PART nand_restore_config and its failure result. Slot DTs, the radio package,
 A/B image/profile and combined image builder are now present in public source.
 Unused thin-bridge variants are excluded from this promotion.
 

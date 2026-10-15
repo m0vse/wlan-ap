@@ -46,7 +46,7 @@
     "feeds/tip/cambium-miami-persistent/files/cambium-ab-miami.sh": "e2518d3d02cb80727dd2953a86dcb1a4625d88f6",
     "feeds/tip/cambium-miami-persistent/files/cambium-ab-seed-confirm": "1093aecb33e54427b4b3b6cef18307750620d2b7",
     "patches-25.12/0162-kernel-defaults-resolve-feed-initramfs-inputs.patch": "de2f3023841d9d66cedce175b7330c00f4ba376b",
-    "patches-25.12/0194-cambium-ab-integrate-qualified-miami.patch": "10229382d63f51ca99f32b60afef3be0b9060515",
+    "patches-25.12/0194-cambium-ab-integrate-qualified-miami.patch": "a116ce8c47d6a76a69171ab14ebed5de76f4050b",
     "feeds/qca-wifi-7/ipq53xx/image/ipq53xx.mk": "e8e35f974cd50f04d554857cc87eb51745837471",
     "feeds/qca-wifi-7/ipq53xx/base-files/lib/upgrade/platform.sh": "5fe35ea51f625a85b89a0b915a3fe57e18ec9c1f",
     "feeds/qca-wifi-7/mac80211/Makefile": "510c8f4f5935f858b536127bcbfd54321408c875",

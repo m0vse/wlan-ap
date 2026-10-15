@@ -78,13 +78,14 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  		ab_fail "this AP still has one OEM slot; run cambium-ab-convert first" || return 1
  	ab_mtd_writable "$AB_TARGET_MTD" ||
  		ab_fail "target bank $AB_TARGET_PART is read-only (not an A/B image)" || return 1
-@@ -226,6 +231,49 @@
+@@ -226,6 +231,58 @@
  	return "$rc"
  }
  
 +# Use the resolved inactive UBI device: physical banks and gluebi views
 +# may share the name rootfs, so a fresh generic name lookup is ambiguous.
 +ab_restore_config() {
++	[ "${AB_FAMILY:-}:${AB_MODEL:-}" = miami:X7-35X ] || return 1
 +	local backup="$1" ubi data dir before after= rc=0 dev=${AB_DEV:-/dev}
 +	[ -f "$backup" ] || return 1
 +	case "${BACKUP_FILE:-}" in ''|.|..|*/*) return 1;; esac
@@ -125,10 +126,18 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
 +	return "$rc"
 +}
 +
++# Keep other families on their existing generic restore path.
++ab_restore_upgrade_config() {
++	case "${AB_FAMILY:-}:${AB_MODEL:-}" in
++	miami:X7-35X) ab_restore_config "$1" ;;
++	*) CI_UBIPART=$AB_TARGET_PART nand_restore_config "$1" ;;
++	esac
++}
++
  # Arm the one-shot trial of the written bank. bootcmd is the last write.
  ab_arm_trial() {
  	local batch=/tmp/cambium-ab-env-arm.$$ trial rc=0
-@@ -245,7 +293,7 @@
+@@ -245,7 +302,7 @@
  
  	# stage2 must prove the private snapshot survived the RAM copy BEFORE
  	# recording writes or erasing any inactive-bank data.
@@ -137,7 +146,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  		type ab_certificate_validate_snapshot >/dev/null 2>&1 && ab_certificate_validate_snapshot ||
  			{ ab_fail 'RAM-stage certificate snapshot validation failed; no bank was written'; return 1; }
  	fi
-@@ -259,13 +307,19 @@
+@@ -259,13 +316,19 @@
  	rm -f "$batch"
  
  	echo "cambium-ab: writing slot $AB_TARGET ($AB_TARGET_PART) from slot $AB_ACTIVE"
@@ -158,7 +167,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  		ab_arm_trial ||
  			{ ab_record_failure write-failed "cannot arm the trial of slot $AB_TARGET"; return 1; }
  		echo "cambium-ab: slot $AB_TARGET armed for one trial boot; slot $AB_ACTIVE stays the default until it is confirmed"
-@@ -281,17 +335,20 @@
+@@ -281,17 +344,20 @@
  		{ AB_STEP_ERROR=; ab_record_failure write-failed "slot $AB_TARGET readback mismatch"; return 1; }
  	[ "$AB_VAULT" != 1 ] || ab_copy_vault ||
  		{ ab_record_failure write-failed "cannot copy the device-data vault"; return 1; }
@@ -170,7 +179,7 @@ Signed-off-by: Phil Taylor <phil@m0vse.uk>
  
  	if [ -n "${UPGRADE_BACKUP:-}" ]; then
 -		CI_UBIPART=$AB_TARGET_PART nand_restore_config "$UPGRADE_BACKUP" ||
-+		ab_restore_config "$UPGRADE_BACKUP" ||
++		ab_restore_upgrade_config "$UPGRADE_BACKUP" ||
  			{ ab_record_failure write-failed "cannot save the configuration"; return 1; }
  	fi
  	sync
