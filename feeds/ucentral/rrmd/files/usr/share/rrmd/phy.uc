@@ -163,18 +163,12 @@ return {
 	txpower: function(msg) {
 		if (!msg.bssid || type(msg.level) != 'int' || msg.level < -100 || msg.level > 100)
 			return false;
-		let dev = global.local.bssid_to_ifname(msg.bssid);
-		if (dev == null) {
+		let target = global.local.txpower_target(msg.bssid);
+		if (target == null)
 			return false;
-		}
-		let current = global.nl80211.request(global.nl80211.const.NL80211_CMD_GET_INTERFACE, 0, { dev });
-		if (!current) return false;
-		let attrs = { dev, wiphy_tx_power_setting: 2, wiphy_tx_power_level: msg.level * 100 };
-		if (length(current.mlo_links)) {
-			let links = filter(current.mlo_links, link => lc(link.mac || '') == lc(msg.bssid));
-			if (length(links) != 1 || type(links[0].link_id) != 'int' || links[0].link_id < 0 || links[0].link_id > 15) return false;
-			attrs.mlo_link_id = links[0].link_id;
-		}
-		return global.nl80211.request(global.nl80211.const.NL80211_CMD_SET_WIPHY, 0, attrs) === true;
+		let attrs = { dev: target.dev, wiphy_tx_power_setting: 2, wiphy_tx_power_level: msg.level * 100 };
+		if (target.mlo_link_id != null)
+			attrs.mlo_link_id = target.mlo_link_id;
+		return global.nl80211.request(global.nl80211.const.NL80211_CMD_SET_WIPHY, global.nl80211.const.NLM_F_ACK, attrs) === true;
 	},
 };
