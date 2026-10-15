@@ -22,7 +22,7 @@
     "feeds/qca-wifi-7/mac80211/patches/ath12k/0006-ath12k-skip-periodic-PMLO-stats-for-inactive-pdevs.patch": "be7c82c2f63740f89d77d1890ad44e36bc197ae4",
     "feeds/qca-wifi-7/mac80211/patches/ath12k/0007-ath12k-do-not-report-configured-power-as-fw-readback.patch": "0973d12202679a0eb51cd4a566e6d784670d9cb0",
     "feeds/qca-wifi-7/mac80211/patches/ath12k/0008-qca-ath11k-strict-firmware-power-readback.patch": "88b56d0585b03df1422362639ca6bb5f29ddb9ad",
-    "feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh": "3ef7a90e1a4632e7a80f2f4f03138d66625a3c6f",
+    "feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh": "de2a5afb31ca6ab00614edaa71d8fdc67e2ce60f",
     "feeds/qca-wifi-7/wifi-scripts/files/lib/wifi/mac80211.uc": "fa6a57635a414eae6c65071d765547e57e02cf86",
     "feeds/qca-wifi-7/wifi-scripts/files/usr/share/hostap/wifi-detect.uc": "5b9d7b596d44669c403c9f8d179d67b0dbc05ce6",
     "feeds/ucentral/ucentral-schema/files/usr/share/ucentral/radio_operating.uc": "9dccaf703dc36662cc06d971cbcbf3e58066b7ec",
@@ -41,7 +41,7 @@
     "patches-25.12/0190-verify-accepted-radio-channel-and-power-errors.patch": "fff1f823e0bb1f2b93f5f8940afe2eb9d458d1de",
     "patches-25.12/0191-ath11k-strict-firmware-power-readback.patch": "ccd1f86e045091b8ab2a6fadc3c270db0ddcdd79",
     "patches-25.12/0193-preserve-phy-power-inheritance-during-acs.patch": "756b949e3e852a99a02dab30ca6c9e099595c701",
-    "feeds/qca-wifi-7/wifi-scripts/Makefile": "744b57a43e7af2501b915356b1299ecf9ece959d"
+    "feeds/qca-wifi-7/wifi-scripts/Makefile": "cc2906770295c96ac6ba2ac3801234c622ce955e"
   },
   "miami_supplement": {
     "feeds/tip/cambium-miami-persistent/files/cambium-ab-miami.sh": "e2518d3d02cb80727dd2953a86dcb1a4625d88f6",
@@ -50,7 +50,7 @@
     "patches-25.12/0194-cambium-ab-integrate-qualified-miami.patch": "a116ce8c47d6a76a69171ab14ebed5de76f4050b",
     "feeds/qca-wifi-7/ipq53xx/image/ipq53xx.mk": "e8e35f974cd50f04d554857cc87eb51745837471",
     "feeds/qca-wifi-7/ipq53xx/base-files/lib/upgrade/platform.sh": "5fe35ea51f625a85b89a0b915a3fe57e18ec9c1f",
-    "feeds/qca-wifi-7/mac80211/Makefile": "510c8f4f5935f858b536127bcbfd54321408c875",
+    "feeds/qca-wifi-7/mac80211/Makefile": "9432ed95759c9a32f19db50fcbf5bf6dc1f3d363",
     "feeds/ucentral/ucentral-schema/Makefile": "29aec3894724d47469278ae6c87bec78fd57ea55",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-asterfusion-ap7330.dts": "59cbb98b55eb92cbd4d8db78ba551788932d56a7",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-edgecore-eap105.dts": "b889a211746365b74d4cced096d1370bb9e9183f",
@@ -92,12 +92,28 @@
     "feeds/tip/cambium-miami-radio/files/05_miami_radio_hold": "e84ea4d4d78dcfdb7fd382a3d552382e04ea55a3",
     "feeds/tip/cambium-miami-radio/files/miami-wifi-profile.init": "77cd3b1e166bedc8616cbc0a40b9e1bb2ae430c2",
     "feeds/tip/cambium-miami-radio/files/miami-radio-ready": "6cde61920c8dd5ec8506a3ad01c13b862b9dc121",
-    "feeds/tip/cambium-miami-radio/files/miami-radio-start": "6ceb8a9565f39a141e6fd1d95fa3c3b763daf52f"
+    "feeds/tip/cambium-miami-radio/files/miami-radio-start": "6ceb8a9565f39a141e6fd1d95fa3c3b763daf52f",
+    "feeds/qca-wifi-7/iw/Makefile": "dc8fc0bda8ebfef1ee707874bf1517a6df760f11",
+    "feeds/qca-wifi-7/mac80211/patches/ath12k/0009-mac80211-independent-radio-txpower.patch": "1195dfd38ed761091620b98f525dbc21fe4da144",
+    "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch": "f3b6b50d26c0893d2b022a08190e6f0c2290248e"
   },
   "policy": "Miami still requires its retained qualified private base and supplementary ABI. Never build Miami by resetting to generic main or publish its private history. Reviewed intentional source changes require updating this ledger.",
   "public_source_integration": {
     "base": "193f4705c51d6ea50b02488d520c1c87089cfdd3",
     "qualified_private_source": "b541cffb35a1ebe1050245a21a7975cc1f4115b9",
     "policy": "Public source-only promotion adds retained Miami foundations after the shared patch chain. It does not import private history or satisfy private qualified-parent/hardware acceptance."
+  },
+  "independent_radio_power_review": {
+    "date": "2026-10-15",
+    "previous_public_source": "5b2bd621e7773787b3ea4b42faf057fdc68748cc",
+    "intentional_changes": [
+      "feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh",
+      "feeds/qca-wifi-7/wifi-scripts/Makefile",
+      "feeds/qca-wifi-7/mac80211/Makefile",
+      "feeds/qca-wifi-7/iw/Makefile",
+      "feeds/qca-wifi-7/mac80211/patches/ath12k/0009-mac80211-independent-radio-txpower.patch",
+      "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch"
+    ],
+    "scope": "Independent physical-radio defaults replace shared-wiphy uniform-cap refusal. Existing NAND/boot/client/radio sources and strict readback stay pinned. Offline regressions do not establish target compilation or hardware acceptance."
   }
 }

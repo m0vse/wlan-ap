@@ -111,6 +111,24 @@ source history and build inputs are not published by this check. Never replace
 those inputs just to satisfy a generic shared build. Private settings, device
 data and credentials are excluded from the public ledger.
 
-QSDK shared-PHY power lifecycle (reviewed Miami candidate):
-A normalized uniform cap across every enabled logical device on the same physical wiphy is checked and requested before hostapd/link creation, including mlo_add_flag1. New kernel links inherit local->user_power_level. Distinct per-BSS caps are explicitly unsupported by this narrow path, even for currently existing BSSes, because recreation would lose the override. Kernel acceptance is not firmware confirmation; strict driver/readback/health remains required. coreutils-timeout is explicit; -k1 bounds a TERM-ignoring command at approximately6s. Physical identity, unknown-peer, genuine request failure and conflicting-cap checks stay strict. No callback ABI/metadata/workers introduced.
-Offline regression evidence: actual candidate functions, existing22 setter controls, complete drv_mac80211_setup under target ash with real jshn/libconfig/for_each_interface and mocked hardware/UCIexport. Mapping is a fixture; never claim live hardware MLO acceptance.
+QSDK independent-radio power lifecycle (15 October 2026):
+The former uniform-cap check is removed. On a multi-radio wiphy the shell
+requests an explicit physical radio index through iw; ordinary single-radio
+requests retain the global command ABI. Kernel defaults are stored separately
+per radio. Reserved-context moves use the successfully committed destination
+radio, while failed assignment/switch paths do not change the inherited cap.
+Every bound link on that radio receives its request, and ACS/CAC
+links inherit it when assigned a channel context. Link IDs are never treated
+as radio indices. Explicit per-link requests retain their identity and error
+checks and survive channel rebinding. A later radio/global default request
+supersedes live overrides on matching links, as the previous setter did. Existing strict firmware readback and health reporting remain required.
+A kernel ACK is not firmware confirmation or an RF measurement.
+
+Offline controls exercise actual kernel and iw functions, complete shell setup
+with real jshn/libconfig, actual hostapd reload functions and RRM methods.
+Hardware, netlink and daemon boundaries are fixtures. The tests include mixed
+5/6 GHz caps sharing a wiphy, late links, malformed commands, failed requests,
+200 alternating live-link kernel updates preserving the peer, and 100 power-only
+hostapd reloads without removal/restart. Old kernel/iw fail the new contract;
+a channel-change negative control reaches restart. On-device controller and RRM
+updates must still be tested with actual link/channel/power and continuity logs.

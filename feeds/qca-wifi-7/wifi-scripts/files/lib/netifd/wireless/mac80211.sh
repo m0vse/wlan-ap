@@ -1894,88 +1894,28 @@ mac80211_power_normalize() {
 	printf '%s' "$value"
 }
 
-# Resolve the actual wiphy object, not a logical radio/band suffix.
-mac80211_power_phy_identity() {
-	local section="$1" candidate path disabled
-	config_get disabled "$section" disabled 0
-	[ "$disabled" = 0 ] || return 2
-	if [ "$section" = "$device" ]; then
-		candidate="$phy"
-	else
-		config_get candidate "$section" phy
-		if [ -z "$candidate" ]; then
-			config_get path "$section" path
-			[ -n "$path" ] || return 1
-			candidate=$(miami_phy_by_path "$path") || candidate=$(iwinfo nl80211 phyname "path=$path") || return 1
-		fi
-	fi
-	candidate=${candidate%%:*}
-	[ -d "/sys/class/ieee80211/$candidate" ] || return 1
-	readlink -f "/sys/class/ieee80211/$candidate"
-}
-
-mac80211_power_peer() {
-	local section="$1" type identity value rc
-	config_get type "$section" type
-	[ "$type" = mac80211 ] || return 0
-	identity=$(mac80211_power_phy_identity "$section"); rc=$?
-	[ "$rc" != 2 ] || return 0
-	[ "$rc" = 0 ] || { txpower_uniform_failed=1; return 1; }
-	[ "$identity" = "$txpower_phy_identity" ] || return 0
-	config_get value "$section" txpower
-	value=$(mac80211_power_normalize "$value") || { txpower_uniform_failed=1; return 1; }
-	[ "$value" = "$txpower_default" ] || { txpower_uniform_failed=1; return 1; }
-	txpower_uniform_count=$((txpower_uniform_count+1))
-}
-
-# QSDK cfg.c stores local->user_power_level; link.c copies it on creation.
-# This verifies kernel acceptance of a common ceiling, not fresh FW power.
+# Store the device cap on its physical radio before ACS/CAC creates links.
+# The kernel keeps each radio's default and applies it at channel binding.
+# This verifies kernel acceptance; firmware readback remains separate.
 mac80211_prepare_inherited_txpower() {
 	local power
 	power=$(mac80211_power_normalize "$txpower") || { wireless_setup_failed TXPOWER_INVALID; return 1; }
 	txpower_default="$power"
-	txpower_failed=0
-	config_load wireless
-	txpower_phy_identity=$(mac80211_power_phy_identity "$device") || {
-		wireless_setup_failed TXPOWER_PHY_IDENTITY_UNAVAILABLE
-		return 1
-	}
-	txpower_uniform_failed=0
-	txpower_uniform_count=0
-	config_foreach mac80211_power_peer wifi-device
-	if [ "$txpower_uniform_failed" = 1 ] || [ "$txpower_uniform_count" -lt 1 ]; then
-		wireless_setup_failed TXPOWER_SHARED_PHY_CAP_UNPROVEN
-		return 1
+	set -- iw phy "$phy" set txpower
+	if [ "$radio" != -1 ]; then
+		case "$radio" in ''|*[!0-9]*) wireless_setup_failed TXPOWER_RADIO_INVALID; return 1;; esac
+		set -- "$@" radio "$radio"
 	fi
 	if [ "$power" != auto ]; then
-		timeout -k 1 5 iw phy "$phy" set txpower fixed "${power}00" || {
-			wireless_setup_failed TXPOWER_PHY_SET_FAILED
-			return 1
-		}
+		set -- "$@" fixed "${power}00"
 	else
-		timeout -k 1 5 iw phy "$phy" set txpower auto || {
-			wireless_setup_failed TXPOWER_PHY_SET_FAILED
-			return 1
-		}
+		set -- "$@" auto
 	fi
-	inherited_txpower_ready=1
-}
-
-mac80211_check_inherited_ap_txpower() {
-	local name="$1" mode override
-	json_select config
-	json_get_vars mode vif_txpower
-	json_select ..
-	# Distinct per-BSS limits cannot safely be programmed while ACS/CAC
-	# has not created the VIF/link. Never silently use link zero instead.
-	if [ -n "$vif_txpower" ]; then
-		override=$(mac80211_power_normalize "$vif_txpower") || override=invalid
-		local default=$(mac80211_power_normalize "$txpower")
-		[ "$override" = "$default" ] && return 0
-		txpower_failed=1
-		wireless_setup_vif_failed TXPOWER_LATE_OVERRIDE_UNSUPPORTED
+	timeout -k 1 5 "$@" || {
+		wireless_setup_failed TXPOWER_PHY_SET_FAILED
 		return 1
-	fi
+	}
+	inherited_txpower_ready=1
 }
 
 mac80211_set_vif_txpower() {
@@ -1990,9 +1930,10 @@ mac80211_set_vif_txpower() {
 
 	set_default vif_txpower "$txpower"
 
-	if [ "$mode" = ap ] && [ "$inherited_txpower_ready" = 1 ]; then
-		# No device/link request here: existing and future AP links inherit
-		# the checked shared PHY default before hostapd creates them.
+	if [ "$mode" = ap ] && [ "$inherited_txpower_ready" = 1 ] &&
+	   { [ -z "$vif_txpower" ] || [ "$(mac80211_power_normalize "$vif_txpower")" = "$txpower_default" ]; }; then
+		# Existing and future AP links use the selected radio default.
+		# A distinct explicit per-BSS override still uses the link setter.
 		# Do not advertise this as firmware-confirmed per-link power.
 		[ -d "/sys/class/net/$ifname" ] && iw dev "$ifname" set_intf_offload type "$ppe_vp"
 		return 0
@@ -2355,8 +2296,6 @@ drv_mac80211_setup() {
 
 	inherited_txpower_ready=0
 	txpower_failed=0
-	for_each_interface "ap" mac80211_check_inherited_ap_txpower
-	[ "$txpower_failed" != 1 ] || return 1
 	mac80211_prepare_inherited_txpower || return 1
 
 	set_default ifname_prefix "$phy$vif_phy_suffix"
