@@ -41,6 +41,16 @@ and contract hash are the two lines in the generated `source-contract`; job,
 serial, slots and image binding must match the qualified transaction. Do not
 put batch enrollment credentials in arguments, public artifacts or logs.
 
+For an operator bundle, the release owner may include `prepare-onboarding.sh`
+as `onboarding/prepare.sh` beside its reviewed, device-bound public
+`binding.tsv`, `est.json`, and `gateway.json` (Root `0600` in a Root `0700`
+directory). The operator exports `OPENWIFI_ONBOARD_KEY` and runs this helper
+as a separate process. It removes the exported variable from its child
+environment before executing tools and prepares the private settings without
+flashing. Existing settings must match the complete public context and, if
+supplied, the same key; they are not silently replaced. The operator must
+`unset OPENWIFI_ONBOARD_KEY` in the parent shell before running the installer.
+
 ## Transaction
 
 1. Authenticate the entire source and runtime tuple before sourcing AP code.
