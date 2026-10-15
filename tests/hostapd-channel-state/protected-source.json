@@ -36,7 +36,7 @@
     "feeds/ucentral/ucentral-schema/patches/105-native-mlo-radio-and-peer-telemetry.patch": "8ce2c30a08e8b233b587b87bd841f4b1fb6fca5c",
     "feeds/ucentral/ucentral-schema/patches/106-native-mlo-average-rssi.patch": "3ed8fa8ef886323ade1e9666da5bedb508e5be8b",
     "feeds/ucentral/ucentral-schema/patches/107-verify-operating-channel-width-and-power.patch": "9306734e25569fcbf6b68b8841d7d3b83fe63d86",
-    "patches-25.12/0171-ucode-expose-native-mlo-support.patch": "8ba5d9bb22f1e4858121d13b074367e8655d3bdb",
+    "patches-25.12/0171-ucode-expose-native-mlo-support.patch": "d4c2b25f98012940c01dedbb135c37a5259f344a",
     "patches-25.12/0190-verify-accepted-radio-channel-and-power-errors.patch": "fff1f823e0bb1f2b93f5f8940afe2eb9d458d1de",
     "patches-25.12/0191-ath11k-strict-firmware-power-readback.patch": "ccd1f86e045091b8ab2a6fadc3c270db0ddcdd79",
     "patches-25.12/0193-preserve-phy-power-inheritance-during-acs.patch": "756b949e3e852a99a02dab30ca6c9e099595c701",
@@ -95,9 +95,9 @@
     "feeds/qca-wifi-7/iw/Makefile": "dc8fc0bda8ebfef1ee707874bf1517a6df760f11",
     "feeds/qca-wifi-7/mac80211/patches/ath12k/0009-mac80211-independent-radio-txpower.patch": "1195dfd38ed761091620b98f525dbc21fe4da144",
     "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch": "f3b6b50d26c0893d2b022a08190e6f0c2290248e",
-    "feeds/ucentral/rrmd/Makefile": "aa848cf2d9ce69c4776142d70662d527b619b6bd",
+    "feeds/ucentral/rrmd/Makefile": "7f83486bc7d5d402ce0ddfe4af30776021c95d5d",
     "feeds/ucentral/rrmd/files/usr/share/rrmd/local.uc": "aa8bcf5ddf9b6039dc02624dba82ca7bfd34e5a8",
-    "feeds/ucentral/rrmd/files/usr/share/rrmd/phy.uc": "af288a9fa21798e90afa62553bf0d977ba601e92"
+    "feeds/ucentral/rrmd/files/usr/share/rrmd/phy.uc": "80b234275f1c833d23513c96a10a2bc90aabd3ee"
   },
   "policy": "Miami still requires its retained qualified private base and supplementary ABI. Never build Miami by resetting to generic main or publish its private history. Reviewed intentional source changes require updating this ledger.",
   "public_source_integration": {

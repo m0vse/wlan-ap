@@ -169,6 +169,6 @@ return {
 		let attrs = { dev: target.dev, wiphy_tx_power_setting: 2, wiphy_tx_power_level: msg.level * 100 };
 		if (target.mlo_link_id != null)
 			attrs.mlo_link_id = target.mlo_link_id;
-		return global.nl80211.request(global.nl80211.const.NL80211_CMD_SET_WIPHY, 0, attrs) === true;
+		return global.nl80211.request(global.nl80211.const.NL80211_CMD_SET_WIPHY, global.nl80211.const.NLM_F_ACK, attrs) === true;
 	},
 };

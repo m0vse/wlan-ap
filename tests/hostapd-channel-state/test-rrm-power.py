@@ -22,7 +22,7 @@ local=(base/'local.uc').read_text()
 resolver=local[local.index('function resolve_power_target('):local.index('\nreturn {',local.index('function resolve_power_target('))]
 harness=r'''
 let calls=[],ack=true,current={mac:'02:00:00:00:00:01',wiphy_tx_power_level:1700};
-let global={nl80211:{const:{NL80211_CMD_GET_INTERFACE:1,NL80211_CMD_SET_WIPHY:2},request:(cmd,flags,attrs)=>{push(calls,{cmd,attrs});return cmd==1?current:ack;}},local:{},event:{send:()=>null}};
+let global={nl80211:{const:{NL80211_CMD_GET_INTERFACE:1,NL80211_CMD_SET_WIPHY:2,NLM_F_ACK:4},request:(cmd,flags,attrs)=>{push(calls,{cmd,flags,attrs});return cmd==1?current:ack;}},local:{},event:{send:()=>null}};
 let interfaces={fixture:{bssid:'02:00:00:00:00:02'}};
 function sleep(ms){}
 '''
@@ -31,7 +31,8 @@ let n=0;function check(v,name){assert(v,name);n++;}
 let first='02:00:00:00:00:01',second='02:00:00:00:00:02';
 let msg={bssid:first,level:17};
 check(setter(msg)===true&&calls[-1].attrs.wiphy_tx_power_level==1700&&calls[-1].attrs.mlo_link_id==null,'ordinary fresh MAC, no MLO selector');
-ack=false;check(setter(msg)===false,'false ACK rejected');ack=null;check(setter(msg)===false,'null ACK rejected');ack=true;
+ack=false;check(setter(msg)===false,'false ACK rejected');ack=null;check(setter(msg)===false,'null ACK rejected');ack={};check(setter(msg)===false,'unexpected object rejected');ack=true;
+check(calls[0].flags==0&&calls[1].flags==4,'SET explicitly requests kernel ACK');
 check(setter({...msg,level:0})===true&&calls[-1].attrs.wiphy_tx_power_level==0,'zero dBm valid');
 check(setter({...msg,level:101})===false&&setter({...msg,level:'17'})===false,'bad power rejected');
 current={mac:first,mlo_links:[{link_id:0,mac:first,wiphy_tx_power_level:1400},{link_id:7,mac:second,wiphy_tx_power_level:2300}]};

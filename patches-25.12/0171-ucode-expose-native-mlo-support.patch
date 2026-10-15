@@ -5,7 +5,7 @@
  
  PKG_NAME:=ucode
 -PKG_RELEASE:=1
-+PKG_RELEASE:=3
++PKG_RELEASE:=4
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=https://github.com/jow-/ucode.git
@@ -40,3 +40,34 @@
 + 		{ NL80211_ATTR_MLO_LINKS, "mlo_links", DT_NESTED, DF_MULTIPLE|DF_AUTOIDX, &nl80211_mlo_link_nla },
 + 		{ NL80211_ATTR_SURVEY_INFO, "survey_info", DT_NESTED, 0, &nl80211_survey_info_nla },
 + 		{ NL80211_ATTR_WIPHY_RADIOS, "radios", DT_NESTED, DF_MULTIPLE|DF_AUTOIDX, &nl80211_wiphy_radio_nla },
+--- /dev/null
++++ b/package/utils/ucode/patches/201-netlink-ack-result.patch
+@@ -0,0 +1,28 @@
++--- a/lib/nl80211.c
+++++ b/lib/nl80211.c
++@@ -2213,6 +2213,17 @@ cb_done(struct nl_msg *msg, void *arg)
++ 	return NL_STOP;
++ }
++ 
+++static int
+++cb_request_ack(struct nl_msg *msg, void *arg)
+++{
+++	request_state_t *s = arg;
+++
+++	if (!s->res)
+++		s->res = ucv_boolean_new(true);
+++
+++	return cb_done(msg, arg);
+++}
+++
++ static void
++ deep_merge_array(uc_value_t *dest, uc_value_t *src);
++ 
++@@ -2835,6 +2846,6 @@ uc_nl_request_common(struct nl_sock *sock, uc_vm_t *vm, size_t nargs)
++ 	nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, cb_reply, &st);
++ 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, cb_done, &st);
++-	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, cb_done, &st);
+++	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, cb_request_ack, &st);
++ 	nl_cb_err(cb, NL_CB_CUSTOM, cb_errno, &ret);
++ 
++ 	nl_send_auto_complete(sock, msg);

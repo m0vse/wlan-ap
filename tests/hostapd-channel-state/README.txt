@@ -149,3 +149,11 @@ The interceptor inspects the real encoded SET_WIPHY root attribute and exits
 before sending. Old omission, explicit zero/nonzero and legacy absence must all
 pass. Never replace this with simulated ACK-only coverage or a guessed UAPI ID.
 On-device power changes remain a separate, explicitly scoped live test.
+
+The native request ACK callback returns boolean true for successful empty ACKs,
+while preserving an existing data reply. FINISH and the separate control socket
+ACK callback remain unchanged. RRM explicitly requests ACK and requires true;
+null, false and unexpected objects are rejected. Run test-rrm-ack.py --source
+against the actual prepared lib/nl80211.c to compile ownership/state probes.
+The codec interception also checks the encoded NLM_F_ACK header bit. Actual
+kernel rejection and successful per-link requests need separate live checks.
