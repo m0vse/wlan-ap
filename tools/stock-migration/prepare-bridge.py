@@ -128,6 +128,8 @@ def generate(family, root, out, release, flavor='default'):
     anchor = '# Authenticate the complete reviewed source tuple before sourcing AP scripts.\n'
     text = replace(text, anchor, '. "$bundle/runtime-implementation-contract.sh"\now_runtime_contract_check "$bundle/source-sets/runtime-implementation.set" || die "unqualified outgoing executable/library closure"\n' + anchor)
     text = replace(text, '--verify-installed|--recover)', '--verify-installed|--stage-auth|--recover)')
+    if family == 'sage':
+        text = replace(text, '--stage-auth|--recover)', '--stage-auth|--context|--recover)')
     anchor = 'export CAMBIUM_AB_CERTIFICATE_LIB="$bundle/cambium-ab-certificates.sh"\n'
     text = replace(text, anchor, anchor + 'export CAMBIUM_INSTALLER_HANDOFF_LIB="$bundle/cambium-installer-handoff.sh"\nexport CAMBIUM_INSTALLER_SETTINGS_LIB="$bundle/cambium-installer-settings.sh"\n')
     if family == 'sage':
@@ -150,6 +152,35 @@ def generate(family, root, out, release, flavor='default'):
  OW_EXPECT_RELEASE=$(sed -n '1p' "$bundle/source-contract")
  OW_EXPECT_CONTRACT=$(sed -n '2p' "$bundle/source-contract")
  ab_installer_export "$image" || die 'settings handoff refused'
+ exit 0
+fi
+'''
+    if family == 'sage':
+        # Reached only after the ordinary complete source/runtime/device/image
+        # preflight. This emits public context, never credentials or bank writes.
+        stage += '''if [ "$mode" = --context ]; then
+ [ "$#" = 3 ] || die 'protected context output required'
+ output=$3
+ parent=${output%/*}
+ [ "$parent" != "$output" ] && [ -d "$parent" ] && [ ! -L "$parent" ] || die 'invalid context directory'
+ [ "$(readlink -f "$parent")" = "$parent" ] || die 'noncanonical context directory'
+ [ "$(ow_settings_metadata "$parent" | awk -F: '{print $1 ":" $2}')" = 0:700 ] || die 'context directory must be root-only'
+ [ ! -e "$output" ] && [ ! -L "$output" ] || die 'context output already exists'
+ serial=$(get_mac_label_dt | tr -d ':' | tr 'A-F' 'a-f')
+ native=$(get_mac_label | tr -d ':' | tr 'A-F' 'a-f')
+ [ "$serial" = "$native" ] || die 'device identity sources disagree'
+ release=$(sed -n '1p' "$bundle/source-contract")
+ contract=$(sed -n '2p' "$bundle/source-contract")
+ image_sha=$(ow_settings_hash "$image") || die 'image hash failed'
+ job=$(hexdump -n 32 -v -e '1/1 "%02x"' /dev/urandom) || die 'job generation failed'
+ (
+  umask 077
+  set -C
+  printf 'format\\t2\\nserial\\t%s\\nfamily\\t%s\\nmodel\\t%s\\nsource_operation\\tproduction-stock-openwrt-migration\\nsource_release\\t%s\\nsource_contract_sha256\\t%s\\nsource_slot\\t%s\\ntarget_slot\\t%s\\nimage_sha256\\t%s\\njob_id\\t%s\\n' \\
+   "$serial" "$AB_FAMILY" "$AB_MODEL" "$release" "$contract" "$AB_ACTIVE" "$AB_TARGET" "$image_sha" "$job" > "$output"
+ ) || die 'cannot create context output'
+ ow_settings_binding "$output" || { rm -f "$output"; die 'invalid generated context'; }
+ echo 'PASS: device-bound migration context prepared; no upgrade started'
  exit 0
 fi
 '''

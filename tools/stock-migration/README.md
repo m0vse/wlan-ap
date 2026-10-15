@@ -42,13 +42,22 @@ serial, slots and image binding must match the qualified transaction. Do not
 put batch enrollment credentials in arguments, public artifacts or logs.
 
 For an operator bundle, the release owner may include `prepare-onboarding.sh`
-as `onboarding/prepare.sh` beside its reviewed, device-bound public
-`binding.tsv`, `est.json`, and `gateway.json` (Root `0600` in a Root `0700`
-directory). The operator exports `OPENWIFI_ONBOARD_KEY` and runs this helper
+as `onboarding/prepare.sh` beside its reviewed public `est.json` and
+`gateway.json` (Root `0600` in a Root `0700` directory). The shared Sage
+bundle contains no AP-specific serial, job, slots or enrollment key.
+The helper invokes `prepare-upgrader.sh --context IMAGE OUTPUT` after the
+complete ordinary source/runtime/device/storage/image preflight. This emits
+a root-only temporary FORMAT2 binding with the live serial, model, slots,
+qualified source contract, candidate hash and a new random job identifier;
+it does not install a bridge, write firmware/ENV or reboot.
+The operator exports `OPENWIFI_ONBOARD_KEY` and runs this helper
 as a separate process. It removes the exported variable from its child
 environment before executing tools and prepares the private settings without
 flashing. Existing settings must match the complete public context and, if
-supplied, the same key; they are not silently replaced. The operator must
+supplied, the same key; their original job is retained, and they are not
+silently replaced. Separate APs in the same authorized enrollment campaign
+may use the same campaign key, but never each other's generated settings.
+The operator must
 `unset OPENWIFI_ONBOARD_KEY` in the parent shell before running the installer.
 
 ## Transaction
