@@ -5,13 +5,13 @@
  
  PKG_NAME:=ucode
 -PKG_RELEASE:=1
-+PKG_RELEASE:=2
++PKG_RELEASE:=3
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL=https://github.com/jow-/ucode.git
 --- /dev/null
 +++ b/package/utils/ucode/patches/200-native-mlo-support.patch
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,28 @@
 +--- a/lib/nl80211.c
 ++++ b/lib/nl80211.c
 +@@ -136,6 +136,7 @@
@@ -27,15 +27,16 @@
 + static const uc_nl_nested_spec_t nl80211_msg = {
 + 	.headsize = 0,
 +-	.nattrs = 131,
-++	.nattrs = 132,
+++	.nattrs = 133,
 + 	.attrs = {
 + 		{ NL80211_ATTR_4ADDR, "4addr", DT_U8, 0, NULL },
 + 		{ NL80211_ATTR_AIRTIME_WEIGHT, "airtime_weight", DT_U16, 0, NULL },
-+@@ -1107,6 +1108,7 @@
++@@ -1107,6 +1108,8 @@
 + 		{ NL80211_ATTR_SUPPORTED_IFTYPES, "supported_iftypes", DT_NESTED, 0, &nl80211_ifcomb_limit_types_nla },
 + 		{ NL80211_ATTR_SOFTWARE_IFTYPES, "software_iftypes", DT_NESTED, 0, &nl80211_ifcomb_limit_types_nla },
 + 		{ NL80211_ATTR_MAX_AP_ASSOC_STA, "max_ap_assoc", DT_U16, 0, NULL },
 ++		{ NL80211_ATTR_MLO_SUPPORT, "mlo_support", DT_FLAG, 0, NULL },
+++		{ NL80211_ATTR_MLO_LINK_ID, "mlo_link_id", DT_U8, 0, NULL },
 + 		{ NL80211_ATTR_MLO_LINKS, "mlo_links", DT_NESTED, DF_MULTIPLE|DF_AUTOIDX, &nl80211_mlo_link_nla },
 + 		{ NL80211_ATTR_SURVEY_INFO, "survey_info", DT_NESTED, 0, &nl80211_survey_info_nla },
 + 		{ NL80211_ATTR_WIPHY_RADIOS, "radios", DT_NESTED, DF_MULTIPLE|DF_AUTOIDX, &nl80211_wiphy_radio_nla },
