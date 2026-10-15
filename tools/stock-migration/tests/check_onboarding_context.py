@@ -55,7 +55,7 @@ AB_TARGET=$((1-TEST_SLOT))
     frontend = (source/'prepare-onboarding.sh').read_text()
     key = 'X'*64
     count = 0
-    for model, serial in [('E410', '0004569946b0'), ('E410B', '30cbc7af7b9c')]:
+    for model, serial in [('E410', '000456abc001'), ('E410B', '000456abc002')]:
         for slot in ('0', '1'):
             private = work/(model+slot)
             (seed/'prepare.sh').write_text(frontend.replace('dest=/root/.cambium-installer-input', 'dest='+str(private)))
