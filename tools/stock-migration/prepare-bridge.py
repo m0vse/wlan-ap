@@ -58,7 +58,13 @@ def generate(family, root, out, release, flavor='default'):
         if family != 'jaguar':
             raise ValueError('XE3 source is Jaguar only')
         frozen = REPO/'tests/installer/jaguar-xe3-stock102-to3-r1'
-    ledgers = list((frozen/'source-sets').glob('outgoing-*.set'))
+    # Payload templates stay on the qualified migration writer. Admission of
+    # another outgoing release requires its own artifact-derived source set;
+    # never relax or rewrite the September source contract.
+    source_sets = frozen/'source-sets'
+    if family == 'sage' and release == '2026.10.13.0':
+        source_sets = REPO/'tests/installer/sage-stock13-source-v1/source-sets'
+    ledgers = list(source_sets.glob('outgoing-*.set'))
     if len(ledgers) != 1:
         raise ValueError('expected one qualified stock ledger')
     original = ledgers[0]
@@ -82,6 +88,22 @@ def generate(family, root, out, release, flavor='default'):
             shutil.copy2(frozen/name, out/name)
     if family == 'sage':
         shutil.copy2(frozen/'cambium-sage.sh', out/'cambium-sage.sh')
+        # The Sage wrapper sources this read-only capacity checker before
+        # installing anything. It is part of the runnable bundle closure.
+        shutil.copy2(frozen/'stock-store-check.sh', out/'stock-store-check.sh')
+    if family == 'sage' and release == '2026.10.13.0':
+        # Preserve the already-proven stock13 E410 FIT in the active slot;
+        # the incoming OpenWiFi E410 still uses config@5. B uses config@17
+        # for both. Change only the source-slot boot selection, not the
+        # target board table or the older September migration route.
+        module = out/'modules/cambium-ab-sage.sh'
+        text = module.read_text()
+        text = replace(text, '\t\tSAGE_ROOT_TYPE=$format\n',
+                       '\t\tSAGE_ROOT_TYPE=$format\n'
+                       '\t\tif [ "$AB_MODEL" = E410 ] && [ "$slot" = "${AB_ACTIVE:-}" ]; then\n'
+                       '\t\t\tSAGE_FIT=config@ap.dk01.1-c2\n'
+                       '\t\tfi\n')
+        module.write_text(text)
     shutil.copy2(HERE/'cambium-installer-handoff.sh', out/'cambium-installer-handoff.sh')
     shutil.copy2(REPO/'tools/oem-migration/recovery/scripts/lib/cambium-installer-settings.sh', out/'cambium-installer-settings.sh')
 
@@ -101,6 +123,9 @@ def generate(family, root, out, release, flavor='default'):
     text = replace(text, '--verify-installed|--recover)', '--verify-installed|--stage-auth|--recover)')
     anchor = 'export CAMBIUM_AB_CERTIFICATE_LIB="$bundle/cambium-ab-certificates.sh"\n'
     text = replace(text, anchor, anchor + 'export CAMBIUM_INSTALLER_HANDOFF_LIB="$bundle/cambium-installer-handoff.sh"\nexport CAMBIUM_INSTALLER_SETTINGS_LIB="$bundle/cambium-installer-settings.sh"\n')
+    if family == 'sage':
+        text = replace(text, anchor,
+                       anchor + 'export CAMBIUM_SAGE_LIB="$bundle/cambium-sage.sh"\n')
     anchor = "[ \"${AB_CERTIFICATE_POLICY_VERSION:-0}\" = 1 ] || die 'canonical certificate allocation policy missing'\n"
     text = replace(text, anchor, anchor + 'ab_installer_refuse_pending || die "pending installer provenance or unreadable ENV; no fresh install permitted"\n')
     anchor = 'case "$mode" in\n --check)'

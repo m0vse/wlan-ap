@@ -15,6 +15,14 @@ separate Jaguar XE3-4 stock 2026.09.30.102 source contract; the default Jaguar
 Sage uses its existing E410/E410B source qualification. These are distinct
 source contracts, not interchangeable roots or metadata-only approvals.
 
+Sage `--release 2026.10.13.0` uses the separate artifact-derived
+`tests/installer/sage-stock13-source-v1` source set. E410 and E410B use the
+same migration and onboarding flow. The adapter retains the active E410
+stock13 `config@ap.dk01.1-c2` rollback entry while selecting `config@5` for
+incoming OpenWiFi; dedicated E410B uses `config@17` on both slots. The
+September E410/E410B contract is unchanged. Source admission and runtime
+tests are not evidence of a completed hardware migration or onboarding.
+
 Generation does **not** add an image, IMAGE file or SHA256SUMS seal. Before
 publishing an operator bundle, the release owner must verify the candidate's
 revision, model admission, FIT selection, capacity, packages and native
