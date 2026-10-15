@@ -2,11 +2,11 @@
 No AP access. Source-order checks disclose that full netifd integration is not
 executed here. This is a review candidate, not hardware qualification.
 """
-import json,subprocess,re
+import json,subprocess,re,os
 from pathlib import Path
 p=Path(__file__).parent
 root=p.parent.parent
-src=(root/'feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh').read_text(); before=subprocess.check_output(['git','show','193f4705c51d6ea50b02488d520c1c87089cfdd3:feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh'],cwd=root,text=True)
+src=(root/'feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh').read_text(); before=subprocess.check_output(['git','show',os.environ.get('TEST_BASELINE_REF','193f4705c51d6ea50b02488d520c1c87089cfdd3')+':feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh'],cwd=root,text=True)
 functions=src[src.index('mac80211_power_normalize()'):src.index('mac80211_set_fq_limit()')]
 def run(name,peers,power='',radio=-1,override='',mode='ap',mld='1',fail=False,identity_missing=False,expected=True):
  cfg='\n'.join(f'cfg_{k}_{s}={v!r}' for s,d in peers.items() for k,v in d.items())
@@ -34,23 +34,26 @@ timeout() { shift 3; "$@"; }
 iw() { echo "IW $*"; [[ "$FAIL_IW" != 1 ]]; }
 '''.replace('PEERS',' '.join(peers))
  script=cfg+'\n'+stub+'\n'+functions+f'\ndevice=radio0; phy=phy0; txpower={power!r}; radio={radio}; vif_txpower={override!r}; mld={mld!r}; mode={mode!r}; CASE_MODE={mode!r}; CASE_OVERRIDE={override!r}; FAIL_IW={int(fail)}; inherited_txpower_ready=0; txpower_failed=0\n'
- script+='mac80211_check_inherited_ap_txpower late\nrc=$?\nif [ "$rc" = 0 ]; then mac80211_prepare_inherited_txpower; rc=$?; fi\nif [ "$rc" = 0 ]; then mac80211_set_vif_txpower late; rc=$?; fi\necho RESULT=$rc\n'
+ script+='mac80211_prepare_inherited_txpower; rc=$?\nif [ "$rc" = 0 ]; then mac80211_set_vif_txpower late; rc=$?; fi\necho RESULT=$rc\n'
  out=subprocess.run(['bash'],input=script,text=True,capture_output=True)
  ok='RESULT=0' in out.stdout
  assert ok==expected,(name,out.stdout,out.stderr)
- if expected and mode=='ap': assert 'IW dev late set txpower' not in out.stdout,(name,out.stdout)
+ if expected and mode=='ap' and (not override or override in ['17','17.0']): assert 'IW dev late set txpower' not in out.stdout,(name,out.stdout)
+ if expected and radio >= 0:
+  assert f'IW phy phy0 set txpower radio {radio} ' in out.stdout,(name,out.stdout)
+ assert 'TXPOWER_SHARED_PHY' not in out.stdout,(name,out.stdout)
  print(name+': PASS')
  return out.stdout
 base={'radio0':{'type':'mac80211','phy':'phy0'}}
 run('auto ACS late secondary BSS',base)
 run('same PHY uniform fixed multi-radio MLO',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'17'},'radio1':{'type':'mac80211','phy':'phy0:1','txpower':'17'}},power='17',radio=1,override='17')
-run('same PHY mixed fixed caps refused',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'17'},'radio1':{'type':'mac80211','phy':'phy0:1','txpower':'20'}},power='17',radio=1,expected=False)
+run('same PHY independent fixed caps accepted',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'17'},'radio1':{'type':'mac80211','phy':'phy0:1','txpower':'20'}},power='17',radio=1)
 run('disjoint physical PHY different caps',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'17'},'radio1':{'type':'mac80211','phy':'phy1','txpower':'20'}},power='17')
-run('late differing BSS override refused',base,override='12',expected=False)
+run('explicit differing BSS override needs actual link',base,override='12',expected=False)
 run('genuine PHY programming failure',base,fail=True,expected=False)
-run('unresolved peer identity refused',{'radio0':{'type':'mac80211','phy':'phy0'},'radio1':{'type':'mac80211'}},expected=False)
+run('peer identity irrelevant to radio-scoped request',{'radio0':{'type':'mac80211','phy':'phy0'},'radio1':{'type':'mac80211'}})
 run('disabled peer excluded',{'radio0':{'type':'mac80211','phy':'phy0'},'radio1':{'type':'mac80211','disabled':'1'}})
-run('stale controller versus runtime cap refused',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'18'}},power='17',expected=False)
+run('requested runtime cap independent of UCI peers',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'18'}},power='17')
 run('fractional cap retains existing truncation',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'17.5'}},power='17.5',override='17.0')
 run('zero cap remains fixed zero',{'radio0':{'type':'mac80211','phy':'phy0','txpower':'0'}},power='0')
 for legacy_mode in ['sta','mesh','adhoc','monitor']:

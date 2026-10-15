@@ -1,0 +1,41 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] iw: allow explicit radio-scoped transmit power requests
+
+Use the existing QSDK WIPHY_RADIO_INDEX attribute instead of a global
+wiphy default when the caller names an individual physical radio.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/phy.c
++++ b/phy.c
+@@ -922,6 +922,21 @@
+ 	enum nl80211_tx_power_setting type;
+ 	int mbm, i = 0, max_argc;
+ 
++	if (argc >= 1 && !strcmp(argv[0], "radio")) {
++		unsigned long radio;
++		char *end;
++
++		/* Radio scoping is a wiphy request, never a default-link guess. */
++		if ((id != II_PHY_NAME && id != II_PHY_IDX) || argc < 3)
++			return 1;
++		radio = strtoul(argv[1], &end, 10);
++		if (end == argv[1] || *end || radio > 255)
++			return 1;
++		NLA_PUT_U8(msg, NL80211_ATTR_WIPHY_RADIO_INDEX, radio);
++		argc -= 2;
++		argv += 2;
++	}
++
+ 	/* get the required args */
+ 	if (argc == 3 || argc == 4) {
+ 		max_argc = 4;
+@@ -980,7 +995,7 @@
+  nla_put_failure:
+ 	return -ENOBUFS;
+ }
+-COMMAND(set, txpower, "<auto|fixed|limit> [<tx power in mBm>]",
++COMMAND(set, txpower, "[radio <index>] <auto|fixed|limit> [<tx power in mBm>]",
+ 	NL80211_CMD_SET_WIPHY, 0, CIB_PHY, handle_txpower,
+ 	"Specify transmit power level and setting type.");
+ COMMAND(set, txpower, "[-l] <link id> <auto|fixed|limit> [<tx power in mBm>]",

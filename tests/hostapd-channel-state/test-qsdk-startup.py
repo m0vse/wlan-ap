@@ -11,7 +11,7 @@ fn=(repo/'package/base-files/files/lib/functions.sh').read_text()
 jshn=next(repo.glob('build_dir/hostpkg/libubox-*/sh/jshn.sh'))
 source=source_repo/'feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh'
 baseline_file=os.environ.get('TEST_BASELINE_FILE')
-src=((pathlib.Path(baseline_file).read_text() if baseline_file else subprocess.check_output(['git','show','193f4705c51d6ea50b02488d520c1c87089cfdd3:feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh'],cwd=source_repo,text=True)) if os.environ.get('TEST_SOURCE')=='qualified' else source.read_text())
+src=((pathlib.Path(baseline_file).read_text() if baseline_file else subprocess.check_output(['git','show',os.environ.get('TEST_BASELINE_REF','193f4705c51d6ea50b02488d520c1c87089cfdd3')+':feeds/qca-wifi-7/wifi-scripts/files/lib/netifd/wireless/mac80211.sh'],cwd=source_repo,text=True)) if os.environ.get('TEST_SOURCE')=='qualified' else source.read_text())
 netifd=(source.parent.parent/'netifd-wireless.sh').read_text()
 def extract(s,name):
  a=s.index(name+'() {'); b=s.index('\n}',a)+2; return s[a:b]
@@ -59,13 +59,13 @@ timeout() { shift 3; "$@"; }
 iw() { case "$*" in *'set txpower'*) echo POWER:$*; return "$SET_RESULT";; *) return 0;; esac; }
 '''
  for mlo in [0,1]:
-  for cap,result in [('14',0),('',0),('0',0),('14',1),('14',124)]:
-   peers={f'radio{i}':{'phy':f'phy{i}','txpower':cap} for i in range(3)}
+  for cap,result in [('14',0),('',0),('0',0),('14',1),('14',124),('23',0)]:
+   peers={f'radio{i}':{'phy':('phy0' if i==0 else 'phy1'),'txpower':('14' if i==1 else '23')} for i in range(3)}
    # Three logical radios matching the sanitized controller caps; mapping is
    # an explicit fixture, not an assertion about this AP's live PHY grouping.
    for i in range(3):
-    fixture={'config':{'phy':f'phy{i}','radio':-1,'txpower':cap,'band':'2g' if i==0 else '5g' if i==1 else '6g','htmode':'EHT20','channel':1,'path':'fixture','num_global_macaddr':1},'data':{'rxantenna':'0xffffffff','txantenna':'0xffffffff'},'interfaces':{'primary':{'config':{'mode':'ap','_ifname':'fixture0','mld':'ml0'}},'late':{'config':{'mode':'ap','_ifname':'fixture1','mld':'ml0'}}}}
-    uci='uci_load() { CONFIG_SECTIONS=; '+''.join(f'config wifi-device radio{k}; option type mac80211; option phy phy{k}; option txpower "{cap}"; ' for k in range(3))+'}\n'
+    fixture={'config':{'phy':('phy0' if i==0 else 'phy1'),'radio':(-1 if i==0 else i-1),'txpower':cap,'band':'2g' if i==0 else '5g' if i==1 else '6g','htmode':'EHT20','channel':1,'path':'fixture','num_global_macaddr':1},'data':{'rxantenna':'0xffffffff','txantenna':'0xffffffff'},'interfaces':{'primary':{'config':{'mode':'ap','_ifname':'fixture0','mld':'ml0'}},'late':{'config':{'mode':'ap','_ifname':'fixture1','mld':'ml0'}}}}
+    uci='uci_load() { CONFIG_SECTIONS=; '+''.join(f'config wifi-device radio{k}; option type mac80211; option phy {peers["radio"+str(k)]["phy"]}; option txpower "{peers["radio"+str(k)]["txpower"]}"; ' for k in range(3))+'}\n'
     init=f'IPKG_INSTROOT=; SET_RESULT={result}; mlo_add_flag={mlo}; is_wiphy_multi_radio=0; auto_channel=1; txpower_failed=0; ppe_vp=0; json_load '+repr(json.dumps(fixture))+'\n'
     before='json_dump > '+str(root/'json-before')+'\n'
     end=f'drv_mac80211_setup radio{i}; rc=$?; echo RESULT=$rc; json_dump > {root}/json-after\n'
@@ -77,6 +77,10 @@ iw() { case "$*" in *'set txpower'*) echo POWER:$*; return "$SET_RESULT";; *) re
      print('PASS old-source negative: full normal setup attempts unavailable MLO links and fails without pre-creation PHY inheritance')
      sys.exit(0)
     assert powers,(mlo,cap,result,r.stdout,r.stderr)
+    if i:
+     assert f'POWER:phy phy1 set txpower radio {i-1} ' in lines[powers[0]],r.stdout
+    else:
+     assert ' txpower radio ' not in lines[powers[0]],r.stdout
     if result:
      assert 'RESULT=1' in lines and 'HOSTAPD' not in lines and not any(x.startswith('PREPARE:') for x in lines),(r.stdout,r.stderr)
     else:
@@ -86,4 +90,4 @@ iw() { case "$*" in *'set txpower'*) echo POWER:$*; return "$SET_RESULT";; *) re
      # jshn config/data namespace returned to root despite config_load and
      # for_each_interface; wdev namespace legitimately has its own object.
      assert json.loads((root/'json-before').read_text())==json.loads((root/'json-after').read_text()),(r.stdout,r.stderr)
- print('PASS 30 entire actual setup executions: 3 generated radio JSON fixtures, normal/MLO-prepare-only branches, auto/fixed/zero and error/timeout; real jshn/config helpers; hardware/lifecycle calls mocked')
+ print('PASS 36 entire actual setup executions: 3 generated radio JSON fixtures with 5/6 GHz sharing a wiphy and unequal UCI caps, normal/MLO-prepare-only branches, auto/fixed/zero and error/timeout; real jshn/config helpers; hardware/lifecycle calls mocked')
