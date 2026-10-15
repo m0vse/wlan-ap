@@ -30,8 +30,15 @@ def replace(text, old, new, count=1):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def stock_writer(text):
+def stock_writer(text, family='sage'):
+    # do_stage2 starts a NEW shell which sources functions.sh, not system.sh.
+    # The pre-pivot stage2 helpers are not inherited across that exec. Load
+    # the real identity helper dependency before validating the RAM handoff.
     text = '. "${CAMBIUM_INSTALLER_HANDOFF_LIB:-/lib/upgrade/cambium-installer-handoff.sh}" || return 1\n' + text
+    # Scope this repair to the Sage runtimes exercised by the fresh-shell
+    # regression; don't silently change an unqualified Jaguar bundle.
+    if family == 'sage':
+        text = '. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}" || return 1\n' + text
     anchor = '\tab_upgrade_preflight || return 1\n\tab_image_extract "$1" || return 1'
     text = replace(text, anchor, '\tab_installer_refuse_pending || return 1\n' + anchor + '\n\tab_installer_validate_ram "$1" || return 1')
     anchor = '\tab_setenv_batch "$batch" || { rm -f "$batch"; ab_fail "cannot record the upgrade"; return 1; }'
@@ -108,7 +115,7 @@ def generate(family, root, out, release, flavor='default'):
     shutil.copy2(REPO/'tools/oem-migration/recovery/scripts/lib/cambium-installer-settings.sh', out/'cambium-installer-settings.sh')
 
     writer = out/'cambium-ab-upgrade.sh'
-    writer.write_text(stock_writer(writer.read_text()))
+    writer.write_text(stock_writer(writer.read_text(), family))
     platform = out/'platform.sh'
     platform.write_text(stock_platform(platform.read_text()))
     transaction = out/'bridge-transaction.sh'

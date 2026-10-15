@@ -76,6 +76,16 @@ validate the runtime ledger. `tests/check_transaction.py BUNDLE ROOT FAMILY`
 fault-tests every installed file and journal recovery in disposable roots;
 run as root because deliberate read-only modes model installer conditions.
 
+Run `tests/check_fresh_writer.py STOCK_ROOT` against both qualified Sage
+stock runtimes. It starts a new target shell with `functions.sh` and the
+actual `include` mechanism, executes the real DT/native MAC getters, and
+reproduces the failure if the writer's explicit `system.sh` import is
+removed. The pre-pivot stage2 shell loads that library, but `do_stage2`
+starts another shell and does not inherit its functions. The hardware/bank
+identity boundary remains isolated; this test never writes ENV or flash.
+This import repair is Sage-only; it does not silently qualify a different
+Jaguar runtime.
+
 These are source/runtime and isolated fault tests, not hardware installation
 or power-loss proof. No test should flash an AP, write its environment, or
 publish a candidate automatically.
