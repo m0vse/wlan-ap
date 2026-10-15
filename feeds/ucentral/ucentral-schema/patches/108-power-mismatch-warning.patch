@@ -1,0 +1,17 @@
+--- a/system/health.uc
++++ b/system/health.uc
+@@ -610,8 +610,12 @@
+ 			if (result.status != 'failed') continue;
+ 			total_errors++;
+ 			state.faults.active ??= [];
+-			push(state.faults.active, { code: 'radio_operating_mismatch',
+-				resource: section, severity: 'critical', radio: result.radio });
++			// An unapplied power target is a configuration warning, not a
++			// failed radio. Never soften missing/failed channel or width proof.
++			let power_only = result.power.status == 'mismatch' &&
++				result.channel.status == 'confirmed' && result.width.status == 'confirmed';
++			push(state.faults.active, { code: power_only ? 'radio_power_mismatch' : 'radio_operating_mismatch',
++				resource: section, severity: power_only ? 'warning' : 'critical', radio: result.radio });
+ 		}
+ 	} catch(e) {
+ 		state.radio_operating = { monitoring: 'unavailable' };
