@@ -30,8 +30,15 @@ def replace(text, old, new, count=1):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def stock_writer(text):
+def stock_writer(text, family='sage'):
+    # do_stage2 starts a NEW shell which sources functions.sh, not system.sh.
+    # The pre-pivot stage2 helpers are not inherited across that exec. Load
+    # the real identity helper dependency before validating the RAM handoff.
     text = '. "${CAMBIUM_INSTALLER_HANDOFF_LIB:-/lib/upgrade/cambium-installer-handoff.sh}" || return 1\n' + text
+    # Scope this repair to the Sage runtimes exercised by the fresh-shell
+    # regression; don't silently change an unqualified Jaguar bundle.
+    if family == 'sage':
+        text = '. "${CAMBIUM_SYSTEM_FUNCTIONS:-/lib/functions/system.sh}" || return 1\n' + text
     anchor = '\tab_upgrade_preflight || return 1\n\tab_image_extract "$1" || return 1'
     text = replace(text, anchor, '\tab_installer_refuse_pending || return 1\n' + anchor + '\n\tab_installer_validate_ram "$1" || return 1')
     anchor = '\tab_setenv_batch "$batch" || { rm -f "$batch"; ab_fail "cannot record the upgrade"; return 1; }'
@@ -58,7 +65,13 @@ def generate(family, root, out, release, flavor='default'):
         if family != 'jaguar':
             raise ValueError('XE3 source is Jaguar only')
         frozen = REPO/'tests/installer/jaguar-xe3-stock102-to3-r1'
-    ledgers = list((frozen/'source-sets').glob('outgoing-*.set'))
+    # Payload templates stay on the qualified migration writer. Admission of
+    # another outgoing release requires its own artifact-derived source set;
+    # never relax or rewrite the September source contract.
+    source_sets = frozen/'source-sets'
+    if family == 'sage' and release == '2026.10.13.0':
+        source_sets = REPO/'tests/installer/sage-stock13-source-v1/source-sets'
+    ledgers = list(source_sets.glob('outgoing-*.set'))
     if len(ledgers) != 1:
         raise ValueError('expected one qualified stock ledger')
     original = ledgers[0]
@@ -82,11 +95,27 @@ def generate(family, root, out, release, flavor='default'):
             shutil.copy2(frozen/name, out/name)
     if family == 'sage':
         shutil.copy2(frozen/'cambium-sage.sh', out/'cambium-sage.sh')
+        # The Sage wrapper sources this read-only capacity checker before
+        # installing anything. It is part of the runnable bundle closure.
+        shutil.copy2(frozen/'stock-store-check.sh', out/'stock-store-check.sh')
+    if family == 'sage' and release == '2026.10.13.0':
+        # Preserve the already-proven stock13 E410 FIT in the active slot;
+        # the incoming OpenWiFi E410 still uses config@5. B uses config@17
+        # for both. Change only the source-slot boot selection, not the
+        # target board table or the older September migration route.
+        module = out/'modules/cambium-ab-sage.sh'
+        text = module.read_text()
+        text = replace(text, '\t\tSAGE_ROOT_TYPE=$format\n',
+                       '\t\tSAGE_ROOT_TYPE=$format\n'
+                       '\t\tif [ "$AB_MODEL" = E410 ] && [ "$slot" = "${AB_ACTIVE:-}" ]; then\n'
+                       '\t\t\tSAGE_FIT=config@ap.dk01.1-c2\n'
+                       '\t\tfi\n')
+        module.write_text(text)
     shutil.copy2(HERE/'cambium-installer-handoff.sh', out/'cambium-installer-handoff.sh')
     shutil.copy2(REPO/'tools/oem-migration/recovery/scripts/lib/cambium-installer-settings.sh', out/'cambium-installer-settings.sh')
 
     writer = out/'cambium-ab-upgrade.sh'
-    writer.write_text(stock_writer(writer.read_text()))
+    writer.write_text(stock_writer(writer.read_text(), family))
     platform = out/'platform.sh'
     platform.write_text(stock_platform(platform.read_text()))
     transaction = out/'bridge-transaction.sh'
@@ -99,8 +128,13 @@ def generate(family, root, out, release, flavor='default'):
     anchor = '# Authenticate the complete reviewed source tuple before sourcing AP scripts.\n'
     text = replace(text, anchor, '. "$bundle/runtime-implementation-contract.sh"\now_runtime_contract_check "$bundle/source-sets/runtime-implementation.set" || die "unqualified outgoing executable/library closure"\n' + anchor)
     text = replace(text, '--verify-installed|--recover)', '--verify-installed|--stage-auth|--recover)')
+    if family == 'sage':
+        text = replace(text, '--stage-auth|--recover)', '--stage-auth|--context|--recover)')
     anchor = 'export CAMBIUM_AB_CERTIFICATE_LIB="$bundle/cambium-ab-certificates.sh"\n'
     text = replace(text, anchor, anchor + 'export CAMBIUM_INSTALLER_HANDOFF_LIB="$bundle/cambium-installer-handoff.sh"\nexport CAMBIUM_INSTALLER_SETTINGS_LIB="$bundle/cambium-installer-settings.sh"\n')
+    if family == 'sage':
+        text = replace(text, anchor,
+                       anchor + 'export CAMBIUM_SAGE_LIB="$bundle/cambium-sage.sh"\n')
     anchor = "[ \"${AB_CERTIFICATE_POLICY_VERSION:-0}\" = 1 ] || die 'canonical certificate allocation policy missing'\n"
     text = replace(text, anchor, anchor + 'ab_installer_refuse_pending || die "pending installer provenance or unreadable ENV; no fresh install permitted"\n')
     anchor = 'case "$mode" in\n --check)'
@@ -118,6 +152,35 @@ def generate(family, root, out, release, flavor='default'):
  OW_EXPECT_RELEASE=$(sed -n '1p' "$bundle/source-contract")
  OW_EXPECT_CONTRACT=$(sed -n '2p' "$bundle/source-contract")
  ab_installer_export "$image" || die 'settings handoff refused'
+ exit 0
+fi
+'''
+    if family == 'sage':
+        # Reached only after the ordinary complete source/runtime/device/image
+        # preflight. This emits public context, never credentials or bank writes.
+        stage += '''if [ "$mode" = --context ]; then
+ [ "$#" = 3 ] || die 'protected context output required'
+ output=$3
+ parent=${output%/*}
+ [ "$parent" != "$output" ] && [ -d "$parent" ] && [ ! -L "$parent" ] || die 'invalid context directory'
+ [ "$(readlink -f "$parent")" = "$parent" ] || die 'noncanonical context directory'
+ [ "$(ow_settings_metadata "$parent" | awk -F: '{print $1 ":" $2}')" = 0:700 ] || die 'context directory must be root-only'
+ [ ! -e "$output" ] && [ ! -L "$output" ] || die 'context output already exists'
+ serial=$(get_mac_label_dt | tr -d ':' | tr 'A-F' 'a-f')
+ native=$(get_mac_label | tr -d ':' | tr 'A-F' 'a-f')
+ [ "$serial" = "$native" ] || die 'device identity sources disagree'
+ release=$(sed -n '1p' "$bundle/source-contract")
+ contract=$(sed -n '2p' "$bundle/source-contract")
+ image_sha=$(ow_settings_hash "$image") || die 'image hash failed'
+ job=$(hexdump -n 32 -v -e '1/1 "%02x"' /dev/urandom) || die 'job generation failed'
+ (
+  umask 077
+  set -C
+  printf 'format\\t2\\nserial\\t%s\\nfamily\\t%s\\nmodel\\t%s\\nsource_operation\\tproduction-stock-openwrt-migration\\nsource_release\\t%s\\nsource_contract_sha256\\t%s\\nsource_slot\\t%s\\ntarget_slot\\t%s\\nimage_sha256\\t%s\\njob_id\\t%s\\n' \\
+   "$serial" "$AB_FAMILY" "$AB_MODEL" "$release" "$contract" "$AB_ACTIVE" "$AB_TARGET" "$image_sha" "$job" > "$output"
+ ) || die 'cannot create context output'
+ ow_settings_binding "$output" || { rm -f "$output"; die 'invalid generated context'; }
+ echo 'PASS: device-bound migration context prepared; no upgrade started'
  exit 0
 fi
 '''
