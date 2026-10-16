@@ -72,3 +72,28 @@ both Miami BSSIDs there before this fix. No schema/state producer, gateway,
 controller, native codec, firmware, NAND or radio configuration changes are
 part of this source-only reporting repair. A later build/deployment and live
 acceptance require the owner's separate decision.
+
+## Production loader regression
+
+The deployed release exposed a test boundary error: injecting `io.health` hid
+an invalid absolute-filename `require`. The helper now adds the packaged search
+pattern lazily and loads `mlo_health` by module name. Run this mandatory separate
+process after generating the synthetic UCI fixture:
+
+```
+python3 tests/rrm-mlo-reporting/default-loader.py \
+  --repo /path/to/source --root /path/to/qualified/extracted/rootfs \
+  --generated /private/results/generated-wireless.synthetic.json \
+  --output /private/results/default-loader
+```
+
+This uses actual target ucode, real module lookup and the packaged health helper
+(including its fs import). It neither injects `io.health`, preloads the helper,
+nor supplies its search pattern. Only native/status/sysfs boundaries are
+synthetic. `--installed` tests the helper in the extracted new image;
+`--installed --expect-old-failure` must reject the actual deployed .16.2 helper.
+The complete lifecycle suite also changes and restores each link's simulated
+native power, verifying selector/ACK/mBm and unchanged peer power/channel/link
+identity after each request. These offline controls do not establish live RF
+acceptance: after installation, change and restore one band at a time through
+RRM, checking both live link powers, health and channels at each step.

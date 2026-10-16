@@ -35,7 +35,11 @@ function collect(interfaces, config, io) {
 	if (!length(roots)) return result;
 	let health = io.health;
 	if (!health) {
-		try { health = require('/usr/share/ucentral/mlo_health.uc'); }
+		// ucode resolves module names through search patterns, not filenames.
+		// Add the packaged health directory only when an MLO view needs it.
+		if (index(REQUIRE_SEARCH_PATH, '/usr/share/ucentral/*.uc') < 0)
+			push(REQUIRE_SEARCH_PATH, '/usr/share/ucentral/*.uc');
+		try { health = require('mlo_health'); }
 		catch (e) { return result; }
 	}
 	let read_status = (dev, id) => {

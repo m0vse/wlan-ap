@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=rrmd
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKG_LICENSE:=ISC
 
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>

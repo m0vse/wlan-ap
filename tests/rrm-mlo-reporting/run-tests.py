@@ -40,7 +40,7 @@ let cfg=wireless,events=[],calls=[],listeners={},subscribes=[],notifications=[],
 function time(){return clock;}
 function ulog_info(...v){}function ulog_err(...v){}function ulog_warn(...v){}
 let status={ssid,bssid:second,freq:6275,channel:65,op_class:134,uci_section:six,phy:'phy01.'+wireless[wireless[six].device].radio};
-let native={const:{NL80211_CMD_GET_INTERFACE:1,NL80211_CMD_SET_WIPHY:2,NLM_F_ACK:4},request:(cmd,flags,attrs)=>{push(calls,{cmd,flags,attrs});if(cmd==1){if(native_failure)die('native failure');return raw;}return true;}};
+let native={const:{NL80211_CMD_GET_INTERFACE:1,NL80211_CMD_SET_WIPHY:2,NLM_F_ACK:4},request:(cmd,flags,attrs)=>{push(calls,{cmd,flags,attrs});if(cmd==1){if(native_failure)die('native failure');return raw;}let selected=filter(raw.mlo_links||[],l=>l.link_id===attrs.mlo_link_id);if(attrs.dev!='ml0_0'||length(selected)!=1)return false;selected[0].wiphy_tx_power_level=attrs.wiphy_tx_power_level;return true;}};
 modules.nl80211=native;
 let global={nl80211:native,config:{station_stats_interval:0},event:{send:(type,payload)=>push(events,{type,payload})},neighbor:{local_del:()=>null,local_add:()=>null,update:()=>null},scan:{add_wdev:(dev,phy)=>check(dev=='ml0_0'||dev=='wlan0','scan always receives real transport')},uloop:{timer:(ms,cb)=>{let t={ms,cancelled:false};t.cb=()=>{t.cancelled=true;cb();};t.cancel=()=>{t.cancelled=true;};push(timers,t);return t;}},ubus:{conn:{call:(path,method,args)=>{check(path=='ucentral'||path=='hostapd.ml0_0'||path=='hostapd.wlan0','no invented hostapd transport');if(path=='ucentral'){check(method=='event'&&type(args.type)=='string'&&type(args.payload)=='object','actual native event wrapper contract');push(events,args);return null;}if(method=='get_status')return status;if(method=='rrm_nr_get_own')return {value:[status.bssid,status.ssid,'synthetic']};return null;},subscriber:(cb)=>{push(notifications,cb);return {subscribe:path=>push(subscribes,path)};},listener:(type,cb)=>{listeners[type]=cb;},list:()=>['hostapd.ml0_0']}}};
 let uci={get_all:(name,section)=>name=='wireless'?cfg:{}};modules.uci={cursor:()=>{config_reads++;return uci;}};
@@ -70,11 +70,24 @@ let n=length(calls),nconfig=config_reads;global.local.status();global.local.bsse
 global.local.reload();check(length(events)==2&&length(subscribes)==1,'reload produces no duplicate BSS events/subscriptions');
 check(global.local.bssid_to_ifname(first)=='ml0_0'&&global.local.bssid_to_ifname(second)=='ml0_0','both BSSID lookups use real transport');
 check(global.local.bssid_to_phy(first)==1&&global.local.bssid_to_phy(second)==1,'both BSSID physical identities');
+// Simulated native SET applies only the explicit link selector. Observe the
+// complete rrmd readback after each change; this is not an RF hardware test.
+for (let step in [{bssid:first,level:12,own:1200,peer:2300},{bssid:first,level:14,own:1400,peer:2300},{bssid:second,level:20,own:2000,peer:1400},{bssid:second,level:23,own:2300,peer:1400}]) {
+ let peer=step.bssid==first?second:first, prior=global.local.bsses()[peer];
+ let request_count=length(calls);check(setter(step)===true,'scoped power step acknowledged');
+ let sent=filter(slice(calls,request_count),c=>c.cmd==2);
+ check(length(sent)==1&&sent[0].flags===4&&sent[0].attrs.dev=='ml0_0'&&sent[0].attrs.mlo_link_id===(step.bssid==first?0:7)&&sent[0].attrs.wiphy_tx_power_level==step.own,'one SET selects exact link including zero and encodes mBm');
+ global.local.reload();let now=global.local.bsses();
+ check(now[step.bssid].wiphy_tx_power_level==step.own&&now[peer].wiphy_tx_power_level==step.peer,'selected power changes and peer power retained');
+ check(now[peer].freq==prior.freq&&now[peer].channel==prior.channel&&now[peer].mlo_link_id===prior.mlo_link_id&&length(now)==2,'peer identity/channel and both proven links retained');
+}
+calls=filter(calls,c=>c.cmd!=2);
 let before=length(calls);check(global.local.switch_chan({bssid:first,channel:36})===false&&global.local.switch_chan({bssid:second,channel:1})===false,'shared unscoped channel command fails closed on either link');
 check(!length(filter(calls,c=>c.cmd==2)),'reporting and channel refusal send no SET');
 check(setter({bssid:first,level:12})===true&&calls[-1].attrs.dev=='ml0_0'&&calls[-1].attrs.mlo_link_id===0&&calls[-1].flags===4,'existing exact first-link setter/ACK preserved');
 check(setter({bssid:second,level:20})===true&&calls[-1].attrs.mlo_link_id===7&&calls[-1].attrs.wiphy_tx_power_level==2000,'existing second-link setter preserved');
-check(global.local.txpower(first)==1400&&global.local.txpower(second)==2300,'setter readback stays per-link');
+check(global.local.txpower(first)==1200&&global.local.txpower(second)==2000,'fresh native setter readback stays per-link');
+link0.wiphy_tx_power_level=1400;link7.wiphy_tx_power_level=2300;
 link0.wiphy_freq=5785;link0.center_freq1=5795;events=[];
 let notice={type:'channel-switch',data:{bssid:first,freq:5785},reply:()=>null};notifications[0](notice);
 check(length(events)==1&&events[0].type=='rrm.bss.channel-switch'&&events[0].payload.bssid==first&&events[0].payload.freq==5785,'coherent first-link change emits one scoped event');
@@ -128,4 +141,6 @@ print(sprintf('PASS %d actual generated-UCI / qualified-health / complete rrmd c
  if a.baseline_local:
   assert result.returncode!=0 and 'interfaces method itself exposes both proven links' in result.stderr,(result.stdout,result.stderr)
   print('PASS actual installed pre-fix source negative control: second MLO interface view missing')
- else:assert result.returncode==0,(result.stdout,result.stderr)
+ else:
+  assert result.returncode==0,(result.stdout,result.stderr)
+  run(['python3',repo/'tests/rrm-mlo-reporting/default-loader.py','--repo',repo,'--root',root,'--generated',output/'generated-wireless.synthetic.json','--output',output/'default-loader'])

@@ -98,11 +98,11 @@
     "feeds/qca-wifi-7/iw/Makefile": "dc8fc0bda8ebfef1ee707874bf1517a6df760f11",
     "feeds/qca-wifi-7/mac80211/patches/ath12k/0009-mac80211-independent-radio-txpower.patch": "1195dfd38ed761091620b98f525dbc21fe4da144",
     "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch": "f3b6b50d26c0893d2b022a08190e6f0c2290248e",
-    "feeds/ucentral/rrmd/Makefile": "b3c6157e23dd04850ad0107727070ce86ceb3151",
+    "feeds/ucentral/rrmd/Makefile": "a5c5b433bb2242d8bc1463dd0402d741ee925549",
     "feeds/ucentral/rrmd/files/usr/share/rrmd/local.uc": "9e52cce0294266fc0a4e53415c6692cff830c471",
     "feeds/ucentral/rrmd/files/usr/share/rrmd/phy.uc": "80b234275f1c833d23513c96a10a2bc90aabd3ee",
     "feeds/ucentral/rrmd/files/usr/bin/rrmd.uc": "0432ec8e9c66c833cbfbfb98c0f5cbedfb841c5b",
-    "feeds/ucentral/rrmd/files/usr/share/rrmd/mlo_views.uc": "11f8bab650c8ae0354580778d82e8486a4f41f73"
+    "feeds/ucentral/rrmd/files/usr/share/rrmd/mlo_views.uc": "2c8b06c0b1e721649ecb186cd350e619354f9d31"
   },
   "policy": "Miami still requires its retained qualified private base and supplementary ABI. Never build Miami by resetting to generic main or publish its private history. Reviewed intentional source changes require updating this ledger.",
   "public_source_integration": {
