@@ -1884,16 +1884,60 @@ get_link_id() {
 	echo ""
 }
 
+# Keep existing QSDK integer-dBm truncation; canonicalize 14/14.0/014.
+mac80211_power_normalize() {
+	local value="$1"
+	[ -n "$value" ] || { printf 'auto'; return 0; }
+	case "$value" in *[!0-9.]*|*.*.*|.*|*.) return 1;; esac
+	value=${value%%.*}
+	while [ "${#value}" -gt 1 ] && [ "${value#0}" != "$value" ]; do value=${value#0}; done
+	printf '%s' "$value"
+}
+
+# Store the device cap on its physical radio before ACS/CAC creates links.
+# The kernel keeps each radio's default and applies it at channel binding.
+# This verifies kernel acceptance; firmware readback remains separate.
+mac80211_prepare_inherited_txpower() {
+	local power
+	power=$(mac80211_power_normalize "$txpower") || { wireless_setup_failed TXPOWER_INVALID; return 1; }
+	txpower_default="$power"
+	set -- iw phy "$phy" set txpower
+	if [ "$radio" != -1 ]; then
+		case "$radio" in ''|*[!0-9]*) wireless_setup_failed TXPOWER_RADIO_INVALID; return 1;; esac
+		set -- "$@" radio "$radio"
+	fi
+	if [ "$power" != auto ]; then
+		set -- "$@" fixed "${power}00"
+	else
+		set -- "$@" auto
+	fi
+	timeout -k 1 5 "$@" || {
+		wireless_setup_failed TXPOWER_PHY_SET_FAILED
+		return 1
+	}
+	inherited_txpower_ready=1
+}
+
 mac80211_set_vif_txpower() {
 	local name="$1"
+	local mode
 
 	json_select config
 	json_get_var ifname _ifname
 	json_get_var ppe_vp _ppe_vp
-	json_get_vars vif_txpower mld
+	json_get_vars vif_txpower mld mode
 	json_select ..
 
 	set_default vif_txpower "$txpower"
+
+	if [ "$mode" = ap ] && [ "$inherited_txpower_ready" = 1 ] &&
+	   { [ -z "$vif_txpower" ] || [ "$(mac80211_power_normalize "$vif_txpower")" = "$txpower_default" ]; }; then
+		# Existing and future AP links use the selected radio default.
+		# A distinct explicit per-BSS override still uses the link setter.
+		# Do not advertise this as firmware-confirmed per-link power.
+		[ -d "/sys/class/net/$ifname" ] && iw dev "$ifname" set_intf_offload type "$ppe_vp"
+		return 0
+	fi
 
 	local link_id=""
 	case "$htmode" in
@@ -2249,6 +2293,10 @@ drv_mac80211_setup() {
 	}
 
 	mac80211_set_suffix
+
+	inherited_txpower_ready=0
+	txpower_failed=0
+	mac80211_prepare_inherited_txpower || return 1
 
 	set_default ifname_prefix "$phy$vif_phy_suffix"
 

@@ -1,5 +1,15 @@
 # OpenWiFi / OpenLAN — Release Procedure (main → LTS release branches)
 
+## Controller publication: mandatory per-family completion
+
+For controller firmware distribution, use the
+[per-family publication gate](tools/firmware-publication/README.md). Each family
+requires its own FMS-only cache refresh and authenticated effective latest/age
+verification after its catalogue transaction. A correct download or database row
+is not completion. Do not release the next family while this gate fails, and do
+not reconnect, upgrade or reboot APs to fix cache state. This controller gate is
+separate from the upstream source/tag release procedure below.
+
 How a change flows from `main` into an **official release branch** (`release/vX.Y.0`) and is
 cut as a `vX.Y.Z` tag, for `wlan-ap` and its submodules `wlan-ucentral-schema` /
 `wlan-ucentral-client`. This is the companion to

@@ -9,6 +9,11 @@ ipq53xx_setup_interfaces()
 	local board="$1"
 
 	case "$board" in
+	cambiumnetworks,x7-35x)
+		# Map the primary port to the same WAN selector used by the shared
+		# untagged bootstrap renderer. Do not start flat-port DHCP.
+		ucidef_set_interface_wan "eth0"
+		;;
 	qcom,ipq9574-ap-al02-c4)
 		ucidef_set_interfaces_lan_wan "eth1 eth2 eth3 eth4 eth5" "eth0"
 		;;

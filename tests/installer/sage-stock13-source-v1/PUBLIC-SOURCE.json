@@ -1,0 +1,12 @@
+{
+  "release": "snapshot-2026.10.13.0",
+  "repository": "https://github.com/m0vse/cambium-openwrt",
+  "source_commit": "a4cfc361dcf941d0c4343ab51fd9513334292dd1",
+  "sysupgrade_sha256": "f44fccdb8205e29c3cabd140a5bc9cfcac334d7e3a3c45eabb5d3f48f2968182",
+  "root_squashfs_sha256": "5a5215af56b388bc029004ea1ff4884afd1798a905933f2aa77aa3f80711e128",
+  "source_set_sha256": "1bacfdd697d1e58ad74d4b9f1c88a41530375245116586d5044c5c7eafb7657e",
+  "source_members": 39,
+  "admission": "E410/E410B using the existing model/SKU gate",
+  "source_fit_policy": "active E410 stock13 config@ap.dk01.1-c2; target E410 config@5; dedicated E410B config@17 on both",
+  "hardware_acceptance": false
+}

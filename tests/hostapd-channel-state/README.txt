@@ -110,3 +110,50 @@ Miami must still use its qualified retained tree, not generic main: its private
 source history and build inputs are not published by this check. Never replace
 those inputs just to satisfy a generic shared build. Private settings, device
 data and credentials are excluded from the public ledger.
+
+QSDK independent-radio power lifecycle (15 October 2026):
+The former uniform-cap check is removed. On a multi-radio wiphy the shell
+requests an explicit physical radio index through iw; ordinary single-radio
+requests retain the global command ABI. Kernel defaults are stored separately
+per radio. Reserved-context moves use the successfully committed destination
+radio, while failed assignment/switch paths do not change the inherited cap.
+Every bound link on that radio receives its request, and ACS/CAC
+links inherit it when assigned a channel context. Link IDs are never treated
+as radio indices. Explicit per-link requests retain their identity and error
+checks and survive channel rebinding. A later radio/global default request
+supersedes live overrides on matching links, as the previous setter did. Existing strict firmware readback and health reporting remain required.
+A kernel ACK is not firmware confirmation or an RF measurement.
+
+Offline controls exercise actual kernel and iw functions, complete shell setup
+with real jshn/libconfig, actual hostapd reload functions and RRM methods.
+Hardware, netlink and daemon boundaries are fixtures. The tests include mixed
+5/6 GHz caps sharing a wiphy, late links, malformed commands, failed requests,
+200 alternating live-link kernel updates preserving the peer, and 100 power-only
+hostapd reloads without removal/restart. Old kernel/iw fail the new contract;
+a channel-change negative control reaches restart. On-device controller and RRM
+updates must still be tested with actual link/channel/power and continuity logs.
+
+RRM MLO power follow-up (15 October 2026):
+Power targets use fresh GET_INTERFACE link identities rather than the single
+cached hostapd BSSID. Empty/malformed/ambiguous MLO data cannot fall back to an
+unscoped request. Both target lookup and readback use the same resolver.
+The native codec's root policy adds mlo_link_id (DT_U8), independently from
+nested link_id decoding; existing native-MLO entries remain intact.
+
+Run test-rrm-power.py with the retained host ucode for identity/legacy controls.
+Compile rrm-codec-intercept.c as a shared library with the selected codec's
+nl80211_copy.h include directory, target libnl-tiny headers/library and libdl.
+Run test-rrm-codec.py with explicit old/fixed module directories and interceptor.
+It uses a nonexistent wiphy index and requires a preload constructor handshake.
+The interceptor inspects the real encoded SET_WIPHY root attribute and exits
+before sending. Old omission, explicit zero/nonzero and legacy absence must all
+pass. Never replace this with simulated ACK-only coverage or a guessed UAPI ID.
+On-device power changes remain a separate, explicitly scoped live test.
+
+The native request ACK callback returns boolean true for successful empty ACKs,
+while preserving an existing data reply. FINISH and the separate control socket
+ACK callback remain unchanged. RRM explicitly requests ACK and requires true;
+null, false and unexpected objects are rejected. Run test-rrm-ack.py --source
+against the actual prepared lib/nl80211.c to compile ownership/state probes.
+The codec interception also checks the encoded NLM_F_ACK header bit. Actual
+kernel rejection and successful per-link requests need separate live checks.

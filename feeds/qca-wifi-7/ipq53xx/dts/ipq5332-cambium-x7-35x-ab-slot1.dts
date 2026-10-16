@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/* Controlled A/B qualification: both firmware banks writable; unique data RO. */
+#include "ipq5332-cambium-x7-35x-persistent-slot1.dts"
+/ {
+ cambium-platform { storage-policy = "ab"; upgrade-policy = <1>; };
+};
+&miami_rootfs { /delete-property/ read-only; };
+
+/ { cambium-platform { /delete-property/ cambium,recovery-read-only; }; };

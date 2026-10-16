@@ -1,0 +1,35 @@
+From: Phil Taylor <phil@m0vse.uk>
+Date: Wed, 7 Oct 2026 11:24:00 +0100
+Subject: [PATCH] kernel-defaults: resolve feed initramfs inputs and propagate failures
+
+A feed may provide generic kernel patches without generic image inputs.
+Resolve the base initramfs node list independently, falling back to the
+main OpenWrt generic image directory. Preserve an explicit override.
+
+Abort the locked initramfs build at the first failure. Otherwise a failed
+cpio generation can be masked by copying the previous normal kernel and
+produce a successful-looking FIT with an empty embedded root filesystem.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+
+--- a/include/kernel-defaults.mk
++++ b/include/kernel-defaults.mk
+@@ -7,7 +7,9 @@
+ 	EXTRA_LDSFLAGS="-I$(KERNEL_BUILD_DIR) -include symtab.h"
+ endif
+ 
+-INITRAMFS_EXTRA_FILES ?= $(GENERIC_PLATFORM_DIR)/image/initramfs-base-files.txt
++INITRAMFS_EXTRA_FILES ?= $(firstword $(wildcard \
++	$(GENERIC_PLATFORM_DIR)/image/initramfs-base-files.txt \
++	$(TOPDIR)/target/linux/generic/image/initramfs-base-files.txt))
+ 
+ export HOST_EXTRACFLAGS=-I$(STAGING_DIR_HOST)/include
+ 
+@@ -184,6 +186,7 @@
+ # already been done previously on generic image build
+ define Kernel/CompileImage/Initramfs
+ 	$(call locked,{ \
++		set -e; \
+ 		$(if $(2),$(call Kernel/PrepareConfigPerRootfs,$(LINUX_DIR)$(2));) \
+ 		$(call Kernel/Configure/Initramfs,$(if $(1),$(1),$(TARGET_DIR)),$(LINUX_DIR)$(2)); \
+ 		$(CP) $(GENERIC_OTHER_FILES_DIR)/init $(if $(1),$(1),$(TARGET_DIR))/init; \

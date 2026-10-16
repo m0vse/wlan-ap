@@ -1,0 +1,234 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] mac80211: retain independent radio power across MLO link creation
+
+Store radio-indexed requests separately from the global default. Update every
+bound link on the selected radio; defer missing/pending links to chanctx binding.
+Explicit per-link overrides survive binding until the next radio/global default
+request replaces matching live links, retaining the prior setter precedence.
+Reserved-context moves inherit the committed destination radio default too.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/include/net/cfg80211.h
++++ b/include/net/cfg80211.h
+@@ -6399,6 +6399,10 @@
+  */
+ struct wiphy_radio_cfg {
+ 	u32 rts_threshold;
++	/* Power requested for existing and subsequently bound radio links. */
++	bool txpower_set;
++	int txpower_level;
++	enum nl80211_tx_power_setting txpower_type;
+ };
+ 
+ /**
+--- a/net/mac80211/ieee80211_i.h
++++ b/net/mac80211/ieee80211_i.h
+@@ -1116,6 +1116,7 @@
+ 	enum ieee80211_smps_mode smps_mode;
+ 
+ 	int user_power_level; /* in dBm */
++	bool user_power_level_set; /* explicit per-link override */
+ 	int ap_power_level; /* in dBm */
+ 
+ 	bool radar_required;
+@@ -3081,4 +3082,22 @@
+ 				  struct net_device *dev,
+ 				  struct cfg80211_chan_def *chandef);
+ 
++/* A pending MLO link has no radio until its channel context is committed. */
++static inline void
++ieee80211_link_inherit_radio_power(struct ieee80211_link_data *link,
++				 const struct ieee80211_chanctx_conf *conf)
++{
++	struct wiphy *wiphy = link->sdata->local->hw.wiphy;
++	struct wiphy_radio_cfg *radio;
++
++	if (!conf || (unsigned int)conf->radio_idx >= wiphy->n_radio ||
++	    !wiphy->radio_cfg || link->user_power_level_set)
++		return;
++	radio = &wiphy->radio_cfg[conf->radio_idx];
++	if (!radio->txpower_set)
++		return;
++	link->user_power_level = radio->txpower_level;
++	link->conf->txpower_type = radio->txpower_type;
++}
++
+ #endif /* IEEE80211_I_H */
+--- a/net/mac80211/cfg.c
++++ b/net/mac80211/cfg.c
+@@ -3514,11 +3514,16 @@
+ 	struct ieee80211_chanctx_conf *conf;
+ 	bool update_txp_type = false;
+ 	bool has_monitor = false;
+-	int user_power_level;
++	int user_power_level, i;
+ 	int old_power = local->user_power_level;
+ 	struct ieee80211_link_data *link_data;
+ 
+ 	lockdep_assert_wiphy(local->hw.wiphy);
++
++	/* The unspecified-radio sentinel keeps the existing global ABI. */
++	if ((radio_id != (u8)-1 && radio_id >= wiphy->n_radio) ||
++	    (wiphy->n_radio && !wiphy->radio_cfg))
++		return -EINVAL;
+ 
+ 	switch (type) {
+ 	case NL80211_TX_POWER_AUTOMATIC:
+@@ -3537,6 +3542,8 @@
+ 
+ 	if (wdev) {
+ 		sdata = IEEE80211_WDEV_TO_SUB_IF(wdev);
++		if (link_id >= ARRAY_SIZE(sdata->link))
++			return -EINVAL;
+ 
+ 		link_data = sdata_dereference(sdata->link[link_id], sdata);
+ 		if (!link_data)
+@@ -3560,6 +3567,7 @@
+ 			return -ENOLINK;
+ 
+ 		link->user_power_level = user_power_level;
++		link->user_power_level_set = true;
+ 
+ 		if (txp_type != link->conf->txpower_type) {
+ 			update_txp_type = true;
+@@ -3570,63 +3578,64 @@
+ 		return 0;
+ 	}
+ 
+-	local->user_power_level = user_power_level;
+-
++	/* A radio request must not change the default of a different radio. */
++	if (radio_id >= wiphy->n_radio)
++		local->user_power_level = user_power_level;
++	for (i = 0; i < wiphy->n_radio; i++) {
++		struct wiphy_radio_cfg *radio = &wiphy->radio_cfg[i];
++
++		if (radio_id < wiphy->n_radio && i != radio_id)
++			continue;
++		radio->txpower_level = user_power_level;
++		radio->txpower_type = txp_type;
++		radio->txpower_set = true;
++	}
++
++	/* Update all matching links before callbacks calculate per-pdev minima.
++	 * Missing and ACS/CAC-pending links are not errors: their radio-scoped
++	 * default is retained above and applied when their chanctx is bound.
++	 */
+ 	list_for_each_entry(sdata, &local->interfaces, list) {
+ 		if (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
+ 		    !ieee80211_hw_check(&local->hw, NO_VIRTUAL_MONITOR)) {
+ 			has_monitor = true;
+ 			continue;
+ 		}
+-
+-		struct ieee80211_link_data *link =
+-			wiphy_dereference(wiphy, sdata->link[link_id]);
+-
+-		if (!link)
+-			return -ENOLINK;
+-
+-		if (radio_id < wiphy->n_radio) {
+-			conf = wiphy_dereference(wiphy, link->conf->chanctx_conf);
+-			if (!conf || conf->radio_idx != radio_id)
++		for_each_link_data(sdata, link_data) {
++			conf = wiphy_dereference(wiphy, link_data->conf->chanctx_conf);
++			if (radio_id < wiphy->n_radio &&
++			    (!conf || conf->radio_idx != radio_id))
+ 				continue;
++			link_data->user_power_level = user_power_level;
++			link_data->user_power_level_set = false;
++			link_data->conf->txpower_type = txp_type;
+ 		}
+-
+-		link->user_power_level = local->user_power_level;
+-		if (txp_type != link->conf->txpower_type)
+-			update_txp_type = true;
+-		link->conf->txpower_type = txp_type;
+ 	}
+ 	list_for_each_entry(sdata, &local->interfaces, list) {
+ 		if (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
+ 		    !ieee80211_hw_check(&local->hw, NO_VIRTUAL_MONITOR))
+ 			continue;
+-
+-		struct ieee80211_link_data *link =
+-			wiphy_dereference(wiphy, sdata->link[link_id]);
+-
+-		if (!link)
+-			return -ENOLINK;
+-
+-		if (radio_id < wiphy->n_radio) {
+-			conf = wiphy_dereference(wiphy, link->conf->chanctx_conf);
+-			if (!conf || conf->radio_idx != radio_id)
++		for_each_link_data(sdata, link_data) {
++			conf = wiphy_dereference(wiphy, link_data->conf->chanctx_conf);
++			if (radio_id < wiphy->n_radio &&
++			    (!conf || conf->radio_idx != radio_id))
+ 				continue;
++			ieee80211_recalc_txpower(link_data, true, link_data->link_id);
+ 		}
+-
+-		ieee80211_recalc_txpower(link, update_txp_type, link_id);
+ 	}
+ 
+ 	if (has_monitor) {
+-		sdata = wiphy_dereference(local->hw.wiphy,
+-					  local->monitor_sdata);
++		sdata = wiphy_dereference(local->hw.wiphy, local->monitor_sdata);
+ 		if (sdata && ieee80211_hw_check(&local->hw, WANT_MONITOR_VIF)) {
+-			sdata->deflink.user_power_level = local->user_power_level;
+-			if (txp_type != sdata->vif.bss_conf.txpower_type)
+-				update_txp_type = true;
+-			sdata->vif.bss_conf.txpower_type = txp_type;
+-
+-			ieee80211_recalc_txpower(&sdata->deflink,
+-						 update_txp_type, link_id);
++			conf = wiphy_dereference(wiphy, sdata->deflink.conf->chanctx_conf);
++			if (radio_id >= wiphy->n_radio ||
++			    (conf && conf->radio_idx == radio_id)) {
++				sdata->deflink.user_power_level = user_power_level;
++				sdata->deflink.user_power_level_set = false;
++				sdata->vif.bss_conf.txpower_type = txp_type;
++				ieee80211_recalc_txpower(&sdata->deflink, true,
++						 sdata->deflink.link_id);
++			}
+ 		}
+ 	}
+ 
+--- a/net/mac80211/chan.c
++++ b/net/mac80211/chan.c
+@@ -993,6 +993,7 @@
+ 	}
+ 
+ 	if (new_ctx && ieee80211_chanctx_num_assigned(local, new_ctx) > 0) {
++		ieee80211_link_inherit_radio_power(link, conf);
+ 		ieee80211_recalc_txpower(link, false, link->link_id);
+ 		ieee80211_recalc_chanctx_min_def(local, new_ctx, NULL, false);
+ 	}
+@@ -1461,6 +1462,8 @@
+ 
+ 	list_move(&link->assigned_chanctx_list, &new_ctx->assigned_links);
+ 	rcu_assign_pointer(link_conf->chanctx_conf, &new_ctx->conf);
++	ieee80211_link_inherit_radio_power(link, &new_ctx->conf);
++	ieee80211_recalc_txpower(link, false, link->link_id);
+ 
+ 	if (sdata->vif.type == NL80211_IFTYPE_AP)
+ 		__ieee80211_link_copy_chanctx_to_vlans(link, false);
+@@ -1809,6 +1812,7 @@
+ 
+ 			rcu_assign_pointer(link_conf->chanctx_conf,
+ 					   &ctx->conf);
++			ieee80211_link_inherit_radio_power(link, &ctx->conf);
+ 
+ 			if (sdata->vif.type == NL80211_IFTYPE_AP)
+ 				__ieee80211_link_copy_chanctx_to_vlans(link,
+--- a/net/mac80211/link.c
++++ b/net/mac80211/link.c
+@@ -125,6 +125,7 @@
+ 	link_conf->vif = &sdata->vif;
+ 	link->ap_power_level = IEEE80211_UNSET_POWER_LEVEL;
+ 	link->user_power_level = sdata->local->user_power_level;
++	link->user_power_level_set = false;
+ 	link_conf->txpower = INT_MIN;
+ 	link_conf->rts_threshold = (u32) -1;
+ 

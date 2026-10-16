@@ -50,4 +50,24 @@ f=fixture('GB');f.io.readphy=()=>null;
 check('fresh PHY query failure absent',!length(reg.sample(f.phys,f.io)));
 f=fixture('GB');f.io.readphy=()=>({...f.live[0],wiphy:1});
 check('wrong PHY reply refused',!length(reg.sample(f.phys,f.io)));
+f=fixture('GB'); f.live[0].wiphy_bands=[null,f.live[0].wiphy_bands[0]];
+s=reg.sample(f.phys,f.io);t=reg.telemetry(s[path],'GB');
+check('sparse 5 GHz band slot sampled',t != null && 36 in t.channels);
+check('sparse band preserves disabled/noIR/DFS exclusions',
+	!(149 in t.channels) && !(165 in t.channels) && !(100 in t.channels) && 52 in t.dfs_channels);
+f=fixture('GB');f.live[0].wiphy_bands=[null,null];
+check('all absent bands authorize nothing',!length(reg.sample(f.phys,f.io)));
+f=fixture('GB');f.live[0].wiphy_bands=[null,f.live[0].wiphy_bands[0]];
+f.io.country=()=>null;
+check('sparse band does not bypass missing country',!length(reg.sample(f.phys,f.io)));
+f=fixture('GB');let five=f.live[0].wiphy_bands[0];
+f.live[0]={wiphy:0,wiphy_bands:[{freqs:[{freq:2412},{freq:2437}]}]};
+push(f.live,{wiphy:1,wiphy_bands:[null,five]});
+f.phys={'platform/soc/a000000.wifi':{band:['2G']},'platform/soc/a800000.wifi':{band:['5G']}};
+f.io.paths=(p)=>[p=='platform/soc/a000000.wifi'?'/mock/phy0':'/mock/phy1'];
+s=reg.sample(f.phys,f.io);
+check('sparse second PHY does not discard valid first PHY',length(s)==2 &&
+	1 in s['platform/soc/a000000.wifi'].ap_channels && 36 in s['platform/soc/a800000.wifi'].ap_channels);
+check('sparse same-band mapping remains exact',!(36 in s['platform/soc/a000000.wifi'].ap_channels) &&
+	!(1 in s['platform/soc/a800000.wifi'].ap_channels));
 print(sprintf('Live regulatory source controls: %d PASS\n',count));

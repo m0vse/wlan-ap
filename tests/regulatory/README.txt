@@ -113,3 +113,14 @@ passed zero-fuzz import, shell syntax and 8 synthetic controls on host sh and
 the actual Jaguar BusyBox shell. No OEM BDF/calibration bytes are in the patch.
 FILS discovery interval propagation through regular wifi-scripts remains a
 separate unresolved gap, not part of these accepted fixes.
+
+Sparse-band follow-up (2026-10-16, schema release 42)
+
+Actual Sage nl80211 dumps contain a null band-zero slot on the 5 GHz PHY.
+Dereferencing that slot threw inside the sampler and its fail-closed catch
+discarded both PHY snapshots. Skip absent band entries with band?.freqs;
+retain all country, exact-PHY, disabled, NO_IR and DFS-state checks. The
+29-control suite now includes sparse 5 GHz and mixed 2.4/5 GHz PHY fixtures,
+an all-absent dump and the existing country/failure controls. The unpatched
+helper must fail the sparse-band positive regression. This is an AP telemetry
+repair, not permission for RRM to fall back to static hardware channels.

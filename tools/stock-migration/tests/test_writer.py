@@ -22,7 +22,8 @@ class WriterTests(unittest.TestCase):
                 # exercise generator logic; root is not approved firmware.
                 # Reconstructing a root from the approved source files would
                 # require the actual source capture; test just transformation.
-                text = bridge.stock_writer((frozen/'cambium-ab-upgrade.sh').read_text())
+                text = bridge.stock_writer((frozen/'cambium-ab-upgrade.sh').read_text(), family)
+                self.assertEqual('CAMBIUM_SYSTEM_FUNCTIONS' in text, family == 'sage')
                 writer = root/'writer.sh'
                 writer.write_text(text)
                 subprocess.run(['sh', '-n', str(writer)], check=True)
@@ -31,7 +32,7 @@ class WriterTests(unittest.TestCase):
                         trace = root/'trace'
                         if trace.exists(): trace.unlink()
                         core = root/'core'; core.touch()
-                        env = dict(os.environ, CAMBIUM_AB_LIB=str(core), CAMBIUM_INSTALLER_HANDOFF_LIB=str(core), CAMBIUM_AB_CERTIFICATE_LIB=str(root/'absent'), FAMILY=family, FAULT=fault, TRACE=str(trace))
+                        env = dict(os.environ, CAMBIUM_SYSTEM_FUNCTIONS=str(core), CAMBIUM_AB_LIB=str(core), CAMBIUM_INSTALLER_HANDOFF_LIB=str(core), CAMBIUM_AB_CERTIFICATE_LIB=str(root/'absent'), FAMILY=family, FAULT=fault, TRACE=str(trace))
                         script = '''. "$1" || exit 1
 AB_FAMILY=$FAMILY AB_ENV=$FAMILY AB_ACTIVE=0 AB_TARGET=1 AB_VAULT=0 AB_TARGET_PART=fixture
 AB_KERNEL=fixture AB_ROOT=fixture AB_KERNEL_SIZE=1 AB_ROOT_SIZE=1 AB_CERTIFICATE_LEBS=0

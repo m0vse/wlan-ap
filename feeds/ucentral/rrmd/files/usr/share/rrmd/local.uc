@@ -222,6 +222,38 @@ function channel_switch_handler(type, data) {
 	global.event.send('rrm.bss.channel-switch', { bssid: data.bssid, freq: data.freq });
 }
 
+
+// Resolve power operations from one fresh interface snapshot per candidate.
+// Cached hostapd status may expose only one BSSID of an MLO interface.
+function resolve_power_target(bssid) {
+	if (type(bssid) != 'string' || !match(lc(bssid), /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/))
+		return null;
+	bssid = lc(bssid);
+	let matches = [];
+	for (let dev, cached in interfaces) {
+		let current = global.nl80211.request(global.nl80211.const.NL80211_CMD_GET_INTERFACE, 0, { dev });
+		if (type(current) != 'object')
+			continue;
+		if (exists(current, 'mlo_links')) {
+			if (type(current.mlo_links) != 'array')
+				return null;
+			for (let link in current.mlo_links) {
+				if (type(link) != 'object' || type(link.mac) != 'string')
+					return null;
+				if (lc(link.mac || '') != bssid)
+					continue;
+				if (type(link.link_id) != 'int' || link.link_id < 0 || link.link_id > 15)
+					return null;
+				push(matches, { dev, mlo_link_id: link.link_id,
+					wiphy_tx_power_level: link.wiphy_tx_power_level });
+			}
+		} else if (lc(current.mac || '') == bssid) {
+			push(matches, { dev, wiphy_tx_power_level: current.wiphy_tx_power_level });
+		}
+	}
+	return length(matches) == 1 ? matches[0] : null;
+}
+
 return {
 	interfaces,
 
@@ -301,18 +333,12 @@ return {
 		return null;
 	},
 
+	txpower_target: function(bssid) {
+		return resolve_power_target(bssid);
+	},
+
 	txpower: function(bssid) {
-		for (let bss, v in interfaces) {
-			if (v.bssid != lc(bssid))
-				continue;
-			let iface = global.nl80211.request(global.nl80211.const.NL80211_CMD_GET_INTERFACE, 0, { dev: bss });
-			if (length(iface?.mlo_links)) {
-				let links = filter(iface.mlo_links, link => lc(link.mac || '') == lc(bssid));
-				return length(links) == 1 ? links[0].wiphy_tx_power_level : null;
-			}
-			return iface?.wiphy_tx_power_level;
-		}
-		return null;
+		return resolve_power_target(bssid)?.wiphy_tx_power_level;
 	},
 
 	lookup: function(phy) {

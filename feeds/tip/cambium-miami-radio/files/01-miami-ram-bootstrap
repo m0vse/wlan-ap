@@ -1,0 +1,12 @@
+#!/bin/sh
+# Preserve the packaged factory profile at the native renderer's ROM path
+# when there is no squashfs /rom layer in this RAM-only image.
+[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'cambiumnetworks,x7-35x' ] || exit 0
+[ "$(awk '$2 == "/" { print $3; exit }' /proc/mounts)" = tmpfs ] || exit 0
+file=ucentral.cfg.0000000001
+[ ! -e "/rom/etc/ucentral/$file" ] || exit 0
+[ -s "/etc/ucentral/$file" ] || exit 1
+mkdir -p /rom/etc/ucentral || exit 1
+cp "/etc/ucentral/$file" "/rom/etc/ucentral/$file" || exit 1
+chmod 0444 "/rom/etc/ucentral/$file" || exit 1
+exit 0

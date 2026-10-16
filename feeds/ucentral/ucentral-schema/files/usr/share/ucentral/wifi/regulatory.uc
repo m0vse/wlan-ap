@@ -12,7 +12,9 @@ function channel(freq) {
 export function select_frequencies(bands, wanted) {
 	let out = { frequencies: [], channels: [], dfs_channels: [], ap_channels: [], ap_dfs_channels: [] };
 	for (let band in bands || [])
-		for (let f in band.freqs || []) {
+		// nl80211 indexes bands by enum value: a 5 GHz-only PHY can have
+		// a null 2 GHz slot. It is absent data, not a failed snapshot.
+		for (let f in band?.freqs || []) {
 			let ch = channel(f.freq);
 			let b = f.freq < 2500 ? '2G' : f.freq < 5925 ? '5G' : '6G';
 			if (f.disabled || ch == null || !(b in wanted)) continue;
