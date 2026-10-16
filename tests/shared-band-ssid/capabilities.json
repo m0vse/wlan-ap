@@ -1,0 +1,274 @@
+{
+  "secure-rtty": true,
+  "default-config": true,
+  "country": "US",
+  "compatible": "cambium_xv3-8",
+  "model": "Cambium Networks XV3-8",
+  "version": {
+    "ap": {
+      "major": 5,
+      "minor": 1,
+      "patch": 1
+    },
+    "schema": {
+      "major": 5,
+      "minor": 1,
+      "patch": 0
+    }
+  },
+  "platform": "ap",
+  "network": {
+    "lan": [
+      "lan"
+    ],
+    "wan": [
+      "lan-multigig"
+    ]
+  },
+  "label_macaddr": "02:00:00:00:00:01",
+  "wifi": {
+    "platform/soc@0/c000000.wifi": {
+      "mlo_support": false,
+      "wiphy_name": "phy1",
+      "is_morse_phy": false,
+      "tx_ant": 15,
+      "rx_ant": 15,
+      "tx_ant_avail": 15,
+      "rx_ant_avail": 15,
+      "frequencies": [
+        5500,
+        5520,
+        5540,
+        5560,
+        5580,
+        5600,
+        5620,
+        5640,
+        5660,
+        5680,
+        5700,
+        5720,
+        5745,
+        5765,
+        5785,
+        5805,
+        5825,
+        5845,
+        5865,
+        5885
+      ],
+      "channels": [
+        100,
+        104,
+        108,
+        112,
+        116,
+        120,
+        124,
+        128,
+        132,
+        136,
+        140,
+        144,
+        149,
+        153,
+        157,
+        161,
+        165,
+        169,
+        173,
+        177
+      ],
+      "dfs_channels": [
+        100,
+        104,
+        108,
+        112,
+        116,
+        120,
+        124,
+        128,
+        132,
+        136,
+        140,
+        144
+      ],
+      "htmode": [
+        "HT20",
+        "HT40",
+        "VHT20",
+        "VHT40",
+        "VHT80",
+        "HE20",
+        "HE40",
+        "HE80",
+        "HE160"
+      ],
+      "band": [
+        "5G"
+      ],
+      "ht_capa": 6639,
+      "vht_capa": 865860018,
+      "he_phy_capa": [
+        12,
+        96,
+        76,
+        136,
+        127,
+        219,
+        131,
+        156,
+        1,
+        12,
+        0
+      ],
+      "he_mac_capa": [
+        13,
+        0,
+        24,
+        154,
+        64,
+        16
+      ]
+    },
+    "platform/soc@0/c000000.wifi+1": {
+      "mlo_support": false,
+      "wiphy_name": "phy2",
+      "is_morse_phy": false,
+      "tx_ant": 15,
+      "rx_ant": 15,
+      "tx_ant_avail": 15,
+      "rx_ant_avail": 15,
+      "frequencies": [
+        2412,
+        2417,
+        2422,
+        2427,
+        2432,
+        2437,
+        2442,
+        2447,
+        2452,
+        2457,
+        2462
+      ],
+      "channels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "htmode": [
+        "HT20",
+        "HT40",
+        "HE20",
+        "HE40"
+      ],
+      "band": [
+        "2G"
+      ],
+      "ht_capa": 4591,
+      "he_phy_capa": [
+        2,
+        96,
+        76,
+        136,
+        127,
+        195,
+        131,
+        156,
+        1,
+        12,
+        0
+      ],
+      "he_mac_capa": [
+        13,
+        0,
+        24,
+        154,
+        64,
+        16
+      ]
+    },
+    "platform/soc@0/c000000.wifi+2": {
+      "mlo_support": false,
+      "wiphy_name": "phy3",
+      "is_morse_phy": false,
+      "tx_ant": 15,
+      "rx_ant": 15,
+      "tx_ant_avail": 15,
+      "rx_ant_avail": 15,
+      "frequencies": [
+        5180,
+        5200,
+        5220,
+        5240,
+        5260,
+        5280,
+        5300,
+        5320
+      ],
+      "channels": [
+        36,
+        40,
+        44,
+        48,
+        52,
+        56,
+        60,
+        64
+      ],
+      "dfs_channels": [
+        52,
+        56,
+        60,
+        64
+      ],
+      "htmode": [
+        "HT20",
+        "HT40",
+        "VHT20",
+        "VHT40",
+        "VHT80",
+        "HE20",
+        "HE40",
+        "HE80",
+        "HE160"
+      ],
+      "band": [
+        "5G"
+      ],
+      "ht_capa": 6639,
+      "vht_capa": 865860018,
+      "he_phy_capa": [
+        12,
+        96,
+        76,
+        136,
+        127,
+        219,
+        131,
+        156,
+        1,
+        12,
+        0
+      ],
+      "he_mac_capa": [
+        13,
+        0,
+        24,
+        154,
+        64,
+        16
+      ]
+    }
+  },
+  "compress_cmd": true
+}

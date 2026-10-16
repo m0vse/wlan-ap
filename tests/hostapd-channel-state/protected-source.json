@@ -41,7 +41,9 @@
     "patches-25.12/0190-verify-accepted-radio-channel-and-power-errors.patch": "fff1f823e0bb1f2b93f5f8940afe2eb9d458d1de",
     "patches-25.12/0191-ath11k-strict-firmware-power-readback.patch": "ccd1f86e045091b8ab2a6fadc3c270db0ddcdd79",
     "patches-25.12/0193-preserve-phy-power-inheritance-during-acs.patch": "756b949e3e852a99a02dab30ca6c9e099595c701",
-    "feeds/qca-wifi-7/wifi-scripts/Makefile": "cc2906770295c96ac6ba2ac3801234c622ce955e"
+    "feeds/qca-wifi-7/wifi-scripts/Makefile": "cc2906770295c96ac6ba2ac3801234c622ce955e",
+    "feeds/ucentral/ucentral-schema/Makefile": "c5949df3dc978aa5fbdef4c644fce89d89299400",
+    "feeds/ucentral/ucentral-schema/patches/109-unique-ssid-sections-for-shared-band-phys.patch": "e71cf9b06dd6da1c7d189d7ddc0efff52039aede"
   },
   "miami_supplement": {
     "feeds/tip/cambium-miami-persistent/files/cambium-ab-miami.sh": "e2518d3d02cb80727dd2953a86dcb1a4625d88f6",
