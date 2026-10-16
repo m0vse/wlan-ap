@@ -31,6 +31,12 @@ global.ubus = {
 			}
 		},
 
+		bsses: {
+			cb: function(msg) {
+				return global.local.bsses();
+			}
+		},
+
 		stations: {
 			cb: function(msg) {
 				return global.station.list(msg);

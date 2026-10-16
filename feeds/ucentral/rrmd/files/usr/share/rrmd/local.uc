@@ -5,6 +5,56 @@ let ucentral_subscriber;
 let state = {};
 let interfaces = {};
 let handlers = {};
+let mlo_views = require('mlo_views');
+let reported_bsses = {};
+let links_timer;
+let last_links_refresh;
+let links_refreshing = false;
+
+function refresh_bsses(force) {
+	if (links_refreshing) return;
+	let now = time();
+	if (!force && last_links_refresh != null && now >= last_links_refresh && now - last_links_refresh < 5) return;
+	// A long-lived global UCI cursor can retain an old generated configuration.
+	let config = require('uci').cursor().get_all('wireless') || {};
+	let candidates = mlo_views.candidates(config, interfaces);
+	if (!force && !length(candidates)) { last_links_refresh = now; return; }
+	links_refreshing = true;
+	let links;
+	try {
+		links = mlo_views.collect(interfaces, config, {
+			interface: dev => nl80211.request(def.NL80211_CMD_GET_INTERFACE, 0, { dev }),
+			config: section => uci.get_all('rrmd', section) || {},
+			neighbor_report: row => {
+				let current = global.ubus.conn.call('hostapd.' + row.ifname, 'get_status');
+				if (lc(current?.bssid || '') != row.bssid || current.freq != row.freq || current.channel != row.channel) return null;
+				return global.ubus.conn.call('hostapd.' + row.ifname, 'rrm_nr_get_own')?.value;
+			},
+		});
+	} catch (e) {
+		// Failed MLO proof withdraws stale links; never substitute the parent.
+		links = candidates;
+	}
+	for (let dev in interfaces) {
+		if (exists(links, dev)) interfaces[dev].mlo_links = links[dev];
+		else delete interfaces[dev].mlo_links;
+	}
+	let previous = reported_bsses;
+	reported_bsses = mlo_views.bsses(interfaces, links);
+	last_links_refresh = now;
+	links_refreshing = false;
+	mlo_views.diff(previous, reported_bsses, (type, payload) => global.event.send(type, payload));
+	if (length(candidates) && !links_timer)
+		links_timer = global.uloop.timer(5000, () => {
+			links_timer = null;
+			refresh_bsses(true);
+		});
+	else if (!length(candidates) && links_timer) {
+		links_timer.cancel();
+		links_timer = null;
+	}
+}
+
 
 function channel_to_freq(cur_freq, channel) {
 
@@ -127,10 +177,10 @@ function interfaces_subunsub(path, sub) {
 
 	/* the hostapd instance disappeared */
 	if (!sub) {
-		global.event.send('rrm.bss.del', { bssid: interfaces[name] });
 		global.neighbor.local_del(name);
 		delete interfaces[name];
 		delete state[name];
+		refresh_bsses(true);
 		return;
 	}
 
@@ -144,7 +194,7 @@ function interfaces_subunsub(path, sub) {
 		cfg = {};
 
 	/* subscibe to hostapd */
-	interfaces_subscriber.subscribe(path);
+	if (!interfaces[name]) interfaces_subscriber.subscribe(path);
 
 	/* tell hostapd to wait for a reply before answering probe requests */
 	//global.ubus.conn.call(path, 'notify_response', { 'notify_response': 1 });
@@ -176,15 +226,8 @@ function interfaces_subunsub(path, sub) {
 	/* trigger an initial channel survey */
 	//channel_survey(name);
 
-	/* send an event */
-	global.event.send('rrm.bss.add', {
-		bssid: interfaces[name].bssid,
-		ssid: interfaces[name].ssid,
-		freq: interfaces[name].freq,
-		channel: interfaces[name].channel,
-		op_class: interfaces[name].op_class,
-		rrm_nr: interfaces[name].rrm_nr,
-	});
+	/* Publish proven per-BSSID views, not one parent row for an MLD. */
+	refresh_bsses(true);
 
 	/* tell the scanning code about the device */
 	global.scan.add_wdev(name, status.phy); 
@@ -219,6 +262,10 @@ function ucentral_handle_event(req) {
 }
 
 function channel_switch_handler(type, data) {
+	if (length(filter(values(reported_bsses), row => row.mlo_link_id != null && row.bssid == lc(data.bssid || '')))) {
+		refresh_bsses(true);
+		return;
+	}
 	global.event.send('rrm.bss.channel-switch', { bssid: data.bssid, freq: data.freq });
 }
 
@@ -258,15 +305,13 @@ return {
 	interfaces,
 
 	status: function() {
+		refresh_bsses(false);
 		return interfaces;
 	},
 
-	reload: function() {
-		/* stations statistics */
-		if (+global.config.station_stats_interval)
-			stations_stat.timer = global.uloop.timer(+global.config.station_stats_interval, stations_stats.run);
-		else if (stations_stat.timer)
-			stations_stat.timer.cancel();
+	bsses: function() {
+		refresh_bsses(false);
+		return reported_bsses;
 	},
 
 	init: function() {
@@ -291,7 +336,7 @@ return {
 //		uloop_timeout(interfaces_update, 5000);
 		global.local.register_handler('channel-switch', channel_switch_handler);
 
-		this.reload();
+		refresh_bsses(false);
 	},
 
 	register_handler: function(event, handler) {
@@ -303,9 +348,13 @@ return {
 	switch_chan: function(msg) {
 		if (!msg.bssid || !msg.channel)
 			return false;
+		// hostapd's shared ubus switch_chan cannot select an MLO link.
+		let target = resolve_power_target(msg.bssid);
+		if (!target || target.mlo_link_id != null) return false;
 		for (let bss, v in interfaces) {
 			if (v.bssid != lc(msg.bssid))
 				continue;
+			if (exists(v, 'mlo_links')) return false;
 			return global.ubus.conn.call('hostapd.' + bss, 'switch_chan', {
 				freq: channel_to_freq(v.freq, msg.channel),
 				bcn_count: 10
@@ -315,22 +364,17 @@ return {
 	},
 
 	bssid_to_phy: function(bssid) {
-		for (let bss, v in interfaces) {
-			if (v.bssid != lc(bssid))
-				continue;
-			let iface = global.nl80211.request(global.nl80211.const.NL80211_CMD_GET_INTERFACE, 0, { dev: bss });
-			return iface.wiphy;
-		}
-		return -1;
+		refresh_bsses(false);
+		let row = reported_bsses[lc(bssid || '')];
+		if (!row) return -1;
+		if (row.mlo_link_id != null) return row.wiphy;
+		let iface = nl80211.request(def.NL80211_CMD_GET_INTERFACE, 0, { dev: row.ifname });
+		return iface?.wiphy ?? -1;
 	},
 
 	bssid_to_ifname: function(bssid) {
-		for (let bss, v in interfaces) {
-			if (v.bssid == lc(bssid)) {
-				return bss;
-			}
-		}
-		return null;
+		refresh_bsses(false);
+		return reported_bsses[lc(bssid || '')]?.ifname;
 	},
 
 	txpower_target: function(bssid) {
@@ -349,6 +393,6 @@ return {
 	},
 
 	reload: function() {
-
+		refresh_bsses(true);
 	},
 };
