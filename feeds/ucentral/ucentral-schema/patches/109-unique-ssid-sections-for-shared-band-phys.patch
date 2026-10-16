@@ -1,0 +1,40 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] schema: preserve SSIDs on multiple PHYs sharing a band
+
+Generic5G must configure both split Thor radios, not overwrite the first
+UCI wifi-iface with the last PHY. Retain unique-band identities and MLD
+groups; deduplicate overlapping generic and split-band PHY selections.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
+--- a/renderer/templates/interface/ssid.uc
++++ b/renderer/templates/interface/ssid.uc
+@@ -201,7 +201,7 @@
+ 	let phys = [];
+ 	for (let band in ssid.wifi_bands) {
+ 		for (let phy in wiphy.lookup_by_band(band, true)) {
+-			if (phy.section)
++			if (phy.section && !length(filter(phys, p => p.section == phy.section)))
+ 				push(phys, phy);
+ 		}
+ 	}
+@@ -454,6 +454,9 @@
+ 		for (let band in ssid.wifi_bands) {
+ 			if (band in phy.band)
+ 				return band;
++			if (band in ['5G-lower', '5G-upper'] &&
++			    length(filter(wiphy.lookup_by_band(band, true), p => p.section == phy.section)))
++				return '5G';
+ 		}
+ 		return null;
+ 	}
+@@ -1093,6 +1096,9 @@
+ {%   let band_index = get_radio_index(phy.band[0]); %}
+ {%   let basename = name + '_' + count; %}
+ {%   let ssidname = name + '_' + per_band_counters[phy.band[0]] + '_' + band_index + '_' + per_band_counters[phy.band[0]]; %}
++{# Generic 5G may select several PHYs; preserve unique-band legacy names. #}
++{%   if (per_band_counters[phy.band[0]] == null || length(filter(phys, p => p.band[0] == phy.band[0])) > 1)
++       ssidname = name + '_' + count + '_' + band_index + '_' + phy.section; %}
+ {%   let section = (owe ? 'o' : '' ) + ssidname; %}
+ {%   let id = wiphy.allocate_ssid_section_id(phy) %}
+ {%   let band = match_band(phy); %}
