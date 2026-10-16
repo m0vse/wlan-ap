@@ -51,7 +51,7 @@
     "feeds/qca-wifi-7/ipq53xx/image/ipq53xx.mk": "e8e35f974cd50f04d554857cc87eb51745837471",
     "feeds/qca-wifi-7/ipq53xx/base-files/lib/upgrade/platform.sh": "5fe35ea51f625a85b89a0b915a3fe57e18ec9c1f",
     "feeds/qca-wifi-7/mac80211/Makefile": "9432ed95759c9a32f19db50fcbf5bf6dc1f3d363",
-    "feeds/ucentral/ucentral-schema/Makefile": "29aec3894724d47469278ae6c87bec78fd57ea55",
+    "feeds/ucentral/ucentral-schema/Makefile": "a7f0ad0f2c95f29cd9c8b24a064a301c8a4cf863",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-asterfusion-ap7330.dts": "59cbb98b55eb92cbd4d8db78ba551788932d56a7",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-edgecore-eap105.dts": "b889a211746365b74d4cced096d1370bb9e9183f",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-sonicfi-rap7110c-341x.dts": "24730a0a3a6f04be884a4506590dbd087e0114b5",
