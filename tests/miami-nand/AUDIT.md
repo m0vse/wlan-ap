@@ -141,3 +141,25 @@ the healthy presentation while preserving the independent numeric score.
 - https://github.com/openwrt/openwrt/blob/3fba6794e24542494853454cdaf52595dab4a37b/target/linux/qualcommax/Makefile
 - https://github.com/openwrt/openwrt/blob/3fba6794e24542494853454cdaf52595dab4a37b/target/linux/generic/kernel-6.18
 - https://github.com/gregkh/linux/blob/v6.18.55/drivers/spi/spi-qpic-snand.c
+
+### Procd startup: complete configfs writes
+
+The 18.2 launcher retry did not address the boot failure. On hardware, procd
+sets `LD_PRELOAD=/lib/libsetlbf.so`; its constructor calls `setbuf(stdout, NULL)`.
+The shipped BusyBox `printf '%s\n' value` then sends the value and newline in
+separate writes. Configfs parses each write independently: the newline clears
+the device/IP attributes, and fails MAC parsing. A manual shell without that
+preload combines the output, explaining the misleading successful manual tests.
+
+The setup helper now uses BusyBox echo, which assembles the complete value and
+newline before a direct write, and checks every attribute by reading it back.
+An enabled target also has to match the configured local port. The RAM watcher
+starts only after the target is verified. The kernel marker uses the same
+complete-write rule. No controller, driver, radio or network settings change.
+
+`test-configfs-writes.py --root <extracted-target-root>` executes the actual
+ARM BusyBox with the actual procd preload using QEMU syscall tracing. It proves
+the released printf path splits under procd while succeeding without the preload,
+and requires a single complete write for all seven fixed attributes. Existing
+launcher readiness/disabled controls remain applicable. Hardware reboot evidence
+is kept privately; this source test does not itself establish boot acceptance.
