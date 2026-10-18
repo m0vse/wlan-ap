@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 import socket,subprocess,threading,tempfile,pathlib,time,os,sys
 binary=sys.argv[1]
 with tempfile.TemporaryDirectory() as temp:

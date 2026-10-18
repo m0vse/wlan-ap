@@ -1,3 +1,12 @@
+From: Phil Taylor <phil@m0vse.uk>
+Subject: [PATCH] mtd: qcom: export the original Miami snapshot before feature reads
+
+Retain raw first-failure facts before optional diagnostic NAND commands can
+block. Publish the complete frame to the kernel log and expose feature-read
+completion separately without changing recovery behavior.
+
+Signed-off-by: Phil Taylor <phil@m0vse.uk>
+---
 --- a/drivers/mtd/nand/raw/qcom_nandc.c
 +++ b/drivers/mtd/nand/raw/qcom_nandc.c
 @@ -508,6 +508,7 @@

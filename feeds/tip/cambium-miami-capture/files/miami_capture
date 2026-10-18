@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 config capture 'main'
  option enabled '0'
  option receiver_ip ''

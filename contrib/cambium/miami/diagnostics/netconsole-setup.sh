@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-3-Clause
 # Configure only an owned target on an already-UP wired interface. No NAND reads.
 set -eu
 [ "$#" = 5 ] || { echo 'usage: netconsole-setup DEV LOCAL_IP REMOTE_IP REMOTE_MAC REMOTE_PORT' >&2; exit 2; }

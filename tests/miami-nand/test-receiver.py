@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 from pathlib import Path
 import tempfile,socket,subprocess,time,json,signal,base64,sys
 receiver=Path(__file__).resolve().parents[2]/'contrib/cambium/miami/diagnostics/receiver.py'

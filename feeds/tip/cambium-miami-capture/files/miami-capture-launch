@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 set -e
 # OpenWrt shell libraries intentionally inspect unset optional variables.
 . /lib/functions.sh

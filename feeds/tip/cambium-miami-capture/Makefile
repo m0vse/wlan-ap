@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 include $(TOPDIR)/rules.mk
 PKG_NAME:=cambium-miami-capture
 PKG_RELEASE:=1

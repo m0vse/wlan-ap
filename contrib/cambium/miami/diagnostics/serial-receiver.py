@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-3-Clause
 """Passive UART receive only: no bytes or modem-control commands are sent."""
 import argparse,base64,datetime,fcntl,json,os,select,signal,termios,time,tty
 from pathlib import Path
