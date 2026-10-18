@@ -103,13 +103,13 @@
     "feeds/ucentral/rrmd/files/usr/share/rrmd/phy.uc": "80b234275f1c833d23513c96a10a2bc90aabd3ee",
     "feeds/ucentral/rrmd/files/usr/bin/rrmd.uc": "0432ec8e9c66c833cbfbfb98c0f5cbedfb841c5b",
     "feeds/ucentral/rrmd/files/usr/share/rrmd/mlo_views.uc": "2c8b06c0b1e721649ecb186cd350e619354f9d31",
-    "feeds/qca-wifi-7/ipq53xx/patches-6.6/1007-mtd-qcom-miami-export-before-feature-commands.patch": "c88908cb0dd8f996f754c80d842a68d58a164ec4",
-    "feeds/tip/cambium-miami-capture/Makefile": "2795e844a9c7eb75c606a9938c770fbf0a4e49b6",
-    "feeds/tip/cambium-miami-capture/files/miami-netconsole-setup": "25f8d618a7f4cd11ee63a8bfa3e9d56a2a7a57c7",
-    "feeds/tip/cambium-miami-capture/files/monitor.c": "4a0653ed667735cc240b354a835df94b473edbbb",
-    "feeds/tip/cambium-miami-capture/files/miami_capture": "c2b79f36d9d04c0f258406394a9ab2b7694488e2",
-    "feeds/tip/cambium-miami-capture/files/miami-capture-launch": "e0f1bad25c29cdd12d9fd401093f63040e188832",
-    "feeds/tip/cambium-miami-capture/files/miami-capture.init": "e8badb02fafd7601e8516d46ec6cf0466f4811a5"
+    "feeds/qca-wifi-7/ipq53xx/patches-6.6/1007-mtd-qcom-miami-export-before-feature-commands.patch": "dcfa138a895b6a961d55ff8ff2bdb7c3e2959bb4",
+    "feeds/tip/cambium-miami-capture/Makefile": "2945cbf9349cbed4819c030f0b6f85c6c461edaa",
+    "feeds/tip/cambium-miami-capture/files/miami-netconsole-setup": "88a0da91860e6ab00d862e6b42c9526124ca4e47",
+    "feeds/tip/cambium-miami-capture/files/monitor.c": "e63691f7b4373eadabb43645a6fab7a383f7d866",
+    "feeds/tip/cambium-miami-capture/files/miami_capture": "3b169f35556db06fe05238f20533778643d0450d",
+    "feeds/tip/cambium-miami-capture/files/miami-capture-launch": "ca06e579f72671d7fef7b960b5dcbd8c28c23a18",
+    "feeds/tip/cambium-miami-capture/files/miami-capture.init": "7fd904965b061f1ea48e69ea38233a35207cc7da"
   },
   "policy": "Miami still requires its retained qualified private base and supplementary ABI. Never build Miami by resetting to generic main or publish its private history. Reviewed intentional source changes require updating this ledger.",
   "public_source_integration": {
