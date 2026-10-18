@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+# OpenWrt shell libraries intentionally inspect unset optional variables.
+. /lib/functions.sh
+config_load miami_capture
+config_get enabled main enabled 0
+[ "$enabled" = 1 ] || exit 0
+config_get remote_ip main receiver_ip
+config_get remote_mac main receiver_mac
+config_get remote_port main receiver_port 6666
+[ -n "$remote_ip" ] && [ -n "$remote_mac" ] || exit 1
+local_ip=
+for attempt in $(seq 1 60); do
+ local_ip=$(ip -4 addr show dev up0v0 | awk '/inet /{split($2,a,"/");print a[1];exit}')
+ [ -n "$local_ip" ] && [ "$(cat /sys/class/net/up0v0/operstate)" = up ] && break
+ sleep 2
+done
+[ -n "$local_ip" ] || exit 1
+/usr/libexec/miami-netconsole-setup up0v0 "$local_ip" "$remote_ip" "$remote_mac" "$remote_port"
+# A private tmpfs executable survives NAND read failures; static code locks its
+# pages before declaring residency. Never substitute a flash-backed binary.
+mkdir -p /tmp/miami-capture
+chmod 700 /tmp/miami-capture
+cp /usr/libexec/miami-capture-monitor /tmp/miami-capture/monitor.next
+chmod 700 /tmp/miami-capture/monitor.next
+mv /tmp/miami-capture/monitor.next /tmp/miami-capture/monitor
+exec /tmp/miami-capture/monitor "$remote_ip" "$remote_port"

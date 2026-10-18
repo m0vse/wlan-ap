@@ -1,0 +1,5 @@
+config capture 'main'
+ option enabled '0'
+ option receiver_ip ''
+ option receiver_mac ''
+ option receiver_port '6666'

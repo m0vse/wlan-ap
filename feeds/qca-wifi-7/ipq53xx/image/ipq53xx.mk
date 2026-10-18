@@ -278,7 +278,7 @@ define Device/cambiumnetworks_miami-persistent-slot0
   IMAGES := kernel.itb rootfs.squashfs
   IMAGE/kernel.itb := append-kernel
   IMAGE/rootfs.squashfs := append-rootfs
-  DEVICE_PACKAGES := cambium-miami-persistent ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
+  DEVICE_PACKAGES := cambium-miami-persistent cambium-miami-capture ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
 endef
 TARGET_DEVICES += cambiumnetworks_miami-persistent-slot0
 
@@ -299,7 +299,7 @@ define Device/cambiumnetworks_miami-persistent-slot1
   IMAGES := kernel.itb rootfs.squashfs
   IMAGE/kernel.itb := append-kernel
   IMAGE/rootfs.squashfs := append-rootfs
-  DEVICE_PACKAGES := cambium-miami-persistent ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
+  DEVICE_PACKAGES := cambium-miami-persistent cambium-miami-capture ath12k-firmware-qcn92xx -ath12k-firmware-ipq5332
 endef
 TARGET_DEVICES += cambiumnetworks_miami-persistent-slot1
 

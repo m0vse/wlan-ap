@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess, tempfile, argparse
 
 root = Path(__file__).parent
-parser=argparse.ArgumentParser();parser.add_argument('--driver',type=Path,default=root/'qcom_nandc.diagnostic.c');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--driver',type=Path,default=root/'qcom_nandc.diagnostic.c');parser.add_argument('--expect-old-failure',action='store_true');args=parser.parse_args()
 source = args.driver.read_text()
 def function(name):
     signature = 'static int ' if name == 'parse_read_errors' else 'static void '
@@ -23,6 +23,9 @@ harness='''
 #include <errno.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <setjmp.h>
 typedef uint8_t u8; typedef uint32_t u32; typedef uint64_t u64;
 #define MIAMI_DIAG_CWS 4
 #define MIAMI_DIAG_REGS 14
@@ -31,9 +34,18 @@ typedef uint8_t u8; typedef uint32_t u32; typedef uint64_t u64;
 #define DMA_COMPLETE 0
 #define spin_lock_irqsave(l,f) ((void)(l),(f)=0)
 #define spin_unlock_irqrestore(l,f) ((void)(l),(void)(f))
-#define dev_err(...) ((void)0)
+static int raw_end_seen, emitted_regs, emitted_cws, emitted_dma;
+static void diagnostic_log(const char *fmt, ...) {
+ if(strstr(fmt,"MIAMI_NAND_REG "))emitted_regs++;
+ if(strstr(fmt,"MIAMI_NAND_CW "))emitted_cws++;
+ if(strstr(fmt,"MIAMI_NAND_DMA "))emitted_dma++;
+ if(strstr(fmt,"MIAMI_NAND_END "))raw_end_seen++;
+ if(getenv("MIAMI_DIAG_PRINT_FIXTURE")) {va_list ap;va_start(ap,fmt);vprintf(fmt,ap);va_end(ap);}
+}
+#define dev_err(dev,fmt,...) do { (void)(dev); diagnostic_log(fmt, ##__VA_ARGS__); } while (0)
 ''' + struct + '''
 struct qcom_nand_controller {
+ void *dev;
  bool miami_diag_enabled, miami_diag_claimed, miami_diag_ready;
  unsigned int miami_diag_seen;
  int miami_diag_lock;
@@ -65,13 +77,19 @@ static int check_for_erased_page(struct qcom_nand_host *h,u8 *d,u8 *o,
  return 0;
 }
 static struct qcom_nand_controller controller;
-static int feature_calls, feature_error, take_calls;
+static int feature_calls, feature_error, take_calls, feature_block;
+static jmp_buf feature_stall;
 static struct qcom_nand_controller *get_qcom_nand_controller(void *p) {
  (void)p; return &controller;
 }
 static int qcom_serial_get_feature(struct qcom_nand_controller *n,
  struct qcom_nand_host *h, u32 address) {
- (void)n;(void)h;feature_calls++;
+ (void)h;
+ assert(n->miami_diag_ready && "RAW_CACHE_BEFORE_FEATURE");
+ assert(raw_end_seen==1 && emitted_regs==14 && emitted_cws==4 && emitted_dma==4 && "RAW_EXPORT_COMPLETE_BEFORE_FEATURE");
+ assert(!n->miami_diag.features_complete);
+ feature_calls++;
+ if(feature_block)longjmp(feature_stall,1);
  return feature_error ? -ETIMEDOUT : (int)address<<8;
 }
 static void miami_diag_take(struct qcom_nand_host *h,
@@ -80,15 +98,15 @@ static void miami_diag_take(struct qcom_nand_host *h,
  d->page=page;d->reason=reason;
  for(int i=0;i<3;i++)d->feature[i]=-ENODATA;
 }
-''' + function('miami_diag_publish') + '\n' + function('miami_diag_header') + '\n' + function('parse_read_errors') + '''
+''' + (function('miami_diag_emit')+'\n' if 'static void miami_diag_emit(' in source else '') + function('miami_diag_publish') + '\n' + function('miami_diag_header') + '\n' + function('parse_read_errors') + '''
 static void reset(void) {
  memset(&controller,0,sizeof(controller)); controller.miami_diag_enabled=true;
- feature_calls=feature_error=take_calls=erased_failure=0;memset(&mtd,0,sizeof(mtd));
+ feature_calls=feature_error=take_calls=erased_failure=feature_block=0;raw_end_seen=emitted_regs=emitted_cws=emitted_dma=0;memset(&mtd,0,sizeof(mtd));
 }
 int main(void) {
  struct qcom_nand_host host={0};
  const u8 valid[]={85,66,73,35}, blank[]={255,255,255,255};
- struct miami_nand_diag d={.page=100,.reason="test"};
+ struct miami_nand_diag d={.ns=123456789,.page=100,.reason="synthetic_offdevice_test"};
  reset();
  miami_diag_header(&host,blank,1024*64,0);
  assert(!controller.miami_diag_ready && !feature_calls && !take_calls);
@@ -103,6 +121,11 @@ int main(void) {
  miami_diag_header(&host,blank,6*64,0);
  miami_diag_publish(&host,&d,true);
  assert(feature_calls==3 && controller.miami_diag.page==1024*64);
+ reset();feature_block=1;
+ if(setjmp(feature_stall)==0)miami_diag_publish(&host,&d,true);
+ assert(controller.miami_diag_ready && raw_end_seen==1 && feature_calls==1);
+ assert(!controller.miami_diag.features_complete);
+ miami_diag_publish(&host,&d,true);assert(feature_calls==1);
  reset();feature_error=1;
  miami_diag_publish(&host,&d,true);
  assert(feature_calls==1 && controller.miami_diag_ready);
@@ -132,11 +155,20 @@ int main(void) {
  controller.reg_read_buf[2]=ERASED_CW;
  assert(parse_read_errors(&host,NULL,NULL,503)==0);
  assert(!controller.miami_diag_ready && !feature_calls);
+ puts("PASS: raw cache and complete register/codeword/DMA export precede optional GET, including a non-returning feature callback");
  puts("PASS: actual parse_read_errors hooks: confirmed uncorrectable, operational error, erased-page false-positive suppression");
  puts("PASS: actual driver header observer and publisher; blank/unqualified skip, boundary, first-record retention, bounded failed GET, no GET for unfinished DMA, disabled gate");
 }
 '''
+if 'features_complete' not in struct:
+    harness=harness.replace(' assert(!n->miami_diag.features_complete);','').replace(' assert(!controller.miami_diag.features_complete);','')
 with tempfile.TemporaryDirectory() as tmp:
     c=Path(tmp)/'test.c';exe=Path(tmp)/'test';c.write_text(harness)
     subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-o',str(exe),str(c)],check=True)
-    subprocess.run([str(exe)],check=True)
+    result=subprocess.run([str(exe)],text=True,capture_output=True)
+    if args.expect_old_failure:
+        assert result.returncode!=0 and 'RAW_CACHE_BEFORE_FEATURE' in result.stderr,(result.stdout,result.stderr)
+        print('PASS actual deployed publisher negative: optional feature runs before raw cache/export')
+    else:
+        assert result.returncode==0,(result.stdout,result.stderr)
+        print(result.stdout,end='')

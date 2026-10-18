@@ -50,10 +50,10 @@
     "feeds/tip/cambium-miami-persistent/files/cambium-ab-seed-confirm": "1093aecb33e54427b4b3b6cef18307750620d2b7",
     "patches-25.12/0162-kernel-defaults-resolve-feed-initramfs-inputs.patch": "de2f3023841d9d66cedce175b7330c00f4ba376b",
     "patches-25.12/0194-cambium-ab-integrate-qualified-miami.patch": "a116ce8c47d6a76a69171ab14ebed5de76f4050b",
-    "feeds/qca-wifi-7/ipq53xx/image/ipq53xx.mk": "e8e35f974cd50f04d554857cc87eb51745837471",
+    "feeds/qca-wifi-7/ipq53xx/image/ipq53xx.mk": "b2185c2b4b69bbd21607496de89e7fe9f5e6678c",
     "feeds/qca-wifi-7/ipq53xx/base-files/lib/upgrade/platform.sh": "5fe35ea51f625a85b89a0b915a3fe57e18ec9c1f",
     "feeds/qca-wifi-7/mac80211/Makefile": "9432ed95759c9a32f19db50fcbf5bf6dc1f3d363",
-    "feeds/ucentral/ucentral-schema/Makefile": "a7f0ad0f2c95f29cd9c8b24a064a301c8a4cf863",
+    "feeds/ucentral/ucentral-schema/Makefile": "c5949df3dc978aa5fbdef4c644fce89d89299400",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-asterfusion-ap7330.dts": "59cbb98b55eb92cbd4d8db78ba551788932d56a7",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-edgecore-eap105.dts": "b889a211746365b74d4cced096d1370bb9e9183f",
     "feeds/qca-wifi-7/ipq53xx/dts/ipq5332-sonicfi-rap7110c-341x.dts": "24730a0a3a6f04be884a4506590dbd087e0114b5",
@@ -102,7 +102,14 @@
     "feeds/ucentral/rrmd/files/usr/share/rrmd/local.uc": "9e52cce0294266fc0a4e53415c6692cff830c471",
     "feeds/ucentral/rrmd/files/usr/share/rrmd/phy.uc": "80b234275f1c833d23513c96a10a2bc90aabd3ee",
     "feeds/ucentral/rrmd/files/usr/bin/rrmd.uc": "0432ec8e9c66c833cbfbfb98c0f5cbedfb841c5b",
-    "feeds/ucentral/rrmd/files/usr/share/rrmd/mlo_views.uc": "2c8b06c0b1e721649ecb186cd350e619354f9d31"
+    "feeds/ucentral/rrmd/files/usr/share/rrmd/mlo_views.uc": "2c8b06c0b1e721649ecb186cd350e619354f9d31",
+    "feeds/qca-wifi-7/ipq53xx/patches-6.6/1007-mtd-qcom-miami-export-before-feature-commands.patch": "c88908cb0dd8f996f754c80d842a68d58a164ec4",
+    "feeds/tip/cambium-miami-capture/Makefile": "2795e844a9c7eb75c606a9938c770fbf0a4e49b6",
+    "feeds/tip/cambium-miami-capture/files/miami-netconsole-setup": "25f8d618a7f4cd11ee63a8bfa3e9d56a2a7a57c7",
+    "feeds/tip/cambium-miami-capture/files/monitor.c": "4a0653ed667735cc240b354a835df94b473edbbb",
+    "feeds/tip/cambium-miami-capture/files/miami_capture": "c2b79f36d9d04c0f258406394a9ab2b7694488e2",
+    "feeds/tip/cambium-miami-capture/files/miami-capture-launch": "e0f1bad25c29cdd12d9fd401093f63040e188832",
+    "feeds/tip/cambium-miami-capture/files/miami-capture.init": "e8badb02fafd7601e8516d46ec6cf0466f4811a5"
   },
   "policy": "Miami still requires its retained qualified private base and supplementary ABI. Never build Miami by resetting to generic main or publish its private history. Reviewed intentional source changes require updating this ledger.",
   "public_source_integration": {
@@ -122,5 +129,14 @@
       "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch"
     ],
     "scope": "Independent physical-radio defaults replace shared-wiphy uniform-cap refusal. Existing NAND/boot/client/radio sources and strict readback stay pinned. Offline regressions do not establish target compilation or hardware acceptance."
+  },
+  "offdevice_capture_review": {
+    "date": "2026-10-18",
+    "schema_pin_correction": {
+      "previous": "a7f0ad0f2c95f29cd9c8b24a064a301c8a4cf863",
+      "retained_release43_file": "c5949df3dc978aa5fbdef4c644fce89d89299400",
+      "reason": "Existing release43 source was unchanged; ledger still pinned older contents."
+    },
+    "scope": "Adds diagnostic-only service and early failure export; three protected source trees unchanged. Runtime synthetic full-record test is separate from kernel deployment."
   }
 }
