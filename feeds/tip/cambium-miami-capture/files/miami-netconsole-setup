@@ -5,13 +5,13 @@ set -eu
 [ "$#" = 5 ] || { echo 'usage: netconsole-setup DEV LOCAL_IP REMOTE_IP REMOTE_MAC REMOTE_PORT' >&2; exit 2; }
 dev=$1;local_ip=$2;remote_ip=$3;remote_mac=$4;remote_port=$5
 case "$dev" in up0v0) ;; *) echo 'only qualified management up0v0 supported' >&2;exit 1;; esac
-[ -L /sys/class/net/up0v0/lower_up ] && [ -e /sys/class/net/up/brif/eth0 ] || exit 1
+[ -L /sys/class/net/up0v0/lower_up ] && [ -e /sys/class/net/up/brif/eth0 ] || { echo "miami-capture: management VLAN/bridge/eth0 path is not ready" >&2; exit 1; }
 [ "$(cat /tmp/sysinfo/board_name)" = 'cambiumnetworks,x7-35x' ] || exit 1
 for ip in "$local_ip" "$remote_ip"; do echo "$ip" | awk -F. 'NF!=4{exit 1}{for(i=1;i<=4;i++)if($i!~/^[0-9]+$/||$i>255)exit 1}' || exit 1;done
 echo "$remote_mac" | grep -Eq '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$' || exit 1
 case "$remote_port" in ''|*[!0-9]*) exit 1;;esac
 [ "$remote_port" -ge 1024 ] && [ "$remote_port" -le 65535 ] || exit 1
-[ "$(cat /sys/class/net/$dev/operstate)" = up ] && [ "$(cat /sys/class/net/$dev/carrier)" = 1 ] || exit 1
+[ "$(cat /sys/class/net/$dev/operstate)" = up ] && [ "$(cat /sys/class/net/$dev/carrier)" = 1 ] || { echo "miami-capture: management link/carrier is not ready" >&2; exit 1; }
 [ -d /sys/module/netconsole ] || modprobe netconsole
 if ! grep -q ' /sys/kernel/config configfs ' /proc/mounts; then mount -t configfs configfs /sys/kernel/config;fi
 base=/sys/kernel/config/netconsole/miami_failure_capture

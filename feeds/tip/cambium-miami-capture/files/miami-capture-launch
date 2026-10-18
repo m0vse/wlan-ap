@@ -10,14 +10,24 @@ config_get remote_ip main receiver_ip
 config_get remote_mac main receiver_mac
 config_get remote_port main receiver_port 6666
 [ -n "$remote_ip" ] && [ -n "$remote_mac" ] || exit 1
-local_ip=
+# An address/operstate alone does not establish that netpoll can use the
+# complete bridge/VLAN path during boot. Retry the full owned-target setup.
+configured=0
 for attempt in $(seq 1 60); do
- local_ip=$(ip -4 addr show dev up0v0 | awk '/inet /{split($2,a,"/");print a[1];exit}')
- [ -n "$local_ip" ] && [ "$(cat /sys/class/net/up0v0/operstate)" = up ] && break
+ local_ip=$(ip -4 addr show dev up0v0 2>/dev/null | awk '/inet /{split($2,a,"/");print a[1];exit}')
+ if [ -n "$local_ip" ] && /usr/libexec/miami-netconsole-setup up0v0 "$local_ip" "$remote_ip" "$remote_mac" "$remote_port"; then
+  configured=1
+  break
+ fi
+ if [ "$attempt" = 1 ]; then
+  logger -t miami-capture 'Waiting for management path and netconsole setup; capture is not running yet'
+ fi
  sleep 2
 done
-[ -n "$local_ip" ] || exit 1
-/usr/libexec/miami-netconsole-setup up0v0 "$local_ip" "$remote_ip" "$remote_mac" "$remote_port"
+if [ "$configured" != 1 ]; then
+ logger -t miami-capture 'ERROR: netconsole setup did not become ready; RAM watcher was not started'
+ exit 1
+fi
 # A private tmpfs executable survives NAND read failures; static code locks its
 # pages before declaring residency. Never substitute a flash-backed binary.
 mkdir -p /tmp/miami-capture

@@ -70,3 +70,10 @@ accidental corruption; it does not authenticate a hostile LAN peer.
 
 Retain the exact installed hashes, boot identity, receiver launch ownership,
 raw live receipts and test limitations in private deployment evidence.
+
+Startup qualification also exercises a late full netconsole path with an IP
+already present, persistent setup failure and disabled configuration. The
+launcher retries the complete setup for a bounded interval, not only address
+availability. Test against the real earlier launcher with `test-startup.py
+--baseline-launcher /path/to/released/usr/libexec/miami-capture-launch`. These
+fixtures exercise startup ordering; they do not claim a physical reboot test.
