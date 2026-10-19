@@ -1,0 +1,26 @@
+--- a/package/utils/ucode/Makefile
++++ b/package/utils/ucode/Makefile
+@@ -10,4 +10,4 @@
+ PKG_NAME:=ucode
+-PKG_RELEASE:=4
++PKG_RELEASE:=5
+ 
+ PKG_SOURCE_PROTO:=git
+--- /dev/null
++++ b/package/utils/ucode/patches/202-netlink-raw-scan-ssids.patch
+@@ -0,0 +1,15 @@
++--- a/lib/nl80211.c
+++++ b/lib/nl80211.c
++@@ -1059,7 +1059,7 @@
++ 		{ NL80211_ATTR_RX_SIGNAL_DBM, "rx_signal_dbm", DT_U32, 0, NULL },
++ 		{ NL80211_ATTR_SCAN_FLAGS, "scan_flags", DT_U32, 0, NULL },
++ 		{ NL80211_ATTR_SCAN_FREQUENCIES, "scan_frequencies", DT_U32, DF_MULTIPLE|DF_AUTOIDX, NULL },
++-		{ NL80211_ATTR_SCAN_SSIDS, "scan_ssids", DT_STRING, DF_MULTIPLE|DF_AUTOIDX, NULL },
+++		{ NL80211_ATTR_SCAN_SSIDS, "scan_ssids", DT_STRING, DF_BINARY|DF_MULTIPLE|DF_AUTOIDX, NULL },
++ 		{ NL80211_ATTR_SCHED_SCAN_DELAY, "sched_scan_delay", DT_U32, 0, NULL },
++ 		{ NL80211_ATTR_SCHED_SCAN_INTERVAL, "sched_scan_interval", DT_U32, 0, NULL },
++ 		{ NL80211_ATTR_SCHED_SCAN_MATCH, "sched_scan_match", DT_NESTED, DF_MULTIPLE|DF_AUTOIDX, &nl80211_sched_scan_match_nla },
++@@ -2039,2 +2039,2 @@
++-		if (!nla_check_len(attr, 1))
+++		if (!nla_check_len(attr, (spec->flags & DF_BINARY) ? 0 : 1))
++ 			return NULL;
