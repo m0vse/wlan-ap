@@ -1,0 +1,14 @@
+{
+  "release": "sage-2026.10.19.1",
+  "qualified_wlan_ap_ancestor": "850b600a44f3a6435343a7ed2f9728ebd54956b7",
+  "qualified_legacy_ancestor": "d406aede5e5a0f9582208d294a6c77baab04f070",
+  "reviewed_legacy_source": "248ab9e5e4aa4cfc01bcf37628093bc0b5d75cc5",
+  "legacy_branch": "fix/sage-e410b-5g-board-variant",
+  "scope": "Additive E410B 5GHz ID17 variant only. Preserve every qualified source fix, local feed path and private input. No rebase, stock edit or AP action.",
+  "generic_board_archive_sha256": "94b66aa4ddbed5110a96364d3c7b4ebcb320e3ac4e8697660b277e76077bc338",
+  "private_5g_input_sha256": "ad5358d27065bba71fa9269634221ca47eefc827ccf39d0e9bc141e4141e8854",
+  "candidate_board_archive_sha256": "24aab2e5be55145ef228b682003483863a2067f541dd40713b3a44d832eeeb1f",
+  "private_input_policy": "Explicit authorised private build input only; no OEM data in Git. No implicit download or inference of redistribution rights.",
+  "retained": ["E410B 2GHz/ID16", "E410 IDs20/21", "all generic board entries", "factory ART/precal flow", "executable radio firmware", "kernel and driver fixes", "A/B and CA", "health and RRM", "permissions", "normal sysupgrade/FIT mappings"],
+  "acceptance": "Source/offline review passed; final image validation and PHIL-STUDIO manual normal-controller trial remain separate. Main owns publication."
+}
