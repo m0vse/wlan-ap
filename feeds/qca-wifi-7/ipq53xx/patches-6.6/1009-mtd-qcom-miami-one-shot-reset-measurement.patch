@@ -1,0 +1,546 @@
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -6,6 +6,8 @@
+ #include <linux/ktime.h>
+ #include <linux/spinlock.h>
+ #include <linux/slab.h>
++#include <linux/workqueue.h>
++#include <linux/sched.h>
+ #include <linux/bitops.h>
+ #include <linux/dma/qcom_adm.h>
+ #include <linux/dma-mapping.h>
+@@ -571,6 +573,17 @@
+  struct miami_nand_diag miami_diag;
+  dma_cookie_t miami_diag_cookie[4];
+  unsigned long miami_diag_clock_hz;
++ bool miami_probe_claimed, miami_probe_active, miami_probe_baseline_valid;
++ bool miami_dma_unsafe, miami_probe_trace_overflow;
++ bool miami_probe_test_pending, miami_probe_synthetic;
++ unsigned int miami_probe_test_page;
++ int miami_command_result;
++ u8 miami_probe_boot_a0, miami_probe_boot_b0;
++ u8 *miami_probe_buffer;
++ char miami_probe_trace[1024], miami_probe_pending[64];
++ unsigned int miami_probe_trace_len;
++ struct delayed_work miami_probe_work;
++ u64 miami_probe_post_until, miami_probe_ok, miami_probe_corr, miami_probe_fail;
+ };
+ 
+ /*
+@@ -1741,8 +1754,10 @@
+ 			dma_async_issue_pending(nandc->sts_chan);
+ 
+ 		if (!wait_for_completion_timeout(&bam_txn->txn_done,
+-						 QPIC_NAND_COMPLETION_TIMEOUT))
+-			return -ETIMEDOUT;
++                                                 QPIC_NAND_COMPLETION_TIMEOUT)) {
++   nandc->miami_dma_unsafe = true;
++   return -ETIMEDOUT;
++  }
+ 	} else {
+ 		if (dma_sync_wait(nandc->chan, cookie) != DMA_COMPLETE)
+ 			return -ETIMEDOUT;
+@@ -1858,6 +1873,7 @@
+ 	bool wait = false;
+ 	int ret = 0;
+ 
++	nandc->miami_command_result = -EINPROGRESS;
+ 	pre_command(host, command);
+ 
+ 	switch (command) {
+@@ -1906,6 +1922,7 @@
+ 	if (ret) {
+ 		dev_err(nandc->dev, "failure executing command %d\n",
+ 			command);
++		nandc->miami_command_result = ret;
+ 		free_descs(nandc);
+ 		return;
+ 	}
+@@ -1918,6 +1935,7 @@
+ 				command);
+ 	}
+ 
++	nandc->miami_command_result = ret;
+ 	free_descs(nandc);
+ 
+ 	post_command(host, command);
+@@ -2310,7 +2328,8 @@
+ 
+ 	if (nandc->miami_diag_enabled && !nandc->miami_diag_claimed &&
+ 	    (flash_op_err || uncorrectable_cws))
+-		miami_diag_take(host, &first, page, flash_op_err ?
++		miami_diag_take(host, &first, page, nandc->miami_probe_synthetic ?
++   "synthetic_ecc_probe" : flash_op_err ?
+ 			"read_operational_error" : "uncorrectable_ecc", true);
+ 	if (flash_op_err) {
+ 		if (nandc->miami_diag_enabled && !nandc->miami_diag_claimed) {
+@@ -2322,6 +2341,16 @@
+ 	if (!uncorrectable_cws)
+ 		return max_bitflips;
+ 
++ if (nandc->miami_probe_synthetic && !nandc->miami_diag_claimed) {
++  mtd->ecc_stats.failed += hweight_long(uncorrectable_cws);
++  first.result = -EBADMSG;
++  miami_diag_publish(host, &first, false);
++  return -EBADMSG;
++ }
++ if (nandc->miami_probe_active) {
++  mtd->ecc_stats.failed += hweight_long(uncorrectable_cws);
++  return -EBADMSG;
++ }
+ 	/* Save original ECC/controller state before erased-page raw retries.
+ 	 * Publish only if those checks establish a genuine error. */
+ 	result = check_for_erased_page(host, data_buf_start, oob_buf_start,
+@@ -2338,6 +2367,36 @@
+  * helper to perform the actual page read operation, used by ecc->read_page(),
+  * ecc->read_oob()
+  */
++/* The explicit bench reader is the only task allowed to consume this arm.
++ * Never inject into UBI background I/O or an ordinary application read. */
++static void miami_probe_inject(struct qcom_nand_host *host, int page)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ unsigned long flags;
++ bool inject = false;
++
++ if (strcmp(current->comm, "miami-ecc-test")) return;
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ if (n->miami_probe_test_pending && !n->miami_diag_claimed &&
++     n->miami_probe_test_page == (unsigned int)page && !n->miami_dma_unsafe) {
++  n->miami_probe_test_pending = false;
++  n->miami_probe_synthetic = true;
++  inject = true;
++ }
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++ if (inject) {
++  /* Change only the DMA-completed RAM status, never the array or MMIO. */
++  n->reg_read_buf[0] = cpu_to_le32(FS_OP_ERR);
++  n->reg_read_buf[1] = cpu_to_le32(BS_UNCORRECTABLE_BIT);
++  n->reg_read_buf[2] = 0;
++  printk(KERN_ERR "MIAMI_PROBE synthetic ECC page=%d\n", page);
++ }
++}
++
++static void miami_probe_run(struct qcom_nand_host *host);
++static void miami_probe_count(struct qcom_nand_host *host, int result,
++                              u32 failed_before, u32 corrected_before);
++
+ static int read_page_ecc(struct qcom_nand_host *host, u8 *data_buf,
+ 			 u8 *oob_buf, int page)
+ {
+@@ -2345,7 +2404,9 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	struct nand_ecc_ctrl *ecc = &chip->ecc;
+ 	u8 *data_buf_start = data_buf, *oob_buf_start = oob_buf;
+-	int i, ret;
++ int i, ret;
++ struct mtd_info *m = nand_to_mtd(chip);
++ u32 failed_before = m->ecc_stats.failed, corrected_before = m->ecc_stats.corrected;
+ 	__le32 *status_buf_start = nandc->status_buf;
+ 	__le32 *status_buf_cw = nandc->status_buf;
+ 
+@@ -2423,14 +2484,19 @@
+ 
+ 	if (ret) {
+ 		dev_err(nandc->dev, "failure to read page/oob\n");
++  miami_probe_count(host, ret, failed_before, corrected_before);
++  if (!nandc->miami_probe_active) miami_probe_run(host);
+ 		return ret;
+ 	}
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope)
+ 		memmove(nandc->reg_read_buf, status_buf_start, nandc->sts_buf_size);
+ 
++	miami_probe_inject(host, page);
+ 	ret = parse_read_errors(host, data_buf_start, oob_buf_start, page);
+-	miami_diag_header(host, data_buf_start, page, ret);
+-	return ret;
++ miami_diag_header(host, data_buf_start, page, ret);
++ miami_probe_count(host, ret, failed_before, corrected_before);
++ if (!nandc->miami_probe_active) miami_probe_run(host);
++ return ret;
+ }
+ 
+ /*
+@@ -3768,6 +3834,237 @@
+ }
+ 
+ 
++/* This experiment is separate from the immutable RAM-only failure snapshot. */
++static void miami_probe_log(struct qcom_nand_controller *n, const char *fmt, ...)
++{
++ char line[256];
++ unsigned long flags;
++ va_list ap;
++ int count;
++
++ va_start(ap, fmt);
++ count = vscnprintf(line, sizeof(line), fmt, ap);
++ va_end(ap);
++ printk(KERN_ERR "MIAMI_PROBE %s\n", line);
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ if (strstr(line, " begin")) {
++  strscpy(n->miami_probe_pending, line, sizeof(n->miami_probe_pending));
++  spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++  return;
++ }
++ n->miami_probe_pending[0] = 0;
++ if ((unsigned int)count + 1 < sizeof(n->miami_probe_trace) - n->miami_probe_trace_len) {
++  memcpy(n->miami_probe_trace + n->miami_probe_trace_len, line, count);
++  n->miami_probe_trace_len += count;
++  n->miami_probe_trace[n->miami_probe_trace_len++] = '\n';
++  n->miami_probe_trace[n->miami_probe_trace_len] = 0;
++ } else {
++  n->miami_probe_trace_overflow = true;
++ }
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++}
++
++static void miami_probe_post_work(struct work_struct *work)
++{
++ struct qcom_nand_controller *n = container_of(to_delayed_work(work),
++                               struct qcom_nand_controller, miami_probe_work);
++ unsigned long flags;
++ u64 ok, corr, fail;
++ bool more;
++
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ ok = n->miami_probe_ok; corr = n->miami_probe_corr; fail = n->miami_probe_fail;
++ more = ktime_get_boottime_ns() < n->miami_probe_post_until;
++ if (!more) n->miami_probe_post_until = 0;
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++ printk(KERN_ERR "MIAMI_PROBE post ok=%llu corr=%llu fail=%llu\n", ok, corr, fail);
++ if (more) schedule_delayed_work(&n->miami_probe_work, 60 * HZ);
++}
++
++static void miami_probe_cancel(void *arg)
++{
++ struct qcom_nand_controller *n = arg;
++ cancel_delayed_work_sync(&n->miami_probe_work);
++}
++
++/* No commands, work, or provider queries in this later-read accounting path. */
++static void miami_probe_count(struct qcom_nand_host *host, int result,
++                              u32 failed_before, u32 corrected_before)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ struct mtd_info *m = nand_to_mtd(&host->chip);
++ unsigned long flags;
++
++ if (n->miami_probe_active || !READ_ONCE(n->miami_probe_post_until)) return;
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ if (ktime_get_boottime_ns() < n->miami_probe_post_until) {
++  if (result < 0 || m->ecc_stats.failed != failed_before) n->miami_probe_fail++;
++  else if (result || m->ecc_stats.corrected != corrected_before) n->miami_probe_corr++;
++  else n->miami_probe_ok++;
++ }
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++}
++
++static int miami_probe_id(struct qcom_nand_host *host, const char *phase)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ int ret;
++
++ miami_probe_log(n, "%s ID begin", phase);
++ memset(n->data_buffer, 0, 4);
++ qcom_nandc_command(&host->chip, NAND_CMD_READID, 0, -1);
++ ret = n->miami_command_result;
++ if (!ret && (n->data_buffer[0] != 0xc2 || n->data_buffer[1] != 0xa6)) ret = -ENODEV;
++ miami_probe_log(n, "%s ID=%02x%02x ret=%d", phase,
++                 n->data_buffer[0], n->data_buffer[1], ret);
++ return ret;
++}
++
++static int miami_probe_get(struct qcom_nand_host *host, const char *phase, u8 address)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ int value;
++
++ miami_probe_log(n, "%s G%02x begin", phase, address);
++ value = qcom_serial_get_feature(n, host, address);
++ if (value >= 0) value = (value >> 8) & 0xff;
++ miami_probe_log(n, "%s G%02x=%d", phase, address, value);
++ return value;
++}
++
++static int miami_probe_features(struct qcom_nand_host *host, const char *phase)
++{
++ const u8 addresses[] = { 0xa0, 0xb0, 0xc0 };
++ unsigned int i;
++ int ret;
++
++ ret = miami_probe_id(host, phase);
++ if (ret) return ret;
++ for (i = 0; i < ARRAY_SIZE(addresses); i++) {
++  ret = miami_probe_get(host, phase, addresses[i]);
++  if (ret < 0) return ret;
++ }
++ return 0;
++}
++
++/* Ordinary ECC page-read setup without re-entering the NAND/MTD core. */
++static bool miami_probe_read(struct qcom_nand_host *host, const char *which, int page)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ struct mtd_info *m = nand_to_mtd(&host->chip);
++ u32 failed = m->ecc_stats.failed, corrected = m->ecc_stats.corrected;
++ unsigned int i;
++ int ret;
++ bool good;
++
++ miami_probe_log(n, "read %s p=%d begin", which, page);
++ memset(n->miami_probe_buffer, 0, m->writesize);
++ pre_command(host, NAND_CMD_READ0);
++ host->use_ecc = true;
++ set_address(host, 0, page);
++ update_rw_regs(host, host->chip.ecc.steps, true, 0);
++ clear_bam_transaction(n);
++ ret = read_page_ecc(host, n->miami_probe_buffer, NULL, page);
++ good = ret >= 0 && m->ecc_stats.failed == failed;
++ if (n->miami_dma_unsafe) {
++  miami_probe_log(n, "read %s r=%d status/magic unavailable DMA incomplete", which, ret);
++  goto restore_stats;
++ }
++ miami_probe_log(n, "read %s r=%d corr=%u fail=%u magic=%02x%02x%02x%02x", which,
++  ret, m->ecc_stats.corrected - corrected, m->ecc_stats.failed - failed,
++  n->miami_probe_buffer[0], n->miami_probe_buffer[1],
++  n->miami_probe_buffer[2], n->miami_probe_buffer[3]);
++ if (!n->miami_dma_unsafe)
++  for (i = 0; i < MIAMI_DIAG_CWS; i++)
++   miami_probe_log(n, "%s cw%u=%08x/%08x/%08x", which, i,
++    le32_to_cpu(n->reg_read_buf[3*i]), le32_to_cpu(n->reg_read_buf[3*i+1]),
++    le32_to_cpu(n->reg_read_buf[3*i+2]));
++ else miami_probe_log(n, "%s cw unavailable DMA incomplete", which);
++restore_stats:
++ /* Probe reads must not inflate the original caller's ECC accounting. */
++ m->ecc_stats.failed = failed; m->ecc_stats.corrected = corrected;
++ return good;
++}
++
++static void miami_probe_run(struct qcom_nand_host *host)
++{
++ struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
++ const unsigned int pebs[] = { 6, 7, 255, 256, 774, 775, 1023, 1024, 1025, 1181 };
++ unsigned int i, peb;
++ int page, canary = -1, ret, value;
++ u64 start, deadline;
++ bool first_good = false, other_good = false;
++ int saved_command = host->last_command;
++ bool saved_ecc = host->use_ecc;
++
++ if (!n->miami_diag_enabled || !n->miami_diag_ready || n->miami_probe_claimed) return;
++ /* Existing controller lock serializes this flag. Claim even rejected attempts. */
++ n->miami_probe_claimed = true;
++ page = n->miami_diag.page; peb = page / 64;
++ miami_probe_log(n, "start page=%d peb=%u orig_result=%d boottime_ns=%llu synthetic=%u",
++                 page, peb, n->miami_diag.result, ktime_get_boottime_ns(), n->miami_probe_synthetic);
++ if (!n->miami_probe_baseline_valid || !n->miami_probe_buffer ||
++     n->miami_dma_unsafe || host->codeword_fixup || peb < 6 || peb >= 1542) {
++  miami_probe_log(n, "abort baseline=%u buffer=%u dma_unsafe=%u layout=%u",
++    n->miami_probe_baseline_valid, !!n->miami_probe_buffer, n->miami_dma_unsafe,
++    host->codeword_fixup);
++  goto end;
++ }
++ for (i = 0; i < ARRAY_SIZE(pebs); i++)
++  if ((n->miami_diag_seen & BIT(i)) && (pebs[i] < 774) != (peb < 774)) {
++   canary = pebs[i] * 64; break;
++  }
++ if (canary < 0) { miami_probe_log(n, "abort no qualified other-bank canary"); goto end; }
++ n->miami_probe_active = true;
++ ret = miami_probe_features(host, "before");
++ if (ret) goto end;
++ miami_probe_log(n, "RESET begin");
++ qcom_nandc_command(&host->chip, NAND_CMD_RESET, -1, -1);
++ ret = n->miami_command_result;
++ if (!ret) ret = qpic_serial_check_status(n->reg_read_buf);
++ miami_probe_log(n, "RESET ret=%d", ret);
++ if (ret) goto end;
++ miami_probe_log(n, "poll C0 begin budget_us=10000 interval_us=100 transport_ms=2000");
++ start = ktime_get_boottime_ns(); deadline = start + 10000000;
++ do {
++  value = qcom_serial_get_feature(n, host, 0xc0);
++  if (value < 0) { miami_probe_log(n, "poll C0 error=%d elapsed_ns=%llu", value, ktime_get_boottime_ns() - start); goto end; }
++  if (ktime_get_boottime_ns() > deadline) break;
++  if (!((value >> 8) & BIT(0))) goto ready;
++  udelay(100);
++ } while (ktime_get_boottime_ns() < deadline);
++ miami_probe_log(n, "poll timeout elapsed_ns=%llu", ktime_get_boottime_ns() - start);
++ goto end;
++ready:
++ miami_probe_log(n, "poll ready elapsed_ns=%llu", ktime_get_boottime_ns() - start);
++ ret = miami_probe_features(host, "after");
++ if (ret) goto end;
++ miami_probe_log(n, "SET A0=%02x begin", n->miami_probe_boot_a0);
++ ret = qcom_serial_set_feature(n, host, 0xa0, n->miami_probe_boot_a0);
++ miami_probe_log(n, "SET A0 ret=%d", ret);
++ if (ret) goto end;
++ miami_probe_log(n, "SET B0=01 begin");
++ ret = qcom_serial_set_feature(n, host, 0xb0, 0x01);
++ miami_probe_log(n, "SET B0 ret=%d", ret);
++ if (ret) goto end;
++ value = miami_probe_get(host, "verify", 0xa0);
++ if (value < 0 || value != n->miami_probe_boot_a0) goto mismatch;
++ value = miami_probe_get(host, "verify", 0xb0);
++ if (value != 0x01) goto mismatch;
++ miami_probe_log(n, "verify match=1");
++ first_good = miami_probe_read(host, "same", page);
++ if (!n->miami_dma_unsafe) other_good = miami_probe_read(host, "other", canary);
++ goto end;
++mismatch:
++ miami_probe_log(n, "verify match=0 value=%d", value);
++end:
++ miami_probe_log(n, "end recovered=%u", first_good && other_good);
++ n->miami_probe_active = false;
++ host->last_command = saved_command; host->use_ecc = saved_ecc;
++ n->miami_probe_post_until = ktime_get_boottime_ns() + 600000000000ULL;
++ schedule_delayed_work(&n->miami_probe_work, 60 * HZ);
++}
++
+ static bool config_buf_bit(struct mtd_info *mtd, struct qcom_nand_host *host, u8 *pos)
+ {
+ 	int i, ret;
+@@ -4622,42 +4919,73 @@
+                                         struct device_attribute *attr, char *buf)
+ {
+  struct qcom_nand_controller *n = dev_get_drvdata(dev);
+- struct miami_nand_diag d;
++ const struct miami_nand_diag *d = &n->miami_diag;
+  unsigned long flags;
+  unsigned int i;
+- bool ready;
+  ssize_t len = 0;
+ 
+  spin_lock_irqsave(&n->miami_diag_lock, flags);
+- ready = n->miami_diag_ready;
+- d = n->miami_diag;
+- spin_unlock_irqrestore(&n->miami_diag_lock, flags);
+- if (!ready)
+-  return sysfs_emit(buf, "state=armed qualified_samples=0x%x\n",
+-                    READ_ONCE(n->miami_diag_seen));
++ if (!n->miami_diag_ready) {
++  len = sysfs_emit(buf, "state=armed qualified_samples=0x%x probe_baseline=%u A0=%02x B0=%02x\n",
++    n->miami_diag_seen, n->miami_probe_baseline_valid,
++    n->miami_probe_boot_a0, n->miami_probe_boot_b0);
++  goto out;
++ }
+  len += sysfs_emit_at(buf, len,
+   "state=captured reason=%s boottime_ns=%llu page=%d physical_peb=%d result=%d command=%d\n"
+   "clock_hz=%lu ecc_failed_before=%u ecc_corrected_before=%u observed_magic=%08x\n"
+-  "status_valid=%u codewords=%u bam_ce=%u cmd_sgl=%u rx_sgl=%u tx_sgl=%u sts_sgl=%u\n"
+-  "features_after_erased_check A0=%d B0=%d C0=%d (-61=not_read) features_complete=%u capture=ram_only clock_source=cached_setup regs_available=0 dma_status_queried=0 features_queried=0\n",
+-  d.reason, d.ns, d.page, d.page / 64, d.result, d.command,
+-  d.hz, d.failed, d.corrected, d.header,
+-  d.status_valid, d.codewords, d.ce, d.cmd_sgl, d.rx_sgl, d.tx_sgl, d.sts_sgl,
+-  d.feature[0], d.feature[1], d.feature[2], d.features_complete);
+- for (i = 0; i < MIAMI_DIAG_REGS; i++)
+-  len += sysfs_emit_at(buf, len, "reg[%u]=%08x available=0\n", i, d.regs[i]);
++  "status_valid=%u cws=%u bam=%u/%u/%u/%u/%u capture=ram_only clock=cached_setup regs_available=0 features_queried=0 dma_status_queried=0\n",
++  d->reason, d->ns, d->page, d->page / 64, d->result, d->command,
++  d->hz, d->failed, d->corrected, d->header, d->status_valid, d->codewords,
++  d->ce, d->cmd_sgl, d->rx_sgl, d->tx_sgl, d->sts_sgl);
+  for (i = 0; i < MIAMI_DIAG_CWS; i++)
+-  len += sysfs_emit_at(buf, len, "cw[%u] flash=%08x buffer=%08x erased=%08x\n",
+-                      i, d.status[3*i], d.status[3*i+1], d.status[3*i+2]);
+- for (i = 0; i < MIAMI_DIAG_CWS; i++)
+-  len += sysfs_emit_at(buf, len, "page_scope_cw[%u] flash=%08x buffer=%08x erased=%08x\n",
+-                      i, d.page_scope_status[3*i], d.page_scope_status[3*i+1], d.page_scope_status[3*i+2]);
+- for (i = 0; i < 4; i++)
+-  len += sysfs_emit_at(buf, len, "dma[%u] cookie=%d state=%d (-61=not_queried)\n",
+-                      i, d.dma_cookie[i], d.dma_state[i]);
++  len += sysfs_emit_at(buf, len, "cw%u=%08x/%08x/%08x scope=%08x/%08x/%08x\n", i,
++   d->status[3*i], d->status[3*i+1], d->status[3*i+2],
++   d->page_scope_status[3*i], d->page_scope_status[3*i+1], d->page_scope_status[3*i+2]);
++ len += sysfs_emit_at(buf, len, "dma_cookies=%d/%d/%d/%d\nprobe_trace:\n%s"
++  "probe_pending=%s overflow=%u\npost ok=%llu corr=%llu fail=%llu\n",
++  d->dma_cookie[0], d->dma_cookie[1], d->dma_cookie[2], d->dma_cookie[3],
++  n->miami_probe_trace, n->miami_probe_pending, n->miami_probe_trace_overflow,
++  n->miami_probe_ok, n->miami_probe_corr, n->miami_probe_fail);
++out:
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
+  return len;
+ }
+ static DEVICE_ATTR_RO(miami_first_failure);
++/* Opt-in one-shot native bench hook; root-only, never armed by startup. */
++static ssize_t miami_probe_test_store(struct device *dev,
++                                      struct device_attribute *attr,
++                                      const char *buf, size_t count)
++{
++ struct qcom_nand_controller *n = dev_get_drvdata(dev);
++ const unsigned int pebs[] = { 6, 7, 255, 256, 774, 775, 1023, 1024, 1025, 1181 };
++ unsigned long flags;
++ unsigned int page, i;
++ int ret;
++
++ ret = kstrtouint(buf, 0, &page);
++ if (ret) return ret;
++ if (page % 64) return -EINVAL;
++ spin_lock_irqsave(&n->miami_diag_lock, flags);
++ ret = -EBUSY;
++ if (!n->miami_diag_enabled || !n->miami_probe_baseline_valid ||
++     n->miami_diag_claimed || n->miami_probe_claimed ||
++     n->miami_probe_test_pending || n->miami_dma_unsafe) goto out;
++ ret = -EINVAL;
++ for (i = 0; i < ARRAY_SIZE(pebs); i++) {
++  if (page / 64 != pebs[i] || !(n->miami_diag_seen & BIT(i))) continue;
++  n->miami_probe_test_page = page;
++  n->miami_probe_test_pending = true;
++  ret = 0;
++  break;
++ }
++out:
++ spin_unlock_irqrestore(&n->miami_diag_lock, flags);
++ if (ret) return ret;
++ return count;
++}
++static DEVICE_ATTR_WO(miami_probe_test);
++
+ 
+ static int qcom_nandc_probe(struct platform_device *pdev)
+ {
+@@ -4771,11 +5099,32 @@
+ 			    host->chip.ecc.strength != 8 || host->chip.ecc.size != 512 ||
+ 			    host->chip.ecc.steps != MIAMI_DIAG_CWS)
+ 				continue;
++   INIT_DELAYED_WORK(&nandc->miami_probe_work, miami_probe_post_work);
++   ret = devm_add_action_or_reset(dev, miami_probe_cancel, nandc);
++   if (ret) return ret;
++   nandc->miami_probe_buffer = devm_kmalloc(dev, m->writesize, GFP_KERNEL);
++   ret = nandc->miami_dma_unsafe ? -EAGAIN :
++    qcom_serial_get_feature(nandc, host, 0xa0);
++   if (ret >= 0) {
++    nandc->miami_probe_boot_a0 = (ret >> 8) & 0xff;
++    ret = qcom_serial_get_feature(nandc, host, 0xb0);
++    if (ret >= 0) {
++     nandc->miami_probe_boot_b0 = (ret >> 8) & 0xff;
++     nandc->miami_probe_baseline_valid =
++      nandc->miami_probe_boot_b0 == 0x01 && !nandc->miami_dma_unsafe;
++    }
++   }
++   printk(KERN_ERR "MIAMI_PROBE healthy A0=%02x B0=%02x valid=%u ret=%d\n",
++    nandc->miami_probe_boot_a0, nandc->miami_probe_boot_b0,
++    nandc->miami_probe_baseline_valid, ret);
+ 			ret = device_create_file(dev, &dev_attr_miami_first_failure);
+ 			if (ret)
+ 				dev_warn(dev, "Miami NAND diagnostics unavailable: %d\n", ret);
+-			else
+-				nandc->miami_diag_enabled = true;
++   else {
++    nandc->miami_diag_enabled = true;
++    ret = device_create_file(dev, &dev_attr_miami_probe_test);
++    if (ret) dev_warn(dev, "Miami probe bench hook unavailable: %d\n", ret);
++   }
+ 			break;
+ 		}
+ 	}
+@@ -4818,8 +5167,10 @@
+ 	struct nand_chip *chip;
+ 	int ret;
+ 
+-	if (nandc->miami_diag_enabled)
++	if (nandc->miami_diag_enabled) {
+ 		device_remove_file(&pdev->dev, &dev_attr_miami_first_failure);
++		device_remove_file(&pdev->dev, &dev_attr_miami_probe_test);
++	}
+ 	list_for_each_entry(host, &nandc->host_list, node) {
+ 		chip = &host->chip;
+ 		ret = mtd_device_unregister(nand_to_mtd(chip));

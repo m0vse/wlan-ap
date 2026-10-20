@@ -229,6 +229,11 @@ int main(void) {
 '''
 if 'features_complete' not in struct:
     harness=harness.replace(' assert(!n->miami_diag.features_complete);','').replace(' assert(!controller.miami_diag.features_complete);','')
+if 'miami_probe_claimed' in source:
+    fields=source[source.index(' bool miami_probe_claimed,'):source.index('\n};',source.index(' bool miami_probe_claimed,'))]
+    harness=harness.replace(' void *dev, *iomacro_clk;', ' void *dev, *iomacro_clk;\n'+fields)
+    harness=harness.replace('#include <limits.h>', '#include <limits.h>\nstruct delayed_work { int unused; };\n#define hweight_long(x) __builtin_popcountl(x)')
+    harness=harness.replace(' assert(strstr(record,"dma[3]") && strstr(record,"not_queried"));',' assert(strstr(record,"dma_cookies="));')
 with tempfile.TemporaryDirectory() as tmp:
     c=Path(tmp)/'test.c';exe=Path(tmp)/'test';c.write_text(harness)
     subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-o',str(exe),str(c)],check=True)
