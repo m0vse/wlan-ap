@@ -234,6 +234,8 @@ if 'miami_probe_claimed' in source:
     harness=harness.replace(' void *dev, *iomacro_clk;', ' void *dev, *iomacro_clk;\n'+fields)
     harness=harness.replace('#include <limits.h>', '#include <limits.h>\nstruct delayed_work { int unused; };\n#define hweight_long(x) __builtin_popcountl(x)')
     harness=harness.replace(' assert(strstr(record,"dma[3]") && strstr(record,"not_queried"));',' assert(strstr(record,"dma_cookies="));')
+if 'miami_probe_inject(host, page);' in function('parse_read_errors'):
+    harness=harness.replace('static int parse_read_errors(', 'static void miami_probe_inject(struct qcom_nand_host *h,int p){(void)h;(void)p;}\nstatic int parse_read_errors(',1)
 with tempfile.TemporaryDirectory() as tmp:
     c=Path(tmp)/'test.c';exe=Path(tmp)/'test';c.write_text(harness)
     subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-o',str(exe),str(c)],check=True)

@@ -9,7 +9,7 @@ pre=r'''
 #include <errno.h>
 struct nand_ecc_ctrl {int steps;};struct nand_chip {struct nand_ecc_ctrl ecc;};
 struct qcom_nand_host {struct nand_chip chip;bool use_ecc;};
-struct qcom_nand_controller {void *dev;int miami_command_result,buf_count;};
+struct qcom_nand_controller {void *dev;int miami_command_result,buf_count;bool miami_probe_active;};
 static struct qcom_nand_controller controller;static struct qcom_nand_host host;
 static int build_error,submit_error,post_calls,free_calls;
 #define NAND_CMD_RESET 1
@@ -34,7 +34,7 @@ static void set_address(struct qcom_nand_host *h,int c,int p){(void)h;(void)c;(v
 static void update_rw_regs(struct qcom_nand_host *h,int s,bool e,int c){(void)h;(void)s;(void)e;(void)c;}
 static int submit_descs(struct qcom_nand_controller *n){(void)n;return submit_error;}
 static void free_descs(struct qcom_nand_controller *n){(void)n;free_calls++;}
-static void post_command(struct qcom_nand_host *h,unsigned int c){(void)h;(void)c;post_calls++;}
+static void post_command(struct qcom_nand_host *h,unsigned int c){(void)h;(void)c;assert(!(controller.miami_probe_active&&submit_error));post_calls++;}
 '''
 post=r'''
 int main(void){
@@ -43,10 +43,13 @@ int main(void){
   assert(controller.miami_command_result==-ENOMEM&&post_calls==0&&free_calls==1);
   build_error=0;submit_error=-ETIMEDOUT;post_calls=free_calls=0;qcom_nandc_command(&host.chip,cmd,0,0);
   assert(controller.miami_command_result==-ETIMEDOUT&&post_calls==1&&free_calls==1);
+  controller.miami_probe_active=true;post_calls=free_calls=0;qcom_nandc_command(&host.chip,cmd,0,0);
+  assert(controller.miami_command_result==-ETIMEDOUT&&post_calls==0&&free_calls==1);
+  controller.miami_probe_active=false;
   submit_error=0;post_calls=free_calls=0;qcom_nandc_command(&host.chip,cmd,0,0);
   assert(controller.miami_command_result==0&&post_calls==1&&free_calls==1);
  }
- puts("PASS actual void READ-ID/RESET helper retains descriptor-build/submission errors and existing cleanup/post-command semantics");
+ puts("PASS actual void READ-ID/RESET helper retains descriptor-build/submission errors and normal cleanup/post-command semantics; optional failed-submit post is poisoned");
 }
 '''
 with tempfile.TemporaryDirectory()as tmp:

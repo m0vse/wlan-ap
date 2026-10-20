@@ -273,3 +273,39 @@ when cleanup-action or private-buffer allocation fails; those failures disable
 probe commands, timer work and the bench hook for the boot. Snapshot and bench
 attribute failures also return normally. Native tests execute each allocation
 and attribute failure and the healthy nonzero-A0/verified-B0 setup path.
+
+## 20.4 optional probe DMA ownership
+
+
+The new measurement, not the original NAND fault, is the scope of this audit.
+
+| Access | Completion and ownership before CPU inspection |
+| --- | --- |
+| READ ID | Existing qcom_nandc_command waits for completion; READ-ID post_command calls nandc_read_buffer_sync(true) before copying ID bytes. The probe checks cached command error before trusting ID. During the optional probe only, a failed submit now skips legacy post_command entirely, so it cannot synchronize/copy an incomplete READ-ID DMA buffer. Normal helper semantics are retained. |
+| GET A0/B0/C0 | Existing qcom_serial_get_feature waits, cleans descriptors, synchronizes the register buffer for CPU, then returns its value. No new direct MMIO query. |
+| RESET result | Only after a successful completed RESET, the probe now calls nandc_read_buffer_sync(true) before qpic_serial_check_status. A failed/timed-out command skips both the sync and inspection. |
+| SET A0/B0 | Existing qcom_serial_set_feature waits, cleans descriptors, synchronizes for CPU, then checks completed status. Readback uses the existing synchronized GET helper. |
+| ECC page data | Private boot-allocated buffer is mapped and unmapped by existing read_page_ecc SG DMA; existing descriptor cleanup makes completed page data CPU accessible. Failed/incomplete DMA does not expose data/status as valid. |
+| ECC status and synthetic injection | parse_read_errors performs its existing register-buffer CPU synchronization first. Only then can the explicitly armed named reader change cached ECC status. The parser consumes that CPU-owned status before any subsequent transaction. The disabled hook returns without altering anything. |
+| First-failure cache/export | Existing snapshot/publisher remain RAM-only and precede probe commands. Valid statuses are copied after the parser's CPU synchronization; transport failure has status_valid=false and does not inspect pending DMA register data. |
+| Post counters/sysfs/logging | CPU RAM only; no NAND access, DMA provider query, reset, allocation or clock query. |
+
+The normal read_page_ecc/page-scope implementation and normal helper DMA cleanup
+are retained, not redesigned. The probe never claims that free_descs alone drains
+a timed-out transfer; it skips further optional commands when unsafe DMA is
+cached and returns the original read result. The original bounded completion
+wait is retained. This is not a correction to all pre-existing DMA behavior.
+
+The native fixture now has separate device-visible status and cached CPU status.
+CPU synchronization overwrites the cached copy with device status. Before RESET,
+a stale cached feature value can therefore look like a flash error unless the
+new RESET inspection synchronizes. The old ordering is an expected failing
+negative. A second negative fixes RESET only but retains pre-parser injection;
+the parser synchronization overwrites that fake ECC status, and the bench path
+fails to capture it. The corrected source passes both positive cache-ownership
+controls and all earlier original-error/once/timeout/allocation/sysfs controls.
+A pending-transfer guard rejects any attempted CPU synchronization after a
+failed/timed-out command. These are source-path DMA-boundary models, not a
+reproduced NAND lockup or live hardware acceptance.
+
+CMD/data/status descriptor preparation already returns errors before submission; no new early cookie-return or cancellation path is added. The actual void-helper fixture independently verifies both optional failed-submit post suppression and unchanged normal failed-submit post behavior.
