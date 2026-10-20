@@ -399,7 +399,7 @@
  static bool config_buf_bit(struct mtd_info *mtd, struct qcom_nand_host *host, u8 *pos)
  {
  	int i, ret;
-@@ -4622,42 +4919,73 @@
+@@ -4622,42 +4919,118 @@
                                          struct device_attribute *attr, char *buf)
  {
   struct qcom_nand_controller *n = dev_get_drvdata(dev);
@@ -494,19 +494,28 @@
 +}
 +static DEVICE_ATTR_WO(miami_probe_test);
 +
- 
- static int qcom_nandc_probe(struct platform_device *pdev)
- {
-@@ -4771,11 +5099,32 @@
- 			    host->chip.ecc.strength != 8 || host->chip.ecc.size != 512 ||
- 			    host->chip.ecc.steps != MIAMI_DIAG_CWS)
- 				continue;
++
++static void miami_probe_setup(struct qcom_nand_controller *nandc,
++                              struct qcom_nand_host *host, struct mtd_info *m)
++{
++ struct device *dev = nandc->dev;
++ int ret;
++
 +   INIT_DELAYED_WORK(&nandc->miami_probe_work, miami_probe_post_work);
 +   ret = devm_add_action_or_reset(dev, miami_probe_cancel, nandc);
-+   if (ret) return ret;
++   if (ret) {
++    nandc->miami_probe_claimed = true;
++    printk(KERN_ERR "MIAMI_PROBE setup unavailable cleanup=%d; snapshot remains enabled\n", ret);
++    goto snapshot;
++   }
 +   nandc->miami_probe_buffer = devm_kmalloc(dev, m->writesize, GFP_KERNEL);
-+   ret = nandc->miami_dma_unsafe ? -EAGAIN :
-+    qcom_serial_get_feature(nandc, host, 0xa0);
++   if (!nandc->miami_probe_buffer || nandc->miami_dma_unsafe) {
++    nandc->miami_probe_claimed = true;
++    printk(KERN_ERR "MIAMI_PROBE setup unavailable buffer=%u dma_unsafe=%u; snapshot remains enabled\n",
++     !!nandc->miami_probe_buffer, nandc->miami_dma_unsafe);
++    goto snapshot;
++   }
++   ret = qcom_serial_get_feature(nandc, host, 0xa0);
 +   if (ret >= 0) {
 +    nandc->miami_probe_boot_a0 = (ret >> 8) & 0xff;
 +    ret = qcom_serial_get_feature(nandc, host, 0xb0);
@@ -519,20 +528,34 @@
 +   printk(KERN_ERR "MIAMI_PROBE healthy A0=%02x B0=%02x valid=%u ret=%d\n",
 +    nandc->miami_probe_boot_a0, nandc->miami_probe_boot_b0,
 +    nandc->miami_probe_baseline_valid, ret);
- 			ret = device_create_file(dev, &dev_attr_miami_first_failure);
- 			if (ret)
- 				dev_warn(dev, "Miami NAND diagnostics unavailable: %d\n", ret);
++snapshot:
++ ret = device_create_file(dev, &dev_attr_miami_first_failure);
++ if (ret) {
++  dev_warn(dev, "Miami NAND diagnostics unavailable: %d\n", ret);
++  return;
++ }
++ nandc->miami_diag_enabled = true;
++ if (nandc->miami_probe_claimed || !nandc->miami_probe_baseline_valid) return;
++ ret = device_create_file(dev, &dev_attr_miami_probe_test);
++ if (ret) dev_warn(dev, "Miami probe bench hook unavailable: %d\n", ret);
++}
+ 
+ static int qcom_nandc_probe(struct platform_device *pdev)
+ {
+@@ -4771,11 +5144,7 @@
+ 			    host->chip.ecc.strength != 8 || host->chip.ecc.size != 512 ||
+ 			    host->chip.ecc.steps != MIAMI_DIAG_CWS)
+ 				continue;
+-			ret = device_create_file(dev, &dev_attr_miami_first_failure);
+-			if (ret)
+-				dev_warn(dev, "Miami NAND diagnostics unavailable: %d\n", ret);
 -			else
 -				nandc->miami_diag_enabled = true;
-+   else {
-+    nandc->miami_diag_enabled = true;
-+    ret = device_create_file(dev, &dev_attr_miami_probe_test);
-+    if (ret) dev_warn(dev, "Miami probe bench hook unavailable: %d\n", ret);
-+   }
++   miami_probe_setup(nandc, host, m);
  			break;
  		}
  	}
-@@ -4818,8 +5167,10 @@
+@@ -4818,8 +5187,10 @@
  	struct nand_chip *chip;
  	int ret;
  

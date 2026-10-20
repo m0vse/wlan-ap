@@ -266,3 +266,10 @@ these two reads. The sequence does not contain a read between RESET and SET,
 so it cannot distinguish RESET-only success from SET-dependent success. A reset
 can also clear hardware state; failure can originate in the controller/DMA path.
 Neither outcome alone proves software versus physical/power root cause.
+
+Optional setup failures never propagate a NAND-driver startup error. The
+actual void setup helper attempts the original RAM-snapshot attribute even
+when cleanup-action or private-buffer allocation fails; those failures disable
+probe commands, timer work and the bench hook for the boot. Snapshot and bench
+attribute failures also return normally. Native tests execute each allocation
+and attribute failure and the healthy nonzero-A0/verified-B0 setup path.
