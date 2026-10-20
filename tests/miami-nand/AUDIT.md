@@ -163,3 +163,23 @@ the released printf path splits under procd while succeeding without the preload
 and requires a single complete write for all seven fixed attributes. Existing
 launcher readiness/disabled controls remain applicable. Hardware reboot evidence
 is kept privately; this source test does not itself establish boot acceptance.
+
+### 20 October: RAM-only first-failure capture
+
+A real captured external abort occurred in miami_diag_take at the direct
+NAND_VERSION MMIO read (offset0xf08), during read-error handling. This
+explains the diagnostic panic/reset, not the original NAND lockup.
+
+Patch1008 removes all diagnostic-time register reads, clock-provider queries,
+DMA-provider status calls and optional feature commands. Existing RAM status,
+ECC counters, command, cookies and BAM positions remain available; the clock
+is cached from existing normal setup queries. Unavailable fields are explicitly
+labelled and never represented as measured zero values. Normal NAND operations
+and erased-page error handling are unchanged.
+
+The native regression now compiles the actual snapshot function as well as
+the actual publisher, header observer, error parser and sysfs formatter. All
+hardware/provider hooks are poisoned. The released snapshot is a failing
+negative control. The worst-case formatted record is1662bytes, below the
+existing2047byte storage-probe and4095byte exporter limits. Synthetic tests
+do not reproduce or establish a cure for the original NAND failure.
