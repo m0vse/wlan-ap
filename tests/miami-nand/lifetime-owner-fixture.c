@@ -121,8 +121,8 @@ static u32 readl_relaxed(void *a){(void)a;assert(!qpic_poisoned);hardware_calls+
 static void devm_free_irq(struct device *d,int irq,void *data){(void)d;(void)irq;(void)data;assert(!qpic_poisoned);irq_count--;}
 static int bam_dma_terminate_all(struct dma_chan *c){(void)c;assert(!qpic_poisoned);hardware_calls++;return 0;}
 static void tasklet_kill(void *t){(void)t;assert(!qpic_poisoned);}
-static void *fifo_allocations[64];static int fifo_count,fifo_fail;
-static void *dma_alloc_wc(struct device *d,unsigned long size,uintptr_t *phys,int flags){(void)flags;if(fifo_fail)return NULL;assert(d->is_owner);void *p=calloc(1,size);assert(p&&fifo_count<64);fifo_allocations[fifo_count++]=p;*phys=(uintptr_t)p;return p;}
+static void *fifo_allocations[64];static int fifo_count,fifo_fail,fifo_poison;
+static void *dma_alloc_wc(struct device *d,unsigned long size,uintptr_t *phys,int flags){(void)flags;if(fifo_fail)return NULL;assert(d->is_owner);void *p=calloc(1,size);assert(p&&fifo_count<64);fifo_allocations[fifo_count++]=p;*phys=(uintptr_t)p;if(fifo_poison)qcom_qpic_lifetime_poison(&qpic_lifetimes[1]);return p;}
 static void dma_free_wc(struct device *d,unsigned long size,void *p,uintptr_t phys){(void)d;(void)size;(void)phys;assert(!qpic_poisoned);for(int i=0;i<fifo_count;i++)if(fifo_allocations[i]==p){free(p);fifo_allocations[i]=NULL;freed_objects++;return;}assert(!p);}
 static void poweroff_fifos(void){for(int i=0;i<fifo_count;i++)free(fifo_allocations[i]);fifo_count=0;}
 typedef int irqreturn_t;
@@ -154,11 +154,12 @@ static void *channel_alloc_race(void *arg){
  pthread_mutex_unlock(&r->lock);if(r->acquired)qpic_lifetime_put(r->life);return NULL;
 }
 int main(void){
- for(int mode=0;mode<3;mode++){
+ for(int mode=0;mode<5;mode++){
   struct platform_device c,p;prepare_platform(&c,false);prepare_platform(&p,true);fail_at=0;
   struct qcom_qpic_lifetime *cl=qcom_qpic_lifetime_create(&c,false),*pl=qcom_qpic_lifetime_create(&p,true);assert(!IS_ERR(cl)&&!IS_ERR(pl));
   struct bam_device b={.dev=&p.dev,.dma_dev=pl->owner,.lifetime=pl};struct bam_chan channel={.bdev=&b};init_list(&channel.desc_list);
   if(mode==0){fifo_fail=1;assert(bam_alloc_chan(&channel.vc.chan)==-ENOMEM&&pl->users==0);fifo_fail=0;}
+  if(mode>=3){fifo_poison=1;b.powered_remotely=mode==4;int hw=hardware_calls;assert(bam_alloc_chan(&channel.vc.chan)==-EIO);fifo_poison=0;assert(pl->users==1&&channel.fifo_virt&&b.active_channels==0&&hardware_calls==hw);int fc=fifo_count;for(int repeat=0;repeat<100;repeat++)assert(bam_alloc_chan(&channel.vc.chan)==-EIO&&fifo_count==fc&&pl->users==1&&hardware_calls==hw);destroy_test_devices(&c,&p);continue;}
   assert(bam_alloc_chan(&channel.vc.chan)==0&&pl->users==1&&channel.fifo_virt&&b.active_channels==1);
   if(mode==1){qcom_qpic_lifetime_poison(cl);void *old=channel.fifo_virt;bam_free_chan(&channel.vc.chan);assert(channel.fifo_virt==old&&pl->users==1);assert(bam_alloc_chan(&channel.vc.chan)==-EIO);}
   else{bam_free_chan(&channel.vc.chan);assert(pl->users==0&&!channel.fifo_virt&&b.active_channels==0);}

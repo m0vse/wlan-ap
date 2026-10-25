@@ -1,0 +1,14 @@
+--- a/drivers/dma/qcom/bam_dma.c
++++ b/drivers/dma/qcom/bam_dma.c
+@@ -780,6 +780,11 @@
+ 		return -ENOMEM;
+ 	}
+ 
++	/* Allocation can sleep while provider-first removal poisons the pair.
++	 * Keep the independently owned FIFO/ref, but do not report success or
++	 * enter a remotely powered reset path after observing that poison. */
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return -EIO;
+ 	if (bdev->active_channels++ == 0 && bdev->powered_remotely)
+ 		bam_reset(bdev);
+ 
