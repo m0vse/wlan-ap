@@ -1,0 +1,299 @@
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -340,9 +340,6 @@
+  * @bam_ce - the array of BAM command elements
+  * @cmd_sgl - sgl for NAND BAM command pipe
+  * @data_sgl - sgl for NAND BAM consumer/producer pipe
+- * @last_data_desc - last DMA desc in data channel (tx/rx).
+- * @last_cmd_desc - last DMA desc in command channel.
+- * @txn_done - completion for NAND transfer.
+  * @bam_ce_pos - the index in bam_ce which is available for next sgl
+  * @bam_ce_start - the index in bam_ce which marks the start position ce
+  *		   for current sgl. It will be used for size calculation
+@@ -353,17 +350,13 @@
+  * @tx_sgl_start - start index in data sgl for tx.
+  * @rx_sgl_pos - current index in data sgl for rx.
+  * @rx_sgl_start - start index in data sgl for rx.
+- * @wait_second_completion - wait for second DMA desc completion before making
+- *			     the NAND transfer completion.
+  */
+ struct bam_transaction {
++	int prepare_error;
+ 	struct bam_cmd_element *bam_ce;
+ 	struct scatterlist *cmd_sgl;
+ 	struct scatterlist *data_sgl;
+ 	struct scatterlist *sts_sgl;
+-	struct dma_async_tx_descriptor *last_data_desc;
+-	struct dma_async_tx_descriptor *last_cmd_desc;
+-	struct completion txn_done;
+ 	u32 bam_ce_pos;
+ 	u32 bam_ce_start;
+ 	u32 cmd_sgl_pos;
+@@ -374,7 +367,6 @@
+ 	u32 rx_sgl_start;
+ 	u32 sts_sgl_pos;
+ 	u32 sts_sgl_start;
+-	bool wait_second_completion;
+ };
+ 
+ /*
+@@ -389,6 +381,7 @@
+  * @dir - DMA transfer direction
+  */
+ struct desc_info {
++	struct completion done;
+ 	struct dma_async_tx_descriptor *dma_desc;
+ 	struct list_head node;
+ 
+@@ -741,7 +734,6 @@
+ 		bam_txn->sts_sgl = bam_txn_buf;
+ 	}
+ 
+-	init_completion(&bam_txn->txn_done);
+ 
+ 	return bam_txn;
+ }
+@@ -754,6 +746,7 @@
+ 	if (!nandc->props->is_bam)
+ 		return;
+ 
++	bam_txn->prepare_error = 0;
+ 	bam_txn->bam_ce_pos = 0;
+ 	bam_txn->bam_ce_start = 0;
+ 	bam_txn->cmd_sgl_pos = 0;
+@@ -762,8 +755,6 @@
+ 	bam_txn->tx_sgl_start = 0;
+ 	bam_txn->rx_sgl_pos = 0;
+ 	bam_txn->rx_sgl_start = 0;
+-	bam_txn->last_data_desc = NULL;
+-	bam_txn->wait_second_completion = false;
+ 
+ 	sg_init_table(bam_txn->cmd_sgl, nandc->max_cwperpage *
+ 		      QPIC_PER_CW_CMD_SGL);
+@@ -777,25 +768,14 @@
+ 			      QPIC_PER_CW_STS_SGL);
+ 	}
+ 
+-	reinit_completion(&bam_txn->txn_done);
+ }
+ 
+ /* Callback for DMA descriptor completion */
+ static void qpic_bam_dma_done(void *data)
+ {
+-	struct bam_transaction *bam_txn = data;
+-
+-	/*
+-	 * In case of data transfer with NAND, 2 callbacks will be generated.
+-	 * One for command channel and another one for data channel.
+-	 * If current transaction has data descriptors
+-	 * (i.e. wait_second_completion is true), then set this to false
+-	 * and wait for second DMA descriptor completion.
+-	 */
+-	if (bam_txn->wait_second_completion)
+-		bam_txn->wait_second_completion = false;
+-	else
+-		complete(&bam_txn->txn_done);
++	struct desc_info *desc = data;
++
++	complete(&desc->done);
+ }
+ 
+ static inline struct qcom_nand_host *to_qcom_nand_host(struct nand_chip *chip)
+@@ -1029,7 +1009,7 @@
+  * for BAM. This descriptor will be added in the NAND DMA descriptor queue
+  * which will be submitted to DMA engine.
+  */
+-static int prepare_bam_async_desc(struct qcom_nand_controller *nandc,
++static int __prepare_bam_async_desc(struct qcom_nand_controller *nandc,
+ 				  struct dma_chan *chan,
+ 				  unsigned long flags)
+ {
+@@ -1094,15 +1074,28 @@
+ 
+ 	desc->dma_desc = dma_desc;
+ 
+-	/* update last data/command descriptor */
+-	if (chan == nandc->cmd_chan)
+-		bam_txn->last_cmd_desc = dma_desc;
+-	else
+-		bam_txn->last_data_desc = dma_desc;
++	/* Each participating descriptor owns an independent completion.
++	 * Page-scope STS must never replace RX as the data completion. */
++	init_completion(&desc->done);
++	dma_desc->callback = qpic_bam_dma_done;
++	dma_desc->callback_param = desc;
+ 
+ 	list_add_tail(&desc->node, &nandc->desc_list);
+ 
+ 	return 0;
++}
++
++/* Some legacy queue-building callers cannot propagate an immediate error.
++ * Latch the first failure so submit_descs never issues a partial transaction. */
++static int prepare_bam_async_desc(struct qcom_nand_controller *nandc,
++                                  struct dma_chan *chan,
++                                  unsigned long flags)
++{
++	struct bam_transaction *txn = nandc->bam_txn;
++
++	if (!txn->prepare_error)
++		txn->prepare_error = __prepare_bam_async_desc(nandc, chan, flags);
++	return txn->prepare_error;
+ }
+ 
+ /*
+@@ -1697,39 +1690,50 @@
+ 	struct desc_info *desc;
+ 	dma_cookie_t cookie = 0;
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+-	int r;
++	int r, discard_error = 0;
++	unsigned long remaining = QPIC_NAND_COMPLETION_TIMEOUT;
+ 
+ 	if (nandc->props->is_bam) {
++		if (bam_txn->prepare_error) {
++			r = bam_txn->prepare_error;
++			goto discard_unissued;
++		}
+ 		if (bam_txn->rx_sgl_pos > bam_txn->rx_sgl_start) {
+ 			r = prepare_bam_async_desc(nandc, nandc->rx_chan, 0);
+ 			if (r)
+-				return r;
++				goto discard_unissued;
+ 		}
+ 
+ 		if (bam_txn->tx_sgl_pos > bam_txn->tx_sgl_start) {
+ 			r = prepare_bam_async_desc(nandc, nandc->tx_chan,
+ 						   DMA_PREP_INTERRUPT);
+ 			if (r)
+-				return r;
++				goto discard_unissued;
+ 		}
+ 
+ 		if (bam_txn->cmd_sgl_pos > bam_txn->cmd_sgl_start) {
+ 			r = prepare_bam_async_desc(nandc, nandc->cmd_chan,
+ 						   DMA_PREP_CMD);
+ 			if (r)
+-				return r;
++				goto discard_unissued;
+ 		}
+ 		if (nandc->props->qpic_v2) {
+ 			if (bam_txn->sts_sgl_pos > bam_txn->sts_sgl_start) {
+ 				r = prepare_bam_async_desc(nandc, nandc->sts_chan, 0);
+ 				if (r)
+-					return r;
++					goto discard_unissued;
+ 			}
+ 		}
+ 	}
+ 
+ 	list_for_each_entry(desc, &nandc->desc_list, node) {
+ 		cookie = dmaengine_submit(desc->dma_desc);
++		if (dma_submit_error(cookie)) {
++			r = cookie;
++			if (nandc->props->is_bam)
++				goto discard_unissued;
++			return r;
++		}
+ 		if (nandc->miami_diag_enabled) {
+ 			struct dma_chan *c = desc->dma_desc->chan;
+ 			unsigned int slot = c == nandc->cmd_chan ? 0 :
+@@ -1739,13 +1743,6 @@
+ 	}
+ 
+ 	if (nandc->props->is_bam) {
+-		bam_txn->last_cmd_desc->callback = qpic_bam_dma_done;
+-		bam_txn->last_cmd_desc->callback_param = bam_txn;
+-		if (bam_txn->last_data_desc) {
+-			bam_txn->last_data_desc->callback = qpic_bam_dma_done;
+-			bam_txn->last_data_desc->callback_param = bam_txn;
+-			bam_txn->wait_second_completion = true;
+-		}
+ 
+ 		dma_async_issue_pending(nandc->tx_chan);
+ 		dma_async_issue_pending(nandc->rx_chan);
+@@ -1753,22 +1750,53 @@
+ 		if (nandc->props->qpic_v2)
+ 			dma_async_issue_pending(nandc->sts_chan);
+ 
+-		if (!wait_for_completion_timeout(&bam_txn->txn_done,
+-                                                 QPIC_NAND_COMPLETION_TIMEOUT)) {
+-   nandc->miami_dma_unsafe = true;
+-   return -ETIMEDOUT;
+-  }
++		/* All data, command and page-status DMA must complete before
++		 * any caller unmaps its scatterlists or inspects the buffers.
++		 * Carry the remaining budget across waits; do not multiply the
++		 * normal transport timeout by the number of descriptors. */
++		list_for_each_entry(desc, &nandc->desc_list, node) {
++			remaining = wait_for_completion_timeout(&desc->done, remaining);
++			if (!remaining) {
++				/* Unchanged issued-timeout limitation: the provider has
++				 * no verified QPIC quiescence path. This latch blocks
++				 * optional probing; it does NOT drain or cancel DMA. */
++				nandc->miami_dma_unsafe = true;
++				return -ETIMEDOUT;
++			}
++		}
+ 	} else {
+ 		if (dma_sync_wait(nandc->chan, cookie) != DMA_COMPLETE)
+ 			return -ETIMEDOUT;
+ 	}
+ 
+ 	return 0;
++
++discard_unissued:
++	if (nandc->miami_dma_unsafe)
++		return r;
++	/* No issue_pending has run for this transaction. The previous
++	 * transaction completed every participating descriptor, so only
++	 * software-queued/prepared descriptors are being discarded here.
++	 * Never use this path to terminate an issued/timed-out transaction. */
++	discard_error |= dmaengine_terminate_sync(nandc->tx_chan);
++	discard_error |= dmaengine_terminate_sync(nandc->rx_chan);
++	discard_error |= dmaengine_terminate_sync(nandc->cmd_chan);
++	if (nandc->props->qpic_v2)
++		discard_error |= dmaengine_terminate_sync(nandc->sts_chan);
++	if (discard_error)
++		nandc->miami_dma_unsafe = true;
++	return r;
+ }
+ 
+ static void free_descs(struct qcom_nand_controller *nandc)
+ {
+ 	struct desc_info *desc, *n;
++
++	/* A late callback still owns desc->done. Retain its context/mapping
++	 * on an issued timeout. This does NOT isolate caller buffers or
++	 * establish quiescence; that unresolved path blocks deployment. */
++	if (nandc->props->is_bam && nandc->miami_dma_unsafe)
++		return;
+ 
+ 	list_for_each_entry_safe(desc, n, &nandc->desc_list, node) {
+ 		list_del(&desc->node);
+@@ -2258,6 +2286,8 @@
+ 
+ 	buf = (struct read_stats *)nandc->reg_read_buf;
+ 	nandc_read_buffer_sync(nandc, true);
++	if (nandc->props->qpic_v2 && nandc->props->page_scope)
++		memmove(nandc->reg_read_buf, nandc->status_buf, nandc->sts_buf_size);
+ 	miami_probe_inject(host, page);
+ 
+ 	for (i = 0; i < ecc->steps; i++, buf++) {
+@@ -2414,7 +2444,6 @@
+  int i, ret;
+  struct mtd_info *m = nand_to_mtd(chip);
+  u32 failed_before = m->ecc_stats.failed, corrected_before = m->ecc_stats.corrected;
+-	__le32 *status_buf_start = nandc->status_buf;
+ 	__le32 *status_buf_cw = nandc->status_buf;
+ 
+ 	config_nand_page_read(chip);
+@@ -2495,8 +2524,6 @@
+   if (!nandc->miami_probe_active) miami_probe_run(host);
+ 		return ret;
+ 	}
+-	if (nandc->props->qpic_v2 && nandc->props->page_scope)
+-		memmove(nandc->reg_read_buf, status_buf_start, nandc->sts_buf_size);
+ 
+ 	ret = parse_read_errors(host, data_buf_start, oob_buf_start, page);
+  miami_diag_header(host, data_buf_start, page, ret);

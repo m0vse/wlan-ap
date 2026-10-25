@@ -23,10 +23,10 @@ harness=harness.replace('int cw_data, last_command;', 'int cw_data, last_command
 harness=harness.replace('#include <limits.h>', '#include <limits.h>\n#define KERN_ERR ""\n#define HZ 100')
 harness=harness.replace('struct delayed_work { int unused; };','struct work_struct {int unused;}; struct delayed_work {struct work_struct work;};')
 harness=harness.replace(' void *dev, *iomacro_clk;', ' void *dev, *iomacro_clk;\n unsigned char data_buffer[16];')
-harness=harness.replace('struct qcom_nandc_props { unsigned int dev_cmd_reg_start; };','struct qcom_nandc_props { unsigned int dev_cmd_reg_start; bool is_bam,qpic_v2,page_scope; };')
+harness=harness.replace('struct qcom_nandc_props { unsigned int dev_cmd_reg_start; bool qpic_v2,page_scope; };','struct qcom_nandc_props { unsigned int dev_cmd_reg_start; bool is_bam,qpic_v2,page_scope; };')
 harness=harness.replace(' bool bch_enabled;',' bool bch_enabled, use_ecc, codeword_fixup;')
 harness=harness.replace('struct mtd_info { struct { u32 failed, corrected; } ecc_stats; };','struct mtd_info { unsigned int writesize; struct { u32 failed, corrected; } ecc_stats; };')
-harness=harness.replace(' u32 reg_read_buf[12];',' u32 reg_read_buf[12]; int sts_buf_size;')
+
 harness=harness.replace('static u64 ktime_get_boottime_ns(void) { return 123456789; }','static u64 fake_ns; static u64 ktime_get_boottime_ns(void) { return fake_ns; }')
 harness=harness.replace('#define DMA_COMPLETE 0','#define DMA_COMPLETE 0\n#define hweight_long(x) __builtin_popcountl(x)')
 # Rename the forbidden GET only; snapshot/publisher still must not invoke it.

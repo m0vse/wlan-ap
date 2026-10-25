@@ -48,7 +48,7 @@ static void diagnostic_log(const char *fmt, ...) {
 ''' + struct + '''
 struct dma_chan { int unused; };
 struct bam_transaction { unsigned int bam_ce_pos, cmd_sgl_pos, rx_sgl_pos, tx_sgl_pos, sts_sgl_pos; };
-struct qcom_nandc_props { unsigned int dev_cmd_reg_start; };
+struct qcom_nandc_props { unsigned int dev_cmd_reg_start; bool qpic_v2,page_scope; };
 struct qcom_nand_controller {
  void *dev, *iomacro_clk;
  const struct qcom_nandc_props *props;
@@ -62,7 +62,7 @@ struct qcom_nand_controller {
  unsigned int miami_diag_seen;
  int miami_diag_lock;
  struct miami_nand_diag miami_diag;
- u32 reg_read_buf[12];
+ u32 reg_read_buf[12]; int sts_buf_size;
 };
 struct nand_ecc_ctrl { int steps, size, bytes; unsigned int strength; };
 struct nand_chip { struct nand_ecc_ctrl ecc; };
@@ -140,7 +140,8 @@ static int sysfs_emit_at(char *buf,int at,const char *format,...) {
 #define sysfs_emit(buf,...) sysfs_emit_at(buf,0,__VA_ARGS__)
 ''' + function('miami_first_failure_show').replace('struct device_attribute *attr,','struct device_attribute *attr __attribute__((unused)),') + '\n' + (function('miami_diag_emit')+'\n' if 'static void miami_diag_emit(' in source else '') + function('miami_diag_publish') + '\n' + function('miami_diag_header') + '\n' + function('parse_read_errors') + '''
 static void reset(void) {
- memset(&controller,0,sizeof(controller)); controller.miami_diag_enabled=true;
+ static const struct qcom_nandc_props test_props={0};
+ memset(&controller,0,sizeof(controller)); controller.miami_diag_enabled=true;controller.props=&test_props;
  controller.miami_diag_clock_hz=24000000;controller.max_cwperpage=4;
  feature_calls=feature_error=take_calls=erased_failure=feature_block=0;raw_end_seen=emitted_regs=emitted_cws=emitted_dma=0;memset(&mtd,0,sizeof(mtd));
 }
