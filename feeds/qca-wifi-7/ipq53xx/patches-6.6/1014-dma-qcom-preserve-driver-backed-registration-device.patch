@@ -1,0 +1,38 @@
+--- a/drivers/dma/qcom/bam_dma.c
++++ b/drivers/dma/qcom/bam_dma.c
+@@ -1695,14 +1695,24 @@
+ 		mutex_unlock(&qpic_lifetime_lock);
+ 	}
+ 
+-	/* set max dma segment size */
+-	bdev->common.dev = bdev->dma_dev;
++	/* DMAengine registration requires a driver-backed device. The lifetime
++	 * owner pins this platform device, but independently owns all DMA
++	 * mappings, allocations and devres through bdev->dma_dev. */
++	bdev->common.dev = &pdev->dev;
++	/* Keep segment limits on both identities; platform dma_parms is embedded
++	 * in the pinned platform_device, independently of owner dma_parms. */
+ 	ret = dma_set_max_seg_size(bdev->common.dev, BAM_FIFO_SIZE);
+ 	if (ret) {
+ 		dev_err(bdev->dev, "cannot set maximum segment size\n");
+ 		goto err_bam_channel_exit;
+ 	}
+ 
++	if (lifetime) {
++		ret = dma_set_max_seg_size(bdev->dma_dev, BAM_FIFO_SIZE);
++		if (ret)
++			goto err_bam_channel_exit;
++	}
++
+ 	platform_set_drvdata(pdev, bdev);
+ 
+ 	/* set capabilities */
+@@ -1723,7 +1733,7 @@
+ 	bdev->common.device_terminate_all = bam_dma_terminate_all;
+ 	bdev->common.device_issue_pending = bam_issue_pending;
+ 	bdev->common.device_tx_status = bam_tx_status;
+-	bdev->common.dev = bdev->dma_dev;
++	bdev->common.dev = &pdev->dev;
+ 
+ 	ret = dma_async_device_register(&bdev->common);
+ 	if (ret) {

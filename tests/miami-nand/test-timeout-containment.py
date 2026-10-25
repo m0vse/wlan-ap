@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 parser = argparse.ArgumentParser()
-for argument in ('driver', 'provider', 'driver-core', 'virt-dma'):
+for argument in ('driver', 'provider', 'driver-core', 'virt-dma', 'dma-core'):
     parser.add_argument('--' + argument, type=Path, required=True)
 args = parser.parse_args()
 root = Path(__file__).parent
@@ -27,4 +27,5 @@ run('test-lifetime-owner.py', '--client', args.driver,
     '--provider', args.provider, '--driver-core', args.driver_core)
 run('test-lifetime-negative-controls.py', '--client', args.driver,
     '--provider', args.provider, '--driver-core', args.driver_core)
-print('PASS JOINT SOURCE GATE: caller isolation + actual provider/owner removal and negative controls; hardware acceptance pending')
+run('test-dma-registration.py', '--provider', args.provider, '--dma-core', args.dma_core)
+print('PASS JOINT SOURCE GATE: actual DMA core registration + caller isolation + provider/owner removal and negative controls; hardware acceptance pending')

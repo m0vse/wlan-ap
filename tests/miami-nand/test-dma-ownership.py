@@ -14,6 +14,7 @@ p.add_argument('--require-timeout-contained',action='store_true')
 p.add_argument('--provider',type=pathlib.Path)
 p.add_argument('--driver-core',type=pathlib.Path)
 p.add_argument('--virt-dma',type=pathlib.Path)
+p.add_argument('--dma-core',type=pathlib.Path)
 a=p.parse_args();s=a.driver.read_text()
 if 'static int miami_bounce_sg(' in s:
     if a.expect_unsafe:
@@ -22,8 +23,12 @@ if 'static int miami_bounce_sg(' in s:
     if a.require_timeout_contained:
         if not all((a.provider,a.driver_core,a.virt_dma)):
             p.error('strict candidate gate requires --provider, --driver-core and --virt-dma; caller-only tests cannot satisfy it')
+        dma_core=a.dma_core or a.provider.parent.parent/'dmaengine.c'
+        if not dma_core.is_file():
+            p.error('strict candidate gate requires actual DMA core via --dma-core or the complete kernel tree')
         command=[sys.executable,str(folder/'test-timeout-containment.py'),'--driver',str(a.driver),
-                 '--provider',str(a.provider),'--driver-core',str(a.driver_core),'--virt-dma',str(a.virt_dma)]
+                 '--provider',str(a.provider),'--driver-core',str(a.driver_core),'--virt-dma',str(a.virt_dma),
+                 '--dma-core',str(dma_core)]
     else:
         command=[sys.executable,str(folder/'test-bounce-ownership.py'),'--driver',str(a.driver)]
     subprocess.run(command,check=True)
