@@ -1,0 +1,680 @@
+--- a/drivers/dma/qcom/bam_dma.c
++++ b/drivers/dma/qcom/bam_dma.c
+@@ -37,13 +37,207 @@
+ #include <linux/of_address.h>
+ #include <linux/of_irq.h>
+ #include <linux/of_dma.h>
++#include <linux/of_device.h>
+ #include <linux/circ_buf.h>
+ #include <linux/clk.h>
+ #include <linux/dmaengine.h>
+ #include <linux/pm_runtime.h>
++#include <linux/mutex.h>
++#include <linux/dma/qcom-qpic-lifetime.h>
+ 
+ #include "../dmaengine.h"
+ #include "../virt-dma.h"
++
++/* Only the qualified, built-in X7 QPIC pair uses this lifetime contract.
++ * The two static slots bound retained owners to one client and one provider.
++ * Their root devices have independent DMA masks/range maps and devres lists.
++ * Original platform unbind may complete; it cannot release retained DMA state.
++ */
++struct qcom_qpic_lifetime {
++ struct device *owner;
++ unsigned int users;
++ bool detaching;
++ void (*poison_irq)(void *);
++ void *irq_data;
++ bool irq_disabled;
++};
++static DEFINE_MUTEX(qpic_lifetime_lock);
++static struct qcom_qpic_lifetime qpic_lifetimes[2];
++static bool qpic_poisoned;
++
++struct device *qcom_qpic_lifetime_device(struct qcom_qpic_lifetime *life)
++{
++ return life ? life->owner : NULL;
++}
++EXPORT_SYMBOL_GPL(qcom_qpic_lifetime_device);
++
++bool qcom_qpic_lifetime_poisoned(struct qcom_qpic_lifetime *life)
++{
++ return life && READ_ONCE(qpic_poisoned);
++}
++EXPORT_SYMBOL_GPL(qcom_qpic_lifetime_poisoned);
++
++void qcom_qpic_lifetime_poison(struct qcom_qpic_lifetime *life)
++{
++ struct qcom_qpic_lifetime *provider = &qpic_lifetimes[1];
++ void (*hook)(void *) = NULL;
++ void *data = NULL;
++
++ if (!life)
++  return;
++ mutex_lock(&qpic_lifetime_lock);
++ WRITE_ONCE(qpic_poisoned, true);
++ if (provider->poison_irq && !provider->irq_disabled) {
++  provider->irq_disabled = true;
++  hook = provider->poison_irq;
++  data = provider->irq_data;
++ }
++ mutex_unlock(&qpic_lifetime_lock);
++ /* The callback only disables the Linux IRQ. No QPIC/BAM MMIO, reset,
++  * DMA status query or failed-state clock operation is performed. */
++ if (hook)
++  hook(data);
++}
++EXPORT_SYMBOL_GPL(qcom_qpic_lifetime_poison);
++
++/* Allocation/removal serialization includes in-progress channel allocation. */
++static bool qpic_lifetime_get(struct qcom_qpic_lifetime *life)
++{
++ bool ok = true;
++
++ if (!life)
++  return true;
++ mutex_lock(&qpic_lifetime_lock);
++ if (qpic_poisoned || life->detaching || !life->owner)
++  ok = false;
++ else
++  life->users++;
++ mutex_unlock(&qpic_lifetime_lock);
++ return ok;
++}
++
++static void qpic_lifetime_put(struct qcom_qpic_lifetime *life)
++{
++ if (!life)
++  return;
++ mutex_lock(&qpic_lifetime_lock);
++ WARN_ON(!life->users);
++ if (life->users)
++  life->users--;
++ mutex_unlock(&qpic_lifetime_lock);
++}
++
++bool qcom_qpic_lifetime_detach(struct qcom_qpic_lifetime *life)
++{
++ bool busy;
++
++ if (!life)
++  return false;
++ mutex_lock(&qpic_lifetime_lock);
++ life->detaching = true;
++ busy = life->users != 0;
++ mutex_unlock(&qpic_lifetime_lock);
++ /* Even a healthy provider must retain resources if a client still owns
++  * channels. This covers provider-first removal, not just timeout removal. */
++ if (busy)
++  qcom_qpic_lifetime_poison(life);
++ return qcom_qpic_lifetime_poisoned(life);
++}
++EXPORT_SYMBOL_GPL(qcom_qpic_lifetime_detach);
++
++static void qpic_lifetime_release(void *data)
++{
++ struct qcom_qpic_lifetime *life = data;
++ struct device *owner;
++
++ if (qcom_qpic_lifetime_detach(life))
++  return;
++ mutex_lock(&qpic_lifetime_lock);
++ if (qpic_poisoned || life->users) {
++  mutex_unlock(&qpic_lifetime_lock);
++  qcom_qpic_lifetime_poison(life);
++  return;
++ }
++ owner = life->owner;
++ life->owner = NULL;
++ life->poison_irq = NULL;
++ life->irq_data = NULL;
++ mutex_unlock(&qpic_lifetime_lock);
++ if (owner)
++  root_device_unregister(owner);
++}
++
++static void qpic_lifetime_put_device(void *data)
++{
++ put_device(data);
++}
++
++static void qpic_lifetime_put_node(void *data)
++{
++ of_node_put(data);
++}
++
++struct qcom_qpic_lifetime *
++qcom_qpic_lifetime_create(struct platform_device *pdev, bool provider)
++{
++ struct qcom_qpic_lifetime *life = &qpic_lifetimes[provider ? 1 : 0];
++ struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++ struct device *owner;
++ int ret;
++
++ if (!of_machine_is_compatible("cambiumnetworks,x7-35x") || !res ||
++     res->start != (provider ? 0x07984000 : 0x079b0000))
++  return NULL;
++ if (!IS_BUILTIN(CONFIG_QCOM_BAM_DMA) ||
++     !IS_BUILTIN(CONFIG_MTD_NAND_QCOM) || IS_ENABLED(CONFIG_IOMMU_SUPPORT))
++  return ERR_PTR(-EOPNOTSUPP);
++ mutex_lock(&qpic_lifetime_lock);
++ if (qpic_poisoned || life->owner) {
++  ret = qpic_poisoned ? -EIO : -EBUSY;
++  goto unlock;
++ }
++ owner = root_device_register(provider ? "miami-qpic-bam-owner" :
++                                        "miami-qpic-nand-owner");
++ if (IS_ERR(owner)) {
++  ret = PTR_ERR(owner);
++  goto unlock;
++ }
++ owner->of_node = of_node_get(pdev->dev.of_node);
++ ret = devm_add_action_or_reset(owner, qpic_lifetime_put_node, owner->of_node);
++ if (ret)
++  goto fail_owner;
++ ret = devm_add_action_or_reset(owner, qpic_lifetime_put_device,
++                                get_device(&pdev->dev));
++ if (ret)
++  goto fail_owner;
++ /* Never borrow platform DMA masks, range-map storage or dma_parms. */
++ owner->dma_mask = &owner->coherent_dma_mask;
++ owner->coherent_dma_mask = DMA_BIT_MASK(32);
++ owner->dma_parms = devm_kzalloc(owner, sizeof(*owner->dma_parms), GFP_KERNEL);
++ if (!owner->dma_parms) {
++  ret = -ENOMEM;
++  goto fail_owner;
++ }
++ ret = of_dma_configure(owner, owner->of_node, true);
++ if (ret)
++  goto fail_owner;
++ ret = dma_set_mask_and_coherent(owner, DMA_BIT_MASK(32));
++ if (ret)
++  goto fail_owner;
++ life->owner = owner;
++ life->users = 0;
++ life->detaching = false;
++ life->irq_disabled = false;
++ mutex_unlock(&qpic_lifetime_lock);
++ ret = devm_add_action_or_reset(&pdev->dev, qpic_lifetime_release, life);
++ return ret ? ERR_PTR(ret) : life;
++fail_owner:
++ root_device_unregister(owner);
++unlock:
++ mutex_unlock(&qpic_lifetime_lock);
++ return ERR_PTR(ret);
++}
++EXPORT_SYMBOL_GPL(qcom_qpic_lifetime_create);
+ 
+ struct bam_desc_hw {
+ 	__le32 addr;		/* Buffer physical address */
+@@ -64,6 +258,7 @@
+ #define DESC_FLAG_UNLOCK BIT(9)
+ 
+ struct bam_async_desc {
++	size_t qpic_bytes;
+ 	struct virt_dma_desc vd;
+ 
+ 	u32 num_desc;
+@@ -388,6 +583,9 @@
+ }
+ 
+ struct bam_device {
++	atomic_long_t qpic_desc_bytes;
++	struct device *dma_dev;
++	struct qcom_qpic_lifetime *lifetime;
+ 	void __iomem *regs;
+ 	struct device *dev;
+ 	struct dma_device common;
+@@ -564,15 +762,21 @@
+ 	struct bam_chan *bchan = to_bam_chan(chan);
+ 	struct bam_device *bdev = bchan->bdev;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime) ||
++	    (bdev->lifetime && bchan->id >= 4))
++		return -EIO;
+ 	if (bchan->fifo_virt)
+ 		return 0;
++	if (!qpic_lifetime_get(bdev->lifetime))
++		return -EIO;
+ 
+ 	/* allocate FIFO descriptor space, but only if necessary */
+-	bchan->fifo_virt = dma_alloc_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
++	bchan->fifo_virt = dma_alloc_wc(bdev->dma_dev, BAM_DESC_FIFO_SIZE,
+ 					&bchan->fifo_phys, GFP_KERNEL);
+ 
+ 	if (!bchan->fifo_virt) {
+ 		dev_err(bdev->dev, "Failed to allocate desc fifo\n");
++		qpic_lifetime_put(bdev->lifetime);
+ 		return -ENOMEM;
+ 	}
+ 
+@@ -597,6 +801,9 @@
+ 	unsigned long flags;
+ 	int ret;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return;
++
+ 	ret = pm_runtime_get_sync(bdev->dev);
+ 	if (ret < 0)
+ 		return;
+@@ -612,9 +819,10 @@
+ 	bam_reset_channel(bchan);
+ 	spin_unlock_irqrestore(&bchan->vc.lock, flags);
+ 
+-	dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE, bchan->fifo_virt,
++	dma_free_wc(bdev->dma_dev, BAM_DESC_FIFO_SIZE, bchan->fifo_virt,
+ 		    bchan->fifo_phys);
+ 	bchan->fifo_virt = NULL;
++	qpic_lifetime_put(bdev->lifetime);
+ 
+ 	/* mask irq for pipe/channel */
+ 	val = readl_relaxed(bam_addr(bdev, 0, BAM_IRQ_SRCS_MSK_EE));
+@@ -649,6 +857,9 @@
+ {
+ 	struct bam_chan *bchan = to_bam_chan(chan);
+ 	unsigned long flag;
++
++	if (qcom_qpic_lifetime_poisoned(bchan->bdev->lifetime))
++		return -EIO;
+ 
+ 	spin_lock_irqsave(&bchan->vc.lock, flag);
+ 	memcpy(&bchan->slave, cfg, sizeof(*cfg));
+@@ -680,6 +891,10 @@
+ 	u32 i;
+ 	struct bam_desc_hw *desc;
+ 	unsigned int num_alloc = 0;
++	size_t qpic_bytes = 0;
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return NULL;
+ 
+ 
+ 	if (!is_slave_direction(direction)) {
+@@ -691,12 +906,26 @@
+ 	for_each_sg(sgl, sg, sg_len, i)
+ 		num_alloc += DIV_ROUND_UP(sg_dma_len(sg), BAM_FIFO_SIZE);
+ 
++	if (bdev->lifetime) {
++		qpic_bytes = struct_size(async_desc, desc, num_alloc);
++		if (qpic_bytes > SZ_128K ||
++		    atomic_long_add_return(qpic_bytes, &bdev->qpic_desc_bytes) > SZ_128K) {
++			if (qpic_bytes <= SZ_128K)
++				atomic_long_sub(qpic_bytes, &bdev->qpic_desc_bytes);
++			return NULL;
++		}
++	}
++
+ 	/* allocate enough room to accomodate the number of entries */
+ 	async_desc = kzalloc(struct_size(async_desc, desc, num_alloc),
+ 			     GFP_ATOMIC);
+ 
+-	if (!async_desc)
++	if (!async_desc) {
++		if (qpic_bytes)
++			atomic_long_sub(qpic_bytes, &bdev->qpic_desc_bytes);
+ 		return NULL;
++	}
++	async_desc->qpic_bytes = qpic_bytes;
+ 
+ 	if (flags & DMA_PREP_FENCE)
+ 		async_desc->flags |= DESC_FLAG_NWD;
+@@ -759,6 +988,9 @@
+ 	struct bam_async_desc *async_desc, *tmp;
+ 	unsigned long flag;
+ 	LIST_HEAD(head);
++
++	if (qcom_qpic_lifetime_poisoned(bchan->bdev->lifetime))
++		return -EIO;
+ 
+ 	/* remove all transactions, including active transaction */
+ 	spin_lock_irqsave(&bchan->vc.lock, flag);
+@@ -807,6 +1039,9 @@
+ 	unsigned long flag;
+ 	int ret;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return -EIO;
++
+ 	ret = pm_runtime_get_sync(bdev->dev);
+ 	if (ret < 0)
+ 		return ret;
+@@ -833,6 +1068,9 @@
+ 	unsigned long flag;
+ 	int ret;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return -EIO;
++
+ 	ret = pm_runtime_get_sync(bdev->dev);
+ 	if (ret < 0)
+ 		return ret;
+@@ -859,6 +1097,9 @@
+ 	u32 i, srcs, pipe_stts, offset, avail;
+ 	unsigned long flags;
+ 	struct bam_async_desc *async_desc, *tmp;
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return 0;
+ 
+ 	srcs = readl_relaxed(bam_addr(bdev, 0, BAM_IRQ_SRCS_EE));
+ 
+@@ -936,6 +1177,9 @@
+ 	u32 clr_mask = 0, srcs = 0;
+ 	int ret;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return IRQ_HANDLED;
++
+ 	srcs |= process_channel_irqs(bdev);
+ 
+ 	/* kick off tasklet to start next dma transfer */
+@@ -982,6 +1226,9 @@
+ 	size_t residue = 0;
+ 	unsigned int i;
+ 	unsigned long flags;
++
++	if (qcom_qpic_lifetime_poisoned(bchan->bdev->lifetime))
++		return DMA_ERROR;
+ 
+ 	ret = dma_cookie_status(chan, cookie, txstate);
+ 	if (ret == DMA_COMPLETE)
+@@ -1054,6 +1301,9 @@
+ 	int ret;
+ 	unsigned int avail;
+ 	struct dmaengine_desc_callback cb;
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return;
+ 
+ 	lockdep_assert_held(&bchan->vc.lock);
+ 
+@@ -1173,6 +1423,9 @@
+ 	struct bam_chan *bchan = to_bam_chan(chan);
+ 	unsigned long flags;
+ 
++	if (qcom_qpic_lifetime_poisoned(bchan->bdev->lifetime))
++		return;
++
+ 	spin_lock_irqsave(&bchan->vc.lock, flags);
+ 
+ 	/* if work pending and idle, start a transaction */
+@@ -1192,6 +1445,12 @@
+ 	struct bam_async_desc *async_desc = container_of(vd,
+ 			struct bam_async_desc, vd);
+ 
++	if (qcom_qpic_lifetime_poisoned(to_bam_chan(vd->tx.chan)->bdev->lifetime))
++		return;
++
++	if (async_desc->qpic_bytes)
++		atomic_long_sub(async_desc->qpic_bytes,
++			&to_bam_chan(vd->tx.chan)->bdev->qpic_desc_bytes);
+ 	kfree(async_desc);
+ }
+ 
+@@ -1202,10 +1461,15 @@
+ 					struct bam_device, common);
+ 	unsigned int request;
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return NULL;
++
+ 	if (dma_spec->args_count != 1)
+ 		return NULL;
+ 
+ 	request = dma_spec->args[0];
++	if (bdev->lifetime && request >= 4)
++		return NULL;
+ 	if (request >= bdev->num_channels)
+ 		return NULL;
+ 
+@@ -1285,17 +1549,38 @@
+ 
+ MODULE_DEVICE_TABLE(of, bam_of_match);
+ 
++static void qpic_bam_disable_irq(void *data)
++{
++	struct bam_device *bdev = data;
++
++	disable_irq_nosync(bdev->irq);
++}
++
++static void qpic_bam_unpin_clock(void *data)
++{
++	clk_disable_unprepare(data);
++}
++
+ static int bam_dma_probe(struct platform_device *pdev)
+ {
+ 	struct bam_device *bdev;
++	struct qcom_qpic_lifetime *lifetime;
++	struct device *dma_dev;
+ 	const struct of_device_id *match;
+ 	int ret, i;
+-
+-	bdev = devm_kzalloc(&pdev->dev, sizeof(*bdev), GFP_KERNEL);
++	bool irq_registered = false;
++
++	lifetime = qcom_qpic_lifetime_create(pdev, true);
++	if (IS_ERR(lifetime))
++		return PTR_ERR(lifetime);
++	dma_dev = lifetime ? qcom_qpic_lifetime_device(lifetime) : &pdev->dev;
++	bdev = devm_kzalloc(dma_dev, sizeof(*bdev), GFP_KERNEL);
+ 	if (!bdev)
+ 		return -ENOMEM;
+ 
+ 	bdev->dev = &pdev->dev;
++	bdev->dma_dev = dma_dev;
++	bdev->lifetime = lifetime;
+ 
+ 	match = of_match_node(bam_of_match, pdev->dev.of_node);
+ 	if (!match) {
+@@ -1305,7 +1590,9 @@
+ 
+ 	bdev->layout = match->data;
+ 
+-	bdev->regs = devm_platform_ioremap_resource(pdev, 0);
++	bdev->regs = lifetime ? devm_ioremap_resource(dma_dev,
++				platform_get_resource(pdev, IORESOURCE_MEM, 0)) :
++				devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(bdev->regs))
+ 		return PTR_ERR(bdev->regs);
+ 
+@@ -1325,9 +1612,9 @@
+ 						"qcom,powered-remotely");
+ 
+ 	if (bdev->controlled_remotely || bdev->powered_remotely)
+-		bdev->bamclk = devm_clk_get_optional(bdev->dev, "bam_clk");
++		bdev->bamclk = devm_clk_get_optional(bdev->dma_dev, "bam_clk");
+ 	else
+-		bdev->bamclk = devm_clk_get_optional(bdev->dev, "bam_clk");
++		bdev->bamclk = devm_clk_get_optional(bdev->dma_dev, "bam_clk");
+ 
+ 	if (IS_ERR(bdev->bamclk))
+ 		return PTR_ERR(bdev->bamclk);
+@@ -1362,7 +1649,12 @@
+ 
+ 	tasklet_setup(&bdev->task, dma_tasklet);
+ 
+-	bdev->channels = devm_kcalloc(bdev->dev, bdev->num_channels,
++	if (lifetime && bdev->num_channels > 32) {
++		ret = -EOVERFLOW;
++		goto err_tasklet_kill;
++	}
++
++	bdev->channels = devm_kcalloc(bdev->dma_dev, bdev->num_channels,
+ 				sizeof(*bdev->channels), GFP_KERNEL);
+ 
+ 	if (!bdev->channels) {
+@@ -1376,13 +1668,30 @@
+ 	for (i = 0; i < bdev->num_channels; i++)
+ 		bam_channel_init(bdev, &bdev->channels[i], i);
+ 
+-	ret = devm_request_irq(bdev->dev, bdev->irq, bam_dma_irq,
++	ret = devm_request_irq(bdev->dma_dev, bdev->irq, bam_dma_irq,
+ 			IRQF_TRIGGER_HIGH, "bam_dma", bdev);
+ 	if (ret)
+ 		goto err_bam_channel_exit;
+ 
++	irq_registered = true;
++	if (lifetime) {
++		/* Pin while healthy: poison/late IRQ never asks the failed
++		 * hardware or clock provider to establish a new reference. */
++		ret = clk_prepare_enable(bdev->bamclk);
++		if (ret)
++			goto err_bam_channel_exit;
++		ret = devm_add_action_or_reset(dma_dev, qpic_bam_unpin_clock,
++					      bdev->bamclk);
++		if (ret)
++			goto err_bam_channel_exit;
++		mutex_lock(&qpic_lifetime_lock);
++		lifetime->poison_irq = qpic_bam_disable_irq;
++		lifetime->irq_data = bdev;
++		mutex_unlock(&qpic_lifetime_lock);
++	}
++
+ 	/* set max dma segment size */
+-	bdev->common.dev = bdev->dev;
++	bdev->common.dev = bdev->dma_dev;
+ 	ret = dma_set_max_seg_size(bdev->common.dev, BAM_FIFO_SIZE);
+ 	if (ret) {
+ 		dev_err(bdev->dev, "cannot set maximum segment size\n");
+@@ -1409,7 +1718,7 @@
+ 	bdev->common.device_terminate_all = bam_dma_terminate_all;
+ 	bdev->common.device_issue_pending = bam_issue_pending;
+ 	bdev->common.device_tx_status = bam_tx_status;
+-	bdev->common.dev = bdev->dev;
++	bdev->common.dev = bdev->dma_dev;
+ 
+ 	ret = dma_async_device_register(&bdev->common);
+ 	if (ret) {
+@@ -1432,8 +1741,14 @@
+ 	return 0;
+ 
+ err_unregister_dma:
++	if (qcom_qpic_lifetime_detach(lifetime))
++		return ret;
+ 	dma_async_device_unregister(&bdev->common);
+ err_bam_channel_exit:
++	if (qcom_qpic_lifetime_detach(lifetime))
++		return ret;
++	if (irq_registered)
++		devm_free_irq(dma_dev, bdev->irq, bdev);
+ 	for (i = 0; i < bdev->num_channels; i++)
+ 		tasklet_kill(&bdev->channels[i].vc.task);
+ err_tasklet_kill:
+@@ -1449,6 +1764,11 @@
+ 	struct bam_device *bdev = platform_get_drvdata(pdev);
+ 	u32 i;
+ 
++	if (qcom_qpic_lifetime_detach(bdev->lifetime)) {
++		of_dma_controller_free(pdev->dev.of_node);
++		return 0;
++	}
++
+ 	pm_runtime_force_suspend(&pdev->dev);
+ 
+ 	of_dma_controller_free(pdev->dev.of_node);
+@@ -1457,7 +1777,7 @@
+ 	/* mask all interrupts for this execution environment */
+ 	writel_relaxed(0, bam_addr(bdev, 0,  BAM_IRQ_SRCS_MSK_EE));
+ 
+-	devm_free_irq(bdev->dev, bdev->irq, bdev);
++	devm_free_irq(bdev->dma_dev, bdev->irq, bdev);
+ 
+ 	for (i = 0; i < bdev->num_channels; i++) {
+ 		bam_dma_terminate_all(&bdev->channels[i].vc.chan);
+@@ -1466,14 +1786,17 @@
+ 		if (!bdev->channels[i].fifo_virt)
+ 			continue;
+ 
+-		dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
++		dma_free_wc(bdev->dma_dev, BAM_DESC_FIFO_SIZE,
+ 			    bdev->channels[i].fifo_virt,
+ 			    bdev->channels[i].fifo_phys);
+ 	}
+ 
+ 	tasklet_kill(&bdev->task);
+ 
+-	clk_disable_unprepare(bdev->bamclk);
++	if (bdev->lifetime)
++		clk_unprepare(bdev->bamclk);
++	else
++		clk_disable_unprepare(bdev->bamclk);
+ 
+ 	return 0;
+ }
+@@ -1481,6 +1804,9 @@
+ static int __maybe_unused bam_dma_runtime_suspend(struct device *dev)
+ {
+ 	struct bam_device *bdev = dev_get_drvdata(dev);
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return 0;
+ 
+ 	clk_disable(bdev->bamclk);
+ 
+@@ -1491,6 +1817,9 @@
+ {
+ 	struct bam_device *bdev = dev_get_drvdata(dev);
+ 	int ret;
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return 0;
+ 
+ 	ret = clk_enable(bdev->bamclk);
+ 	if (ret < 0) {
+@@ -1505,6 +1834,9 @@
+ {
+ 	struct bam_device *bdev = dev_get_drvdata(dev);
+ 
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return 0;
++
+ 	pm_runtime_force_suspend(dev);
+ 	clk_unprepare(bdev->bamclk);
+ 
+@@ -1515,6 +1847,9 @@
+ {
+ 	struct bam_device *bdev = dev_get_drvdata(dev);
+ 	int ret;
++
++	if (qcom_qpic_lifetime_poisoned(bdev->lifetime))
++		return 0;
+ 
+ 	ret = clk_prepare(bdev->bamclk);
+ 	if (ret)
+--- /dev/null
++++ b/include/linux/dma/qcom-qpic-lifetime.h
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef __QCOM_QPIC_LIFETIME_H
++#define __QCOM_QPIC_LIFETIME_H
++#include <linux/device.h>
++#include <linux/err.h>
++#include <linux/kconfig.h>
++struct platform_device;
++struct qcom_qpic_lifetime;
++#if IS_REACHABLE(CONFIG_QCOM_BAM_DMA)
++struct qcom_qpic_lifetime *qcom_qpic_lifetime_create(struct platform_device *pdev,
++                                                    bool provider);
++struct device *qcom_qpic_lifetime_device(struct qcom_qpic_lifetime *life);
++bool qcom_qpic_lifetime_poisoned(struct qcom_qpic_lifetime *life);
++void qcom_qpic_lifetime_poison(struct qcom_qpic_lifetime *life);
++/* Mark detach; true means resources are permanently retained for this boot.
++ * Actual normal owner release occurs in the original platform devres action. */
++bool qcom_qpic_lifetime_detach(struct qcom_qpic_lifetime *life);
++#else
++static inline struct qcom_qpic_lifetime *
++qcom_qpic_lifetime_create(struct platform_device *p, bool provider) { return NULL; }
++static inline struct device *
++qcom_qpic_lifetime_device(struct qcom_qpic_lifetime *l) { return NULL; }
++static inline bool
++qcom_qpic_lifetime_poisoned(struct qcom_qpic_lifetime *l) { return false; }
++static inline void
++qcom_qpic_lifetime_poison(struct qcom_qpic_lifetime *l) {}
++static inline bool
++qcom_qpic_lifetime_detach(struct qcom_qpic_lifetime *l) { return false; }
++#endif
++#endif
