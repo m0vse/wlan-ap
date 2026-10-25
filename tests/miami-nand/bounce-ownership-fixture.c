@@ -9,9 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
 typedef uint8_t u8; typedef uint32_t u32; typedef uint32_t __le32;
 typedef int dma_cookie_t;
+#ifndef __linux__
 typedef long long loff_t;
+#endif
 #define DMA_PREP_INTERRUPT 1
 #define DMA_PREP_CMD 2
 #define DMA_PREP_FENCE 4

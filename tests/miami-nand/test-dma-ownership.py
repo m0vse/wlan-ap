@@ -47,7 +47,9 @@ pre=pre.replace('/* ACTUAL_STRUCTURES */', structure('bam_transaction')+'\n'+str
 pre=pre.replace('/* ACTUAL_FUNCTIONS */','\n\n'.join(function(n) for n in names))
 with tempfile.TemporaryDirectory() as d:
     c=pathlib.Path(d)/'ownership.c';exe=pathlib.Path(d)/'ownership';c.write_text(pre)
+    # Host fixture only: compact mock statements trigger GCC indentation warnings.
+    # Target compiler flags and runtime safety assertions remain unchanged.
     subprocess.run(['cc','-std=gnu11','-O1','-g','-Wall','-Wextra','-Werror',
-                    '-Wno-unused-function','-Wno-unused-variable','-Wno-sign-compare',
+                    '-Wno-unused-function','-Wno-unused-variable','-Wno-sign-compare','-Wno-misleading-indentation',
                     '-fsanitize=address,undefined','-o',str(exe),str(c)],check=True)
     subprocess.run([str(exe),str(int(a.expect_unsafe)),str(int(a.require_timeout_contained))],check=True)
