@@ -1,0 +1,20 @@
+{
+  "scope": "X7-35X QPIC NAND/DMA source correction; physical natural-fault cure remains unproven",
+  "baseline_public": "9449b2209494fbfd225229357f03d88397712ddc",
+  "scoped_driver_sha256": "543c8c77178960ed8808836adb6dece20a368724ac6628be23f0c575d931bccd",
+  "combined_driver_sha256": "7d6107e7275ecb982ce2607c5ded595fcfc3d6a6b5daa82bbf365ca3348f63ac",
+  "corrections": [
+    "Wait for every prepared command/data/status descriptor under the original shared timeout budget; preserve EOT/FENCE/LOCK/NWD flags.",
+    "Synchronize persistent DMA readback for CPU before copying page-scope status; preserve ECC return/accounting and real raw erased-page fallback.",
+    "Copy all TX sources including command elements; use isolated RX/status destinations and copy back only after every descriptor completes and unmaps.",
+    "On timeout retain the bounded arena, mappings, callback contexts and shared provider/client resource owners; never blindly reset attached hardware or return caller aliases to active DMA.",
+    "Reject later preparation, I/O, features and mutable layout/test operations before scratch reuse; blocked legacy commands return FAIL rather than success.",
+    "Propagate bad-block-marker read errors rather than claiming a good block; recheck asynchronous poison before reporting feature/ID success."
+  ],
+  "bounds": "Requested allocation cap: 128KiB client dynamic transaction arena including wrappers/vector/bounces; 128KiB provider descriptor allocations; four existing 32KiB hardware FIFOs. Fixed controller/owner/host/SG allocations remain bounded separately by exact geometry. These are not exact slab/RSS measurements.",
+  "platform_scope": "Independent ownership route only for the built-in exact X7 NAND/BAM node pair, direct DMA with no IOMMU. Ordinary BAM consumers keep original resource ownership. Original platform diagnostic/sysfs identity is retained.",
+  "strict_source_gate": "python3 tests/miami-nand/test-dma-ownership.py --driver FULLY_PATCHED_KERNEL/drivers/mtd/nand/raw/qcom_nandc.c --require-timeout-contained --provider FULLY_PATCHED_KERNEL/drivers/dma/qcom/bam_dma.c --driver-core FULLY_PATCHED_KERNEL/drivers/base/dd.c --virt-dma FULLY_PATCHED_KERNEL/drivers/dma/virt-dma.h",
+  "gate_requires": "Full actual extracted caller paths, real mapped SG events, delayed/missing completions, every client allocation failure, arena limit, late DMA after caller mutation, TX/command source copies, real provider unissued discard/quota, actual core/client/provider removal with pending refs, MTD unregister refusal, IRQ/callback paths, threaded lifetime races and source-mutation negative controls. Caller-only tests cannot satisfy the strict gate.",
+  "preserved_controls": "One-shot probe, original first-failure RAM-only capture, ECC accounting/returns, CPU-cache negative controls, command result/error semantics, non-page-scope, no-status/legacy BAM and ADM controls.",
+  "limits": "Hardware scheduling/cache/peripheral behavior is simulated by the native harness around actual extracted driver functions. No physical stop/reset proof or natural-fault reproduction is claimed. These source checks do not imply hardware acceptance."
+}

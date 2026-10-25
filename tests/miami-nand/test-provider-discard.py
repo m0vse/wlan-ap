@@ -14,6 +14,7 @@ assert re.search(r'dmaengine_desc_callback_valid\(&cb\).*?DESC_FLAG_EOT.*?DESC_F
 assert 'flags | DMA_PREP_INTERRUPT' not in driver
 prefix=r'''
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 struct list_head {struct list_head *next,*prev;};
@@ -34,7 +35,9 @@ struct dma_chan {int unused;};
 struct virt_dma_desc {struct list_head node;};
 struct virt_dma_chan {int lock;struct list_head desc_allocated,desc_submitted,desc_issued,desc_completed,desc_terminated;};
 struct bam_async_desc {struct virt_dma_desc vd;struct list_head desc_node;int dir;};
-struct bam_chan {struct dma_chan chan;struct virt_dma_chan vc;struct list_head desc_list;};
+struct bam_device {void *lifetime;};static struct bam_device device;
+static int qcom_qpic_lifetime_poisoned(void *p){(void)p;return 0;}
+struct bam_chan {struct dma_chan chan;struct virt_dma_chan vc;struct list_head desc_list;struct bam_device *bdev;};
 static int freed,resets,allow_reset;
 static struct bam_chan *to_bam_chan(struct dma_chan *c){return container_of(c,struct bam_chan,chan);}
 static void bam_chan_init_hw(struct bam_chan *c,int dir){(void)c;(void)dir;resets++;assert(allow_reset);}
@@ -45,7 +48,7 @@ static void vchan_dma_desc_free_list(struct virt_dma_chan *c,struct list_head *l
 suffix=r'''
 int main(void){
  for(int allocated=0;allocated<5;allocated++)for(int submitted=0;submitted<5;submitted++){
-  struct bam_chan c={0};struct bam_async_desc entries[8]={0};
+  struct bam_chan c={.bdev=&device};struct bam_async_desc entries[8]={0};
   init(&c.desc_list);init(&c.vc.desc_allocated);init(&c.vc.desc_submitted);init(&c.vc.desc_issued);init(&c.vc.desc_completed);init(&c.vc.desc_terminated);
   for(int i=0;i<allocated;i++)list_add(&entries[i].vd.node,&c.vc.desc_allocated);
   for(int i=0;i<submitted;i++)list_add(&entries[allocated+i].vd.node,&c.vc.desc_submitted);
@@ -54,7 +57,7 @@ int main(void){
  }
  /* Positive poison control: an active pipe DOES enter the reset branch.
   * This is precisely why the client must not use discard after issue. */
- struct bam_chan c={0};struct bam_async_desc active={0};
+ struct bam_chan c={.bdev=&device};struct bam_async_desc active={0};
  init(&c.desc_list);init(&c.vc.desc_allocated);init(&c.vc.desc_submitted);init(&c.vc.desc_issued);init(&c.vc.desc_completed);init(&c.vc.desc_terminated);
  list_add(&active.desc_node,&c.desc_list);freed=resets=0;allow_reset=1;
  assert(bam_dma_terminate_all(&c.chan)==0&&resets==1&&freed==1);

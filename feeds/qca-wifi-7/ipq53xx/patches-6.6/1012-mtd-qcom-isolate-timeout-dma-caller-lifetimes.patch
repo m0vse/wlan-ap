@@ -1,0 +1,1013 @@
+--- a/drivers/mtd/nand/raw/qcom_nandc.c
++++ b/drivers/mtd/nand/raw/qcom_nandc.c
+@@ -12,6 +12,7 @@
+ #include <linux/dma/qcom_adm.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/dmaengine.h>
++#include <linux/dma/qcom-qpic-lifetime.h>
+ #include <linux/module.h>
+ #include <linux/mtd/rawnand.h>
+ #include <linux/mtd/partitions.h>
+@@ -380,8 +381,17 @@
+  * @sgl_cnt - number of SGL in bam_sgl. Only used by BAM
+  * @dir - DMA transfer direction
+  */
++struct miami_dma_copy {
++	void *original;
++	void *bounce;
++	unsigned int length;
++};
++
+ struct desc_info {
+ 	struct completion done;
++	struct miami_dma_copy *copies;
++	unsigned int copies_count;
++	size_t isolated_bytes;
+ 	struct dma_async_tx_descriptor *dma_desc;
+ 	struct list_head node;
+ 
+@@ -507,7 +517,11 @@
+ };
+ 
+ struct qcom_nand_controller {
++	struct device *dma_dev;
++	struct qcom_qpic_lifetime *lifetime;
+ 	struct device *dev;
++	size_t miami_dma_bytes;
++	bool miami_dma_copy_ok;
+ 
+ 	void __iomem *base;
+ 
+@@ -685,13 +699,97 @@
+ 	bool page_scope;
+ 	bool switch_layout;
+ };
++
++/* Poison is shared with the independently owned BAM provider. No MMIO is
++ * needed here, including when provider removal poisoned the client first. */
++static bool miami_io_blocked(struct qcom_nand_controller *nandc)
++{
++	return nandc->miami_dma_unsafe ||
++		qcom_qpic_lifetime_poisoned(nandc->lifetime);
++}
++
++#define MIAMI_DMA_TRANSACTION_LIMIT (128U * 1024U)
++
++static int miami_dma_reserve(struct qcom_nand_controller *nandc, size_t bytes)
++{
++	if (miami_io_blocked(nandc))
++		return -EIO;
++	if (nandc->miami_dma_bytes > MIAMI_DMA_TRANSACTION_LIMIT ||
++	    bytes > MIAMI_DMA_TRANSACTION_LIMIT - nandc->miami_dma_bytes)
++		return -E2BIG;
++	nandc->miami_dma_bytes += bytes;
++	return 0;
++}
++
++/* Only after all DMA has completed and mappings have returned to CPU
++ * ownership may RX data be copied to the original caller. On poison, this
++ * helper is never run: the bounded arena and mappings remain quarantined. */
++static void miami_dma_release(struct qcom_nand_controller *nandc,
++			      struct desc_info *desc, bool copy_rx)
++{
++	unsigned int i;
++
++	for (i = 0; i < desc->copies_count; i++) {
++		struct miami_dma_copy *copy = &desc->copies[i];
++
++		if (copy_rx && copy->original && desc->dir == DMA_FROM_DEVICE)
++			memcpy(copy->original, copy->bounce, copy->length);
++		kfree(copy->bounce);
++	}
++	kfree(desc->copies);
++	nandc->miami_dma_bytes -= desc->isolated_bytes;
++}
+ 
++static int miami_bounce_sg(struct qcom_nand_controller *nandc,
++			   struct desc_info *desc, struct scatterlist *sgl,
++			   unsigned int count)
++{
++	size_t bytes;
++	unsigned int i;
++	int ret;
++
++	if (!nandc->lifetime)
++		return 0;
++	/* The division check bounds multiplication as well as allocation. */
++	if (!count || count > MIAMI_DMA_TRANSACTION_LIMIT / sizeof(*desc->copies))
++		return -E2BIG;
++	bytes = count * sizeof(*desc->copies);
++	ret = miami_dma_reserve(nandc, bytes);
++	if (ret)
++		return ret;
++	desc->isolated_bytes += bytes;
++	desc->copies = kcalloc(count, sizeof(*desc->copies), GFP_KERNEL);
++	if (!desc->copies)
++		return -ENOMEM;
++	desc->copies_count = count;
++
++	for (i = 0; i < count; i++) {
++		struct miami_dma_copy *copy = &desc->copies[i];
++
++		copy->original = sg_virt(&sgl[i]);
++		copy->length = sgl[i].length;
++		if (!copy->original || !copy->length)
++			return -EINVAL;
++		ret = miami_dma_reserve(nandc, copy->length);
++		if (ret)
++			return ret;
++		desc->isolated_bytes += copy->length;
++		copy->bounce = kzalloc(copy->length, GFP_KERNEL);
++		if (!copy->bounce)
++			return -ENOMEM;
++		if (desc->dir == DMA_TO_DEVICE)
++			memcpy(copy->bounce, copy->original, copy->length);
++		sg_set_buf(&sgl[i], copy->bounce, copy->length);
++	}
++	return 0;
++}
++
+ /* Frees the BAM transaction memory */
+ static void free_bam_transaction(struct qcom_nand_controller *nandc)
+ {
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+ 
+-	devm_kfree(nandc->dev, bam_txn);
++	devm_kfree(nandc->dma_dev, bam_txn);
+ }
+ 
+ /* Allocates and Initializes the BAM transaction */
+@@ -711,7 +809,7 @@
+ 	if (nandc->props->qpic_v2)
+ 		bam_txn_size += sizeof(*bam_txn->sts_sgl) * QPIC_PER_CW_STS_SGL * num_cw;
+ 
+-	bam_txn_buf = devm_kzalloc(nandc->dev, bam_txn_size, GFP_KERNEL);
++	bam_txn_buf = devm_kzalloc(nandc->dma_dev, bam_txn_size, GFP_KERNEL);
+ 	if (!bam_txn_buf)
+ 		return NULL;
+ 
+@@ -743,6 +841,8 @@
+ {
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+ 
++	if (miami_io_blocked(nandc))
++		return;
+ 	if (!nandc->props->is_bam)
+ 		return;
+ 
+@@ -792,28 +892,34 @@
+ 
+ static inline u32 nandc_read(struct qcom_nand_controller *nandc, int offset)
+ {
++	if (miami_io_blocked(nandc))
++		return 0;
+ 	return ioread32(nandc->base + offset);
+ }
+ 
+ static inline void nandc_write(struct qcom_nand_controller *nandc, int offset,
+ 			       u32 val)
+ {
++	if (miami_io_blocked(nandc))
++		return;
+ 	iowrite32(val, nandc->base + offset);
+ }
+ 
+ static inline void nandc_read_buffer_sync(struct qcom_nand_controller *nandc,
+ 					  bool is_cpu)
+ {
++	if (miami_io_blocked(nandc))
++		return;
+ 	if (!nandc->props->is_bam)
+ 		return;
+ 
+ 	if (is_cpu)
+-		dma_sync_single_for_cpu(nandc->dev, nandc->reg_read_dma,
++		dma_sync_single_for_cpu(nandc->dma_dev, nandc->reg_read_dma,
+ 					MAX_REG_RD *
+ 					sizeof(*nandc->reg_read_buf),
+ 					DMA_FROM_DEVICE);
+ 	else
+-		dma_sync_single_for_device(nandc->dev, nandc->reg_read_dma,
++		dma_sync_single_for_device(nandc->dma_dev, nandc->reg_read_dma,
+ 					   MAX_REG_RD *
+ 					   sizeof(*nandc->reg_read_buf),
+ 					   DMA_FROM_DEVICE);
+@@ -892,6 +998,8 @@
+ 	struct nandc_regs *regs = nandc->regs;
+ 	__le32 *reg;
+ 
++	if (miami_io_blocked(nandc))
++		return;
+ 	reg = offset_to_nandc_reg(regs, offset);
+ 
+ 	if (reg)
+@@ -1021,9 +1129,18 @@
+ 	enum dma_transfer_direction dir_eng;
+ 	struct dma_async_tx_descriptor *dma_desc;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
++	if (nandc->lifetime) {
++		ret = miami_dma_reserve(nandc, sizeof(*desc));
++		if (ret)
++			return ret;
++	}
+ 	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
+ 	if (!desc)
+-		return -ENOMEM;
++		goto no_desc;
++	if (nandc->lifetime)
++		desc->isolated_bytes = sizeof(*desc);
+ 
+ 	if (chan == nandc->cmd_chan) {
+ 		sgl = &bam_txn->cmd_sgl[bam_txn->cmd_sgl_start];
+@@ -1051,12 +1168,15 @@
+ 		desc->dir = DMA_FROM_DEVICE;
+ 	}
+ 
++	ret = miami_bounce_sg(nandc, desc, sgl, sgl_cnt);
++	if (ret)
++		goto release_desc;
+ 	sg_mark_end(sgl + sgl_cnt - 1);
+-	ret = dma_map_sg(nandc->dev, sgl, sgl_cnt, desc->dir);
++	ret = dma_map_sg(nandc->dma_dev, sgl, sgl_cnt, desc->dir);
+ 	if (ret == 0) {
+ 		dev_err(nandc->dev, "failure in mapping desc\n");
+-		kfree(desc);
+-		return -ENOMEM;
++		ret = -ENOMEM;
++		goto release_desc;
+ 	}
+ 
+ 	desc->sgl_cnt = sgl_cnt;
+@@ -1067,9 +1187,9 @@
+ 
+ 	if (!dma_desc) {
+ 		dev_err(nandc->dev, "failure in prep desc\n");
+-		dma_unmap_sg(nandc->dev, sgl, sgl_cnt, desc->dir);
+-		kfree(desc);
+-		return -EINVAL;
++		dma_unmap_sg(nandc->dma_dev, sgl, sgl_cnt, desc->dir);
++		ret = -EINVAL;
++		goto release_desc;
+ 	}
+ 
+ 	desc->dma_desc = dma_desc;
+@@ -1083,6 +1203,15 @@
+ 	list_add_tail(&desc->node, &nandc->desc_list);
+ 
+ 	return 0;
++
++release_desc:
++	miami_dma_release(nandc, desc, false);
++	kfree(desc);
++	return ret;
++no_desc:
++	if (nandc->lifetime)
++		nandc->miami_dma_bytes -= sizeof(*desc);
++	return -ENOMEM;
+ }
+ 
+ /* Some legacy queue-building callers cannot propagate an immediate error.
+@@ -1093,6 +1222,8 @@
+ {
+ 	struct bam_transaction *txn = nandc->bam_txn;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (!txn->prepare_error)
+ 		txn->prepare_error = __prepare_bam_async_desc(nandc, chan, flags);
+ 	return txn->prepare_error;
+@@ -1116,6 +1247,8 @@
+ 	struct bam_cmd_element *bam_ce_buffer;
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	bam_ce_buffer = &bam_txn->bam_ce[bam_txn->bam_ce_pos];
+ 
+ 	/* fill the command desc */
+@@ -1169,6 +1302,8 @@
+ 	int ret;
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (read) {
+ 		sg_set_buf(&bam_txn->data_sgl[bam_txn->rx_sgl_pos],
+ 			   vaddr, size);
+@@ -1221,7 +1356,7 @@
+ 		desc->dir = DMA_TO_DEVICE;
+ 	}
+ 
+-	ret = dma_map_sg(nandc->dev, sgl, 1, desc->dir);
++	ret = dma_map_sg(nandc->dma_dev, sgl, 1, desc->dir);
+ 	if (ret == 0) {
+ 		ret = -ENOMEM;
+ 		goto err;
+@@ -1365,6 +1500,8 @@
+ {
+ 	struct bam_transaction *bam_txn = nandc->bam_txn;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	sg_set_buf(&bam_txn->sts_sgl[bam_txn->sts_sgl_pos],
+ 			vaddr, size);
+ 	bam_txn->sts_sgl_pos++;
+@@ -1693,6 +1830,9 @@
+ 	int r, discard_error = 0;
+ 	unsigned long remaining = QPIC_NAND_COMPLETION_TIMEOUT;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
++	nandc->miami_dma_copy_ok = false;
+ 	if (nandc->props->is_bam) {
+ 		if (bam_txn->prepare_error) {
+ 			r = bam_txn->prepare_error;
+@@ -1757,10 +1897,11 @@
+ 		list_for_each_entry(desc, &nandc->desc_list, node) {
+ 			remaining = wait_for_completion_timeout(&desc->done, remaining);
+ 			if (!remaining) {
+-				/* Unchanged issued-timeout limitation: the provider has
+-				 * no verified QPIC quiescence path. This latch blocks
+-				 * optional probing; it does NOT drain or cancel DMA. */
++				/* Do not cancel/reset attached active hardware. Every
++				 * DMA alias is independently owned, and both resource
++				 * owners retain it permanently after this poison. */
+ 				nandc->miami_dma_unsafe = true;
++				qcom_qpic_lifetime_poison(nandc->lifetime);
+ 				return -ETIMEDOUT;
+ 			}
+ 		}
+@@ -1769,10 +1910,13 @@
+ 			return -ETIMEDOUT;
+ 	}
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
++	nandc->miami_dma_copy_ok = true;
+ 	return 0;
+ 
+ discard_unissued:
+-	if (nandc->miami_dma_unsafe)
++	if (miami_io_blocked(nandc))
+ 		return r;
+ 	/* No issue_pending has run for this transaction. The previous
+ 	 * transaction completed every participating descriptor, so only
+@@ -1783,8 +1927,10 @@
+ 	discard_error |= dmaengine_terminate_sync(nandc->cmd_chan);
+ 	if (nandc->props->qpic_v2)
+ 		discard_error |= dmaengine_terminate_sync(nandc->sts_chan);
+-	if (discard_error)
++	if (discard_error) {
+ 		nandc->miami_dma_unsafe = true;
++		qcom_qpic_lifetime_poison(nandc->lifetime);
++	}
+ 	return r;
+ }
+ 
+@@ -1792,22 +1938,23 @@
+ {
+ 	struct desc_info *desc, *n;
+ 
+-	/* A late callback still owns desc->done. Retain its context/mapping
+-	 * on an issued timeout. This does NOT isolate caller buffers or
+-	 * establish quiescence; that unresolved path blocks deployment. */
+-	if (nandc->props->is_bam && nandc->miami_dma_unsafe)
++	/* A late callback and the controller may still own this transaction.
++	 * Its mappings/arena are separate from the caller's lifetime. */
++	if (nandc->props->is_bam && miami_io_blocked(nandc))
+ 		return;
+ 
+ 	list_for_each_entry_safe(desc, n, &nandc->desc_list, node) {
+ 		list_del(&desc->node);
+ 
+ 		if (nandc->props->is_bam)
+-			dma_unmap_sg(nandc->dev, desc->bam_sgl,
++			dma_unmap_sg(nandc->dma_dev, desc->bam_sgl,
+ 				     desc->sgl_cnt, desc->dir);
+ 		else
+-			dma_unmap_sg(nandc->dev, &desc->adm_sgl, 1,
++			dma_unmap_sg(nandc->dma_dev, &desc->adm_sgl, 1,
+ 				     desc->dir);
+ 
++		if (nandc->props->is_bam)
++			miami_dma_release(nandc, desc, nandc->miami_dma_copy_ok);
+ 		kfree(desc);
+ 	}
+ }
+@@ -1815,6 +1962,8 @@
+ /* reset the register read buffer for next NAND operation */
+ static void clear_read_regs(struct qcom_nand_controller *nandc)
+ {
++	if (miami_io_blocked(nandc))
++		return;
+ 	nandc->reg_read_pos = 0;
+ 	nandc_read_buffer_sync(nandc, false);
+ }
+@@ -1824,6 +1973,8 @@
+ 	struct nand_chip *chip = &host->chip;
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 
++	if (miami_io_blocked(nandc))
++		return;
+ 	nandc->buf_count = 0;
+ 	nandc->buf_start = 0;
+ 	host->use_ecc = false;
+@@ -1871,6 +2022,8 @@
+ 	struct nand_chip *chip = &host->chip;
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 
++	if (miami_io_blocked(nandc))
++		return;
+ 	switch (command) {
+ 	case NAND_CMD_READID:
+ 		nandc_read_buffer_sync(nandc, true);
+@@ -1901,6 +2054,11 @@
+ 	bool wait = false;
+ 	int ret = 0;
+ 
++	if (miami_io_blocked(nandc)) {
++		nandc->miami_command_result = -EIO;
++		host->status = NAND_STATUS_READY | NAND_STATUS_FAIL;
++		return;
++	}
+ 	nandc->miami_command_result = -EINPROGRESS;
+ 	pre_command(host, command);
+ 
+@@ -1966,10 +2124,20 @@
+ 	nandc->miami_command_result = ret;
+ 	free_descs(nandc);
+ 
++	if (miami_io_blocked(nandc)) {
++		if (!ret)
++			nandc->miami_command_result = -EIO;
++		host->status = NAND_STATUS_READY | NAND_STATUS_FAIL;
++		return;
++	}
+ 	/* Optional READ-ID must not sync/copy an incomplete DMA buffer. */
+ 	if (ret && nandc->miami_probe_active)
+ 		return;
+ 	post_command(host, command);
++	if (miami_io_blocked(nandc) && !ret) {
++		nandc->miami_command_result = -EIO;
++		host->status = NAND_STATUS_READY | NAND_STATUS_FAIL;
++	}
+ }
+ 
+ /*
+@@ -2108,6 +2276,8 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	int i;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	nandc_read_buffer_sync(nandc, true);
+ 
+ 	for (i = 0; i < cw_cnt; i++) {
+@@ -2132,6 +2302,8 @@
+ 	int ret, reg_off = FLASH_BUF_ACC, read_loc = 0;
+ 	int raw_cw = cw;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	nand_read_page_op(chip, page, 0, NULL, 0);
+ 	host->use_ecc = false;
+ 
+@@ -2284,6 +2456,8 @@
+ 	int i, result;
+ 	u8 *data_buf_start = data_buf, *oob_buf_start = oob_buf;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	buf = (struct read_stats *)nandc->reg_read_buf;
+ 	nandc_read_buffer_sync(nandc, true);
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope)
+@@ -2446,6 +2620,8 @@
+  u32 failed_before = m->ecc_stats.failed, corrected_before = m->ecc_stats.corrected;
+ 	__le32 *status_buf_cw = nandc->status_buf;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	config_nand_page_read(chip);
+ 
+ 	/* queue cmd descs for each codeword */
+@@ -2544,6 +2720,8 @@
+ 	int size;
+ 	int ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	clear_read_regs(nandc);
+ 
+ 	size = host->use_ecc ? host->cw_data : host->cw_size;
+@@ -2611,6 +2789,8 @@
+ {
+ 	bool codeword_fixup = qcom_nandc_is_boot_partition(host, page);
+ 
++	if (miami_io_blocked(get_qcom_nand_controller(&host->chip)))
++		return;
+ 	/* Skip conf write if we are already in the correct mode */
+ 	if (codeword_fixup == host->codeword_fixup)
+ 		return;
+@@ -2638,6 +2818,8 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	u8 *data_buf, *oob_buf = NULL;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2660,6 +2842,8 @@
+ 	int cw, ret;
+ 	u8 *data_buf = buf, *oob_buf = chip->oob_poi;
+ 
++	if (miami_io_blocked(get_qcom_nand_controller(chip)))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2683,6 +2867,8 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	struct nand_ecc_ctrl *ecc = &chip->ecc;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2706,6 +2892,8 @@
+ 	u8 *data_buf, *oob_buf;
+ 	int i, ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2781,6 +2969,8 @@
+ 	u8 *data_buf, *oob_buf;
+ 	int i, ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2862,6 +3052,8 @@
+ 	int data_size, oob_size;
+ 	int ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (host->nr_boot_partitions)
+ 		qcom_nandc_codeword_fixup(host, page);
+ 
+@@ -2905,6 +3097,8 @@
+ 	struct nand_ecc_ctrl *ecc = &chip->ecc;
+ 	int page, ret, bbpos, bad = 0;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	page = (int)(ofs >> chip->page_shift) & chip->pagemask;
+ 
+ 	/*
+@@ -2918,11 +3112,12 @@
+ 	clear_bam_transaction(nandc);
+ 	ret = copy_last_cw(host, page);
+ 	if (ret)
+-		goto err;
++		return ret;
+ 
+-	if (check_flash_errors(host, 1)) {
++	ret = check_flash_errors(host, 1);
++	if (ret) {
+ 		dev_warn(nandc->dev, "error when trying to read BBM\n");
+-		goto err;
++		return ret;
+ 	}
+ 
+ 	bbpos = mtd->writesize - host->cw_size * (ecc->steps - 1);
+@@ -2931,7 +3126,6 @@
+ 
+ 	if (chip->options & NAND_BUSWIDTH_16)
+ 		bad = bad || (nandc->data_buffer[bbpos + 1] != 0xff);
+-err:
+ 	return bad;
+ }
+ 
+@@ -2942,6 +3136,8 @@
+ 	struct nand_ecc_ctrl *ecc = &chip->ecc;
+ 	int page, ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	clear_read_regs(nandc);
+ 	clear_bam_transaction(nandc);
+ 
+@@ -2989,6 +3185,9 @@
+ 	u8 *buf = nandc->data_buffer;
+ 	u8 ret = 0x0;
+ 
++	if (miami_io_blocked(nandc))
++		return host->last_command == NAND_CMD_STATUS ?
++			NAND_STATUS_READY | NAND_STATUS_FAIL : 0xff;
+ 	if (host->last_command == NAND_CMD_STATUS) {
+ 		ret = host->status;
+ 
+@@ -3008,6 +3207,12 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	int real_len = min_t(size_t, len, nandc->buf_count - nandc->buf_start);
+ 
++	if (miami_io_blocked(nandc)) {
++		/* Legacy read-ID fails as an all-ones invalid ID, never page data. */
++		if (len > 0)
++			memset(buf, 0xff, len);
++		return;
++	}
+ 	memcpy(buf, nandc->data_buffer + nandc->buf_start, real_len);
+ 	nandc->buf_start += real_len;
+ }
+@@ -3018,6 +3223,8 @@
+ 	struct qcom_nand_controller *nandc = get_qcom_nand_controller(chip);
+ 	int real_len = min_t(size_t, len, nandc->buf_count - nandc->buf_start);
+ 
++	if (miami_io_blocked(nandc))
++		return;
+ 	memcpy(nandc->data_buffer + nandc->buf_start, buf, real_len);
+ 
+ 	nandc->buf_start += real_len;
+@@ -3376,9 +3583,12 @@
+ 
+ static void qcom_nandc_unalloc(struct qcom_nand_controller *nandc)
+ {
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return;
++
+ 	if (nandc->props->is_bam) {
+-		if (!dma_mapping_error(nandc->dev, nandc->reg_read_dma))
+-			dma_unmap_single(nandc->dev, nandc->reg_read_dma,
++		if (!dma_mapping_error(nandc->dma_dev, nandc->reg_read_dma))
++			dma_unmap_single(nandc->dma_dev, nandc->reg_read_dma,
+ 					 MAX_REG_RD *
+ 					 sizeof(*nandc->reg_read_buf),
+ 					 DMA_FROM_DEVICE);
+@@ -3406,7 +3616,7 @@
+ {
+ 	int ret;
+ 
+-	ret = dma_set_coherent_mask(nandc->dev, DMA_BIT_MASK(32));
++	ret = dma_set_coherent_mask(nandc->dma_dev, DMA_BIT_MASK(32));
+ 	if (ret) {
+ 		dev_err(nandc->dev, "failed to set DMA mask\n");
+ 		return ret;
+@@ -3420,17 +3630,17 @@
+ 	 */
+ 	nandc->buf_size = 532;
+ 
+-	nandc->data_buffer = devm_kzalloc(nandc->dev, nandc->buf_size,
++	nandc->data_buffer = devm_kzalloc(nandc->dma_dev, nandc->buf_size,
+ 					GFP_KERNEL);
+ 	if (!nandc->data_buffer)
+ 		return -ENOMEM;
+ 
+-	nandc->regs = devm_kzalloc(nandc->dev, sizeof(*nandc->regs),
++	nandc->regs = devm_kzalloc(nandc->dma_dev, sizeof(*nandc->regs),
+ 					GFP_KERNEL);
+ 	if (!nandc->regs)
+ 		return -ENOMEM;
+ 
+-	nandc->reg_read_buf = devm_kcalloc(nandc->dev,
++	nandc->reg_read_buf = devm_kcalloc(nandc->dma_dev,
+ 				MAX_REG_RD, sizeof(*nandc->reg_read_buf),
+ 				GFP_KERNEL);
+ 	if (!nandc->reg_read_buf)
+@@ -3438,11 +3648,11 @@
+ 
+ 	if (nandc->props->is_bam) {
+ 		nandc->reg_read_dma =
+-			dma_map_single(nandc->dev, nandc->reg_read_buf,
++			dma_map_single(nandc->dma_dev, nandc->reg_read_buf,
+ 				       MAX_REG_RD *
+ 				       sizeof(*nandc->reg_read_buf),
+ 				       DMA_FROM_DEVICE);
+-		if (dma_mapping_error(nandc->dev, nandc->reg_read_dma)) {
++		if (dma_mapping_error(nandc->dma_dev, nandc->reg_read_dma)) {
+ 			dev_err(nandc->dev, "failed to DMA MAP reg buffer\n");
+ 			return -EIO;
+ 		}
+@@ -3714,6 +3924,8 @@
+ 	u32 command = NAND_CMD_GET_FEATURE_SERIAL;
+ 	int ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	/* Clear the BAM transaction index */
+ 	clear_bam_transaction(nandc);
+ 
+@@ -3747,6 +3959,8 @@
+ 		return ret;
+ 	}
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	nandc_read_buffer_sync(nandc, true);
+ 
+ 	/* read_reg_dma will read data in to nandc->reg_read_buf
+@@ -3755,7 +3969,7 @@
+ 	 */
+ 	ret = le32_to_cpu(*(__le32 *)nandc->reg_read_buf);
+ 
+-	return ret;
++	return miami_io_blocked(nandc) ? -EIO : ret;
+ }
+ 
+ /* Called only from an existing NAND read callback under NAND core's chip
+@@ -3823,6 +4037,8 @@
+ 	u32 cmd_val = (SPI_TRANSFER_MODE_x1 | SPI_WP | SPI_HOLD |
+ 			ACC_FEATURE | QPIC_SET_FEATURE);
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	/* Clear the BAM transaction index */
+ 	clear_bam_transaction(nandc);
+ 
+@@ -3856,6 +4072,8 @@
+ 	 * so after issueing command in read_reg_dma function read reg_read_buf
+ 	 * buffer
+ 	 */
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	nandc_read_buffer_sync(nandc, true);
+ 
+ 	ret = qpic_serial_check_status(nandc->reg_read_buf);
+@@ -3863,7 +4081,7 @@
+ 		dev_err(nandc->dev, "Error in executing command:%d\n",command);
+ 		return ret;
+ 	}
+-	return ret;
++	return miami_io_blocked(nandc) ? -EIO : ret;
+ }
+ 
+ 
+@@ -3943,14 +4161,16 @@
+  struct qcom_nand_controller *n = get_qcom_nand_controller(&host->chip);
+  int ret;
+ 
++ if (miami_io_blocked(n)) return -EIO;
+  miami_probe_log(n, "%s ID begin", phase);
+  memset(n->data_buffer, 0, 4);
+  qcom_nandc_command(&host->chip, NAND_CMD_READID, 0, -1);
+  ret = n->miami_command_result;
++ if (!ret && miami_io_blocked(n)) ret = -EIO;
+  if (!ret && (n->data_buffer[0] != 0xc2 || n->data_buffer[1] != 0xa6)) ret = -ENODEV;
+  miami_probe_log(n, "%s ID=%02x%02x ret=%d", phase,
+                  n->data_buffer[0], n->data_buffer[1], ret);
+- return ret;
++ return !ret && miami_io_blocked(n) ? -EIO : ret;
+ }
+ 
+ static int miami_probe_get(struct qcom_nand_host *host, const char *phase, u8 address)
+@@ -3990,6 +4210,7 @@
+  int ret;
+  bool good;
+ 
++ if (miami_io_blocked(n)) return false;
+  miami_probe_log(n, "read %s p=%d begin", which, page);
+  memset(n->miami_probe_buffer, 0, m->writesize);
+  pre_command(host, NAND_CMD_READ0);
+@@ -4037,7 +4258,7 @@
+  miami_probe_log(n, "start page=%d peb=%u orig_result=%d boottime_ns=%llu synthetic=%u",
+                  page, peb, n->miami_diag.result, ktime_get_boottime_ns(), n->miami_probe_synthetic);
+  if (!n->miami_probe_baseline_valid || !n->miami_probe_buffer ||
+-     n->miami_dma_unsafe || host->codeword_fixup || peb < 6 || peb >= 1542) {
++     miami_io_blocked(n) || host->codeword_fixup || peb < 6 || peb >= 1542) {
+   miami_probe_log(n, "abort baseline=%u buffer=%u dma_unsafe=%u layout=%u",
+     n->miami_probe_baseline_valid, !!n->miami_probe_buffer, n->miami_dma_unsafe,
+     host->codeword_fixup);
+@@ -4149,6 +4370,8 @@
+ 	u8 before, wanted, after;
+ 	int ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	if (!nandc->props->is_serial_nand || chip->id.len < 2 ||
+ 	    chip->id.data[0] != 0xc2 || chip->id.data[1] != 0xa6 ||
+ 	    mtd->size != SZ_256M || mtd->writesize != SZ_2K ||
+@@ -4650,7 +4873,7 @@
+ 	}
+ 
+ 	host->nr_boot_partitions = partitions_count / 2;
+-	host->boot_partitions = devm_kcalloc(dev, host->nr_boot_partitions,
++	host->boot_partitions = devm_kcalloc(nandc->dma_dev, host->nr_boot_partitions,
+ 					     sizeof(*host->boot_partitions), GFP_KERNEL);
+ 	if (!host->boot_partitions) {
+ 		host->nr_boot_partitions = 0;
+@@ -4724,7 +4947,7 @@
+ 		return -EINVAL;
+ 
+ 	nand_set_flash_node(chip, dn);
+-	mtd->name = devm_kasprintf(dev, GFP_KERNEL, "qcom_nand.%d", host->cs);
++	mtd->name = devm_kasprintf(nandc->dma_dev, GFP_KERNEL, "qcom_nand.%d", host->cs);
+ 	if (!mtd->name)
+ 		return -ENOMEM;
+ 
+@@ -4785,7 +5008,7 @@
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope) {
+ 		nandc->sts_buf_size = (mtd->writesize / NANDC_STEP_SIZE) *
+ 							MAX_STATUS_REG;
+-		nandc->status_buf = devm_kzalloc(nandc->dev, nandc->sts_buf_size,
++		nandc->status_buf = devm_kzalloc(nandc->dma_dev, nandc->sts_buf_size,
+ 				GFP_KERNEL);
+ 		if (!nandc->status_buf)
+ 			return -ENOMEM;
+@@ -4852,7 +5075,7 @@
+ 	int ret = -ENODEV;
+ 
+ 	for_each_available_child_of_node(dn, child) {
+-		host = devm_kzalloc(dev, sizeof(*host), GFP_KERNEL);
++		host = devm_kzalloc(nandc->dma_dev, sizeof(*host), GFP_KERNEL);
+ 		if (!host) {
+ 			of_node_put(child);
+ 			return -ENOMEM;
+@@ -4860,7 +5083,7 @@
+ 
+ 		ret = qcom_nand_host_init_and_register(nandc, host, child);
+ 		if (ret) {
+-			devm_kfree(dev, host);
++			devm_kfree(nandc->dma_dev, host);
+ 			continue;
+ 		}
+ 
+@@ -4913,6 +5136,8 @@
+ 	struct qcom_nand_host *host, *tmp;
+ 	int ret;
+ 
++	if (miami_io_blocked(nandc))
++		return -EIO;
+ 	ret = kstrtobool(buf, &nandc->boot_layout);
+ 	if (ret) {
+ 		dev_err(dev, "invalid boot_layout\n");
+@@ -4930,11 +5155,11 @@
+ 		}
+ 		memset(mtd, 0, sizeof(struct mtd_info));
+ 		list_del(&host->node);
+-		devm_kfree(nandc->dev, host);
++		devm_kfree(nandc->dma_dev, host);
+ 	}
+ 
+ 	if (nandc->props->qpic_v2 && nandc->props->page_scope) {
+-		devm_kfree(nandc->dev, nandc->status_buf);
++		devm_kfree(nandc->dma_dev, nandc->status_buf);
+ 	}
+ 
+ 	ret = qcom_probe_nand_devices(nandc);
+@@ -4999,6 +5224,7 @@
+  unsigned int page, i;
+  int ret;
+ 
++ if (miami_io_blocked(n)) return -EIO;
+  ret = kstrtouint(buf, 0, &page);
+  if (ret) return ret;
+  if (page % 64) return -EINVAL;
+@@ -5030,13 +5256,13 @@
+  int ret;
+ 
+    INIT_DELAYED_WORK(&nandc->miami_probe_work, miami_probe_post_work);
+-   ret = devm_add_action_or_reset(dev, miami_probe_cancel, nandc);
++   ret = devm_add_action_or_reset(nandc->dma_dev, miami_probe_cancel, nandc);
+    if (ret) {
+     nandc->miami_probe_claimed = true;
+     printk(KERN_ERR "MIAMI_PROBE setup unavailable cleanup=%d; snapshot remains enabled\n", ret);
+     goto snapshot;
+    }
+-   nandc->miami_probe_buffer = devm_kmalloc(dev, m->writesize, GFP_KERNEL);
++   nandc->miami_probe_buffer = devm_kmalloc(nandc->dma_dev, m->writesize, GFP_KERNEL);
+    if (!nandc->miami_probe_buffer || nandc->miami_dma_unsafe) {
+     nandc->miami_probe_claimed = true;
+     printk(KERN_ERR "MIAMI_PROBE setup unavailable buffer=%u dma_unsafe=%u; snapshot remains enabled\n",
+@@ -5077,13 +5303,21 @@
+ 	struct resource *res;
+ 	int ret;
+ 	bool miami_iomacro_enabled = false;
++	struct qcom_qpic_lifetime *lifetime;
++	struct device *dma_dev;
+ 
+-	nandc = devm_kzalloc(&pdev->dev, sizeof(*nandc), GFP_KERNEL);
++	lifetime = qcom_qpic_lifetime_create(pdev, false);
++	if (IS_ERR(lifetime))
++		return PTR_ERR(lifetime);
++	dma_dev = lifetime ? qcom_qpic_lifetime_device(lifetime) : dev;
++	nandc = devm_kzalloc(dma_dev, sizeof(*nandc), GFP_KERNEL);
+ 	if (!nandc)
+ 		return -ENOMEM;
+ 
+ 	platform_set_drvdata(pdev, nandc);
+ 	nandc->dev = dev;
++	nandc->dma_dev = dma_dev;
++	nandc->lifetime = lifetime;
+ 	spin_lock_init(&nandc->miami_diag_lock);
+ 
+ 	dev_data = of_device_get_match_data(dev);
+@@ -5094,16 +5328,16 @@
+ 
+ 	nandc->props = dev_data;
+ 
+-	nandc->core_clk = devm_clk_get(dev, "core");
++	nandc->core_clk = devm_clk_get(dma_dev, "core");
+ 	if (IS_ERR(nandc->core_clk))
+ 		return PTR_ERR(nandc->core_clk);
+ 
+-	nandc->aon_clk = devm_clk_get(dev, "aon");
++	nandc->aon_clk = devm_clk_get(dma_dev, "aon");
+ 	if (IS_ERR(nandc->aon_clk))
+ 		return PTR_ERR(nandc->aon_clk);
+ 
+ 	if (nandc->props->is_serial_nand) {
+-		nandc->iomacro_clk = devm_clk_get(dev, "io_macro");
++		nandc->iomacro_clk = devm_clk_get(dma_dev, "io_macro");
+ 		if (IS_ERR(nandc->iomacro_clk))
+ 			return PTR_ERR(nandc->iomacro_clk);
+ 
+@@ -5131,15 +5365,15 @@
+ 		return ret;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+-	nandc->base = devm_ioremap_resource(dev, res);
++	nandc->base = devm_ioremap_resource(dma_dev, res);
+ 	if (IS_ERR(nandc->base))
+ 		return PTR_ERR(nandc->base);
+ 
+ 	nandc->base_phys = res->start;
+-	nandc->base_dma = dma_map_resource(dev, res->start,
++	nandc->base_dma = dma_map_resource(dma_dev, res->start,
+ 					   resource_size(res),
+ 					   DMA_BIDIRECTIONAL, 0);
+-	if (dma_mapping_error(dev, nandc->base_dma))
++	if (dma_mapping_error(dma_dev, nandc->base_dma))
+ 		return -ENXIO;
+ 
+ 	ret = clk_prepare_enable(nandc->core_clk);
+@@ -5202,15 +5436,23 @@
+ 	return 0;
+ 
+ err_setup:
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return ret;
+ 	qcom_nandc_unalloc(nandc);
+ err_nandc_alloc:
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return ret;
+ 	if (miami_iomacro_enabled)
+ 		clk_disable_unprepare(nandc->iomacro_clk);
+ 	clk_disable_unprepare(nandc->aon_clk);
+ err_aon_clk:
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return ret;
+ 	clk_disable_unprepare(nandc->core_clk);
+ err_core_clk:
+-	dma_unmap_resource(dev, res->start, resource_size(res),
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return ret;
++	dma_unmap_resource(dma_dev, res->start, resource_size(res),
+ 			   DMA_BIDIRECTIONAL, 0);
+ 	return ret;
+ }
+@@ -5227,9 +5469,18 @@
+ 		device_remove_file(&pdev->dev, &dev_attr_miami_first_failure);
+ 		device_remove_file(&pdev->dev, &dev_attr_miami_probe_test);
+ 	}
++	if (qcom_qpic_lifetime_detach(nandc->lifetime))
++		return 0;
+ 	list_for_each_entry(host, &nandc->host_list, node) {
+ 		chip = &host->chip;
+ 		ret = mtd_device_unregister(nand_to_mtd(chip));
++		if (ret && nandc->lifetime) {
++			/* A mounted/referenced MTD cannot be torn down. Retain
++			 * its owner and fail all future I/O rather than freeing
++			 * chip/controller memory behind the live interface. */
++			qcom_qpic_lifetime_poison(nandc->lifetime);
++			return 0;
++		}
+ 		WARN_ON(ret);
+ 		nand_cleanup(chip);
+ 	}
+@@ -5237,6 +5488,8 @@
+ 	if (nandc->props->switch_layout)
+ 		sysfs_remove_file(&pdev->dev.kobj, &dev_attr_boot_layout.attr);
+ 
++	if (qcom_qpic_lifetime_poisoned(nandc->lifetime))
++		return 0;
+ 	qcom_nandc_unalloc(nandc);
+ 
+ 	if (nandc->props->is_serial_nand &&
+@@ -5246,7 +5499,7 @@
+ 	clk_disable_unprepare(nandc->aon_clk);
+ 	clk_disable_unprepare(nandc->core_clk);
+ 
+-	dma_unmap_resource(&pdev->dev, nandc->base_dma, resource_size(res),
++	dma_unmap_resource(nandc->dma_dev, nandc->base_dma, resource_size(res),
+ 			   DMA_BIDIRECTIONAL, 0);
+ 
+ 	return 0;

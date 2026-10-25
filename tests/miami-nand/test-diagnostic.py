@@ -5,7 +5,7 @@ root = Path(__file__).parent
 parser=argparse.ArgumentParser();parser.add_argument('--driver',type=Path,default=root/'qcom_nandc.diagnostic.c');parser.add_argument('--expect-old-failure',action='store_true');args=parser.parse_args()
 source = args.driver.read_text()
 def function(name):
-    signature = 'static ssize_t ' if name == 'miami_first_failure_show' else 'static int ' if name == 'parse_read_errors' else 'static void '
+    signature = 'static ssize_t ' if name == 'miami_first_failure_show' else 'static int ' if name == 'parse_read_errors' else 'static bool ' if name == 'miami_io_blocked' else 'static void '
     start=source.index(signature+name+'(')
     # Skip the forward declaration.
     if source.index(';',start)<source.index('{',start):
@@ -237,6 +237,12 @@ if 'miami_probe_claimed' in source:
     harness=harness.replace(' assert(strstr(record,"dma[3]") && strstr(record,"not_queried"));',' assert(strstr(record,"dma_cookies="));')
 if 'miami_probe_inject(host, page);' in function('parse_read_errors'):
     harness=harness.replace('static int parse_read_errors(', 'static void miami_probe_inject(struct qcom_nand_host *h,int p){(void)h;(void)p;}\nstatic int parse_read_errors(',1)
+if 'static bool miami_io_blocked(' in source:
+    harness=harness.replace(' void *dev, *iomacro_clk;', ' void *dev, *iomacro_clk;\n void *dma_dev, *lifetime;')
+    # The exact shared-owner query is covered by the resource-owner suite.
+    # NULL is healthy; a synthetic non-NULL lifetime injects provider poison.
+    query='static bool qcom_qpic_lifetime_poisoned(void *life){return life!=NULL;}\n'
+    harness=harness.replace('static int parse_read_errors(', query+function('miami_io_blocked')+'\nstatic int parse_read_errors(',1)
 with tempfile.TemporaryDirectory() as tmp:
     c=Path(tmp)/'test.c';exe=Path(tmp)/'test';c.write_text(harness)
     subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-o',str(exe),str(c)],check=True)

@@ -6,12 +6,28 @@ checks software invariants, not whether this ordering occurs on physical QPIC.
 Use --expect-unsafe for the released negative control. Issued timeout containment
 is explicitly reported separately and remains a release-blocking limitation.
 """
-import argparse, pathlib, re, subprocess, tempfile
+import argparse, pathlib, re, subprocess, tempfile, sys
 p=argparse.ArgumentParser()
 p.add_argument('--driver',type=pathlib.Path,required=True)
 p.add_argument('--expect-unsafe',action='store_true')
 p.add_argument('--require-timeout-contained',action='store_true')
+p.add_argument('--provider',type=pathlib.Path)
+p.add_argument('--driver-core',type=pathlib.Path)
+p.add_argument('--virt-dma',type=pathlib.Path)
 a=p.parse_args();s=a.driver.read_text()
+if 'static int miami_bounce_sg(' in s:
+    if a.expect_unsafe:
+        p.error('--expect-unsafe is for the released/scoped negative controls, not the isolated candidate')
+    folder=pathlib.Path(__file__).parent
+    if a.require_timeout_contained:
+        if not all((a.provider,a.driver_core,a.virt_dma)):
+            p.error('strict candidate gate requires --provider, --driver-core and --virt-dma; caller-only tests cannot satisfy it')
+        command=[sys.executable,str(folder/'test-timeout-containment.py'),'--driver',str(a.driver),
+                 '--provider',str(a.provider),'--driver-core',str(a.driver_core),'--virt-dma',str(a.virt_dma)]
+    else:
+        command=[sys.executable,str(folder/'test-bounce-ownership.py'),'--driver',str(a.driver)]
+    subprocess.run(command,check=True)
+    sys.exit(0)
 def function(name):
     m=re.search(r'^static\s+(?:int|void|bool)\s*\n?'+name+r'\([^;]*?\)\s*\{',s,re.M)
     assert m,name
