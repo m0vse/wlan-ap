@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=certificates
-PKG_RELEASE:=21
+PKG_RELEASE:=22
 
 PKG_LICENSE:=BSD-3-Clause
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>

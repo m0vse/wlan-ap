@@ -26,3 +26,12 @@ Stock RAM boot is supporting bring-up evidence, not full stock/OpenWiFi
 qualification. Next hardware work: persistent boot, SSH/DHCP/radio acceptance,
 then explicit each-bank trial, failed-trial rollback and config/vault retention.
 No AP writes or environment changes are part of these source tests.
+
+Native first-boot enrolment
+
+The protected FORMAT2 identity validator accepts exact XV2-23T alongside
+XV2-21X; certificate package release22. Existing binding, serial, private-file,
+TLS/issuer/key, durable CSR/retry and fresh-config confirmation checks remain.
+Both models pass28 real ARM64 native EST/renewal cases; the old validator
+refuses23T in the negative control. This does not enable the still-incomplete
+shared outgoing OEM23T adapter or claim physical onboarding acceptance.
