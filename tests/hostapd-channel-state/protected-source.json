@@ -3,7 +3,7 @@
   "shared_reference": "80f49f1b",
   "qualified_miami_reference": "f76520968685a1571e11fc0ce62034bdb449acb7",
   "protected_trees": {
-    "feeds/ucentral/ucentral-client": "f2620ed8eee2a6fd3b178c07a0bf2edb2644651b",
+    "feeds/ucentral/ucentral-client": "108e016e6502b109938c791ef481564fafd1502b",
     "feeds/ucentral/ucentral-state": "88788d3c5e0b064302435cb93126796b1f7172b0",
     "feeds/tip/cambium-miami-persistent": "08c1181ba1e10d5d4685b1f3655989404677a8c2"
   },
@@ -120,5 +120,13 @@
       "feeds/qca-wifi-7/iw/patches/634-iw-radio-scoped-txpower.patch"
     ],
     "scope": "Independent physical-radio defaults replace shared-wiphy uniform-cap refusal. Existing NAND/boot/client/radio sources and strict readback stay pinned. Offline regressions do not establish target compilation or hardware acceptance."
+  },
+  "reviewed_cheetah_23t_delta": {
+    "base": "73b5b572743e1e1d505e65d7f248a823c48a9b50",
+    "paths": [
+      "feeds/ucentral/ucentral-client/Makefile",
+      "feeds/ucentral/ucentral-client/files/usr/libexec/ucentral-led.sh"
+    ],
+    "reason": "Only add 23T to the existing 21X LED selector and bump package release; no client, fault, radio or boot policy changes."
   }
 }

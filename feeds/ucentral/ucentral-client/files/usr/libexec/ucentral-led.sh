@@ -29,7 +29,7 @@ cambiumnetworks,e400)
  PHASE_LED_PATHS="$LED_PATH $RUNNING_LED_PATH"
  ;;
 
-cambiumnetworks,xv3-8|cambiumnetworks,xv2-21x|cambiumnetworks,x7-35x)
+cambiumnetworks,xv3-8|cambiumnetworks,xv2-21x|cambiumnetworks,xv2-23t|cambiumnetworks,x7-35x)
 	LED_PATH="/sys/class/leds/blue:status"
 	RUNNING_LED_PATH="/sys/class/leds/green:status"
 	PHASE_LED_PATHS="/sys/class/leds/orange:status"

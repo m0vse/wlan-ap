@@ -46,6 +46,17 @@ ab_installer_confirmed_context() {
     [ "$(ab_getenv bootcmd)" = "run ${AB_ENV}_stable$AB_ACTIVE" ]; then
   return 0
  fi
+ # The existing Cheetah legacy guard re-arms only after accepted native
+ # enrolment/configuration health. Its exact guarded command and saved OEM
+ # selector are the legacy confirmation contract; no converted state is forged.
+ if [ "$AB_ENV:$AB_FAMILY:$AB_MODEL" = cheetah:cheetah:XV2-23T ]; then
+  [ -z "$(ab_getenv "${AB_ENV}_ab_version")" ] && ! ab_converted || return 1
+  [ "$(ab_getenv image)" = "$((1 - AB_ACTIVE))" ] &&
+  [ "$(ab_getenv bootcount)" = 0 ] &&
+  [ "$(ab_getenv changing_bootcmd)" = 1 ] &&
+  [ "$(ab_getenv bootcmd)" = "$(ab_guarded_command "$AB_ACTIVE")" ]
+  return $?
+ fi
  [ "$AB_ENV:$AB_FAMILY:$AB_MODEL" = miami:miami:X7-35X ] || return 1
  command -v ab_converted >/dev/null 2>&1 || return 1
  [ -z "$(ab_getenv "${AB_ENV}_ab_version")" ] && ! ab_converted || return 1
