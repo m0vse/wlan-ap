@@ -1,0 +1,95 @@
+--- a/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-xv2-23t-recovery.dts
++++ b/target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/ipq5018-xv2-23t-recovery.dts
+@@ -12,6 +12,12 @@
+ 	};
+ };
+ 
+-/* The captured OEM FIT does not supply this model's radio board files. */
+-&wifi { status = "disabled"; };
+-&wifi1 { status = "disabled"; };
++/* OEM 7.2-r1 selects b24-lynx and b60.stock, imported from this unit's OEM bank. */
++&wifi {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Cambium-XV2-23T";
++};
++&wifi1 {
++	status = "okay";
++	qcom,ath11k-calibration-variant = "Cambium-XV2-23T-5G";
++};
+--- a/target/linux/qualcommax/patches-6.12/0900-ipq5018-cheetah-mdio-reset-clock.patch
++++ b/target/linux/qualcommax/patches-6.12/0900-ipq5018-cheetah-mdio-reset-clock.patch
+@@ -17,11 +17,12 @@
+  	int ret;
+  
+  	bus = devm_mdiobus_alloc_size(&pdev->dev, sizeof(*priv));
+-@@ -340,9 +343,29 @@
++@@ -340,9 +343,30 @@
+  	if (IS_ERR(priv->membase))
+  		return PTR_ERR(priv->membase);
+  
+-+	if (of_machine_is_compatible("cambiumnetworks,xv2-21x")) {
+++	if (of_machine_is_compatible("cambiumnetworks,xv2-21x") ||
+++	    of_machine_is_compatible("cambiumnetworks,xv2-23t")) {
+ +		struct clk *mdio1_ahb_clk;
+ +
+ +		mdio1_ahb_clk = devm_clk_get_enabled(&pdev->dev, "xv2-mdio1-ahb");
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -9,7 +9,8 @@
+ case "$FIRMWARE" in
+ "ath11k/IPQ5018/hw1.0/cal-ahb-c000000.wifi.bin")
+ 	case "$board" in
+-	cambiumnetworks,xv2-21x)
++	cambiumnetworks,xv2-21x|\
++	cambiumnetworks,xv2-23t)
+ 		caldata_extract "0:ART" 0x1000 0x20000
+ 		;;
+ 	cmcc,mr3000d-ci)
+@@ -84,7 +85,8 @@
+ 	;;
+ "ath11k/QCN6122/hw1.0/cal-ahb-b00a040.wifi.bin")
+ 	case "$board" in
+-	cambiumnetworks,xv2-21x)
++	cambiumnetworks,xv2-21x|\
++	cambiumnetworks,xv2-23t)
+ 		caldata_extract "0:ART" 0x26800 0x20000
+ 		;;
+ 	cmcc,mr3000d-ci)
+--- a/target/linux/qualcommax/image/ipq50xx.mk
++++ b/target/linux/qualcommax/image/ipq50xx.mk
+@@ -247,7 +247,7 @@
+ 	DEVICE_VARIANT := persistent
+ 	DEVICE_DTS := ipq5018-xv2-21x-persistent ipq5018-xv2-22h-persistent ipq5018-xv2-23t-persistent
+ 	DEVICE_DTS_CONFIG := config@mp03.3-ocelot
+-	SUPPORTED_DEVICES := cambiumnetworks,xv2-21x
++	SUPPORTED_DEVICES := cambiumnetworks,xv2-21x cambiumnetworks,xv2-23t
+ 	SOC := ipq5018
+ 	BLOCKSIZE := 128k
+ 	PAGESIZE := 2048
+--- a/package/cambium/cambium-cheetah-support/Makefile
++++ b/package/cambium/cambium-cheetah-support/Makefile
+@@ -1,7 +1,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=cambium-cheetah-support
+-PKG_RELEASE:=7
++PKG_RELEASE:=8
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_MAINTAINER:=Phil Taylor <phil@m0vse.uk>
+ 
+--- a/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
++++ b/package/cambium/cambium-cheetah-support/files/cambium-ab-cheetah.sh
+@@ -32,7 +32,12 @@
+ 		AB_RADIOS=2
+ 		;;
+ 	cambiumnetworks,xv2-22h) AB_MODEL=XV2-22H; AB_SKU=00000022; AB_FIT=config@mp03.3-cheetah ;;
+-	cambiumnetworks,xv2-23t) AB_MODEL=XV2-23T; AB_SKU=00000024; AB_FIT=config@mp03.3-lynx ;;
++	cambiumnetworks,xv2-23t)
++		# RAM bring-up supports a persistent trial; full hardware/A-B acceptance is pending.
++		AB_MODEL=XV2-23T; AB_SKU=00000024; AB_FIT=config@mp03.3-lynx
++		AB_LAN='br-lan.1 br-lan'
++		AB_RADIOS=2
++		;;
+ 	*) return 1 ;;
+ 	esac
+ }
